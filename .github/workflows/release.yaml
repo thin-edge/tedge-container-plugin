@@ -25,23 +25,12 @@ jobs:
       - name: Set version
         run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
 
-      - run: mkdir -p dist
-      - name: package deb
-        run: nfpm package --packager deb --target ./dist/
+      - name: Package
+        run: ./ci/build.sh
         env:
           SEMVER: ${{ env.RELEASE_VERSION }}
 
-      - name: package apk
-        run: nfpm package --packager apk --target ./dist/
-        env:
-          SEMVER: ${{ env.RELEASE_VERSION }}
-
-      - name: package rpm
-        run: nfpm package --packager rpm --target ./dist/
-        env:
-          SEMVER: ${{ env.RELEASE_VERSION }}
-      
-      - name: upload
+      - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
           name: packages
