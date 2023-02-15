@@ -1,65 +1,19 @@
-# Name. (required)
 name: tedge-docker-sm-plugin
 arch: all
 platform: linux
 version: ${SEMVER}
-epoch: 1
-release: 1
-
-# Section.
-# This is only used by the deb packager.
-# See: https://www.debian.org/doc/debian-policy/ch-archive.html#sections
 section: misc
-
-# Priority.
-# Defaults to `optional` on deb
-# Defaults to empty on rpm and apk
-# See: https://www.debian.org/doc/debian-policy/ch-archive.html#priorities
 priority: optional
-
-# Maintainer. (required)
-# This will expand any env var you set in the field, e.g. maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-# Defaults to empty on rpm and apk
-# Leaving the 'maintainer' field unset will not be allowed in a future version
 maintainer: Reuben Miller <reuben.d.miller@gmail.com>
-
-# Description.
-# Defaults to `no description given`.
-# Most packagers call for a one-line synopsis of the package. Some (like deb)
-# also call for a multi-line description starting on the second line.
 description: thin-edge.io docker image software management plugin
-
-# Vendor.
-# This will expand any env var you set in the field, e.g. vendor: ${VENDOR}
-# This is only used by the rpm packager.
 vendor: thin-edge.io
-
-# Package's homepage.
-homepage: https://nfpm.goreleaser.com
-
-# License.
+homepage: https://github.com/reubenmiller/tedge-docker-sm-plugin
 license: MIT
-
-# Changelog YAML file, see: https://github.com/goreleaser/chglog
-#changelog: "CHANGELOG.yaml"
-
-# Disables globbing for files, config_files, etc.
-disable_globbing: false
-
-# Packages it provides. (overridable)
-# This will expand any env var you set in the field, e.g. ${PROVIDES_BLA}
-# the env var approach can be used to account for differences in platforms
-provides:
-  - tedge-docker-sm-plugin
-
-# Contents to add to the package
-# This can be binaries or any other files.
 contents:
   - src: ./src/docker-image
     dst: /etc/tedge/sm-plugins/docker-image
     type: config|noreplace
     file_info:
-      # Make sure that the mode is specified in octal, e.g. 0644 instead of 644.
       mode: 0755
       owner: tedge
       group: tedge
