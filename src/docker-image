@@ -1,0 +1,129 @@
+#!/bin/sh
+set -e
+
+usage() {
+    echo "
+USAGE
+    Docker plugin for thin-edge.io
+
+    $0 <COMMAND> [MODULE_NAME] [--module-version [VERSION]] [--file [FILE]]
+
+    $0 install <MODULE_NAME> [--module-version [VERSION]] [--file [FILE]]
+    $0 list
+    $0 remove <MODULE_NAME> [--module-version [VERSION]] [--file [FILE]]
+    $0 prepare <MODULE_NAME> [--module-version [VERSION]] [--file [FILE]]
+    $0 finalize <MODULE_NAME> [--module-version [VERSION]] [--file [FILE]]
+    $0 update-list <MODULE_NAME> [--module-version [VERSION]] [--file [FILE]]
+    "
+}
+
+log() { echo "$@" >&2; }
+
+if [ $# -lt 1 ]; then
+    log "Invalid number of positional arguments."
+    usage
+    exit 1
+fi
+
+COMMAND="$1"
+shift
+MODULE_VERSION=latest
+FILE=
+
+# settings
+VALIDATE_TAR_CONTENTS=1
+CONTAINER_CMD=docker
+
+# argument parsing
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --module-version)
+        MODULE_VERSION="$2"
+        shift
+        ;;
+    --file)
+        FILE="$2"
+        shift
+        ;;
+    -h|--help)
+        usage
+        exit 0
+        ;;
+    --*|-*)
+        log "Unknown option $1"
+        exit 1
+        ;;
+    *)
+        MODULE_NAME="$1"
+
+        if [ -z "$MODULE_NAME" ]; then
+            log "Ignoring unknown positional argument: $1"
+        fi
+      ;;
+  esac
+  shift
+done
+
+if ! command -v "$CONTAINER_CMD" >/dev/null 2>&1; then
+    log "$CONTAINER_CMD is not installed"
+    exit 1
+fi
+
+if ! "$CONTAINER_CMD" ps >/dev/null 2>&1; then
+    log "$CONTAINER_CMD does not have permissions to run"
+    exit 1
+fi
+
+case "$COMMAND" in
+    list)
+        "$CONTAINER_CMD" image list --filter "dangling=false" --format '{{.Repository}}\t{{.Tag}}' || exit 2
+        ;;
+
+    install)
+        if [ -z "$FILE" ]; then
+            log "Pulling image: ${MODULE_NAME}:${MODULE_VERSION}"
+            "$CONTAINER_CMD" pull "${MODULE_NAME}:${MODULE_VERSION}"
+        elif [ -f "$FILE" ]; then
+            log "Loading image from file: $FILE"
+            CMD_OUTPUT=$("$CONTAINER_CMD" load --input "$FILE" 2>&1)
+            log "$CONTAINER_CMD output: $CMD_OUTPUT"
+            PARTS=$(echo "$CMD_OUTPUT" | tail -n 1 | sed 's/Loaded image: \+//g')
+            TAR_IMAGE_NAME=$(echo "$PARTS" | cut -d':' -f1)
+            TAR_IMAGE_TAG=$(echo "$PARTS" | cut -d':' -f2)
+
+            # Validate the image/tag against expected fields
+            if [ "$VALIDATE_TAR_CONTENTS" = 1 ]; then
+                if [ "${TAR_IMAGE_NAME}:${TAR_IMAGE_TAG}" != "${MODULE_NAME}:${MODULE_VERSION}" ]; then
+                    log "Container image file does not match expected image/tag. got=${TAR_IMAGE_NAME}:${TAR_IMAGE_TAG}, wanted=${MODULE_NAME}:${MODULE_VERSION}"
+                    exit 4
+                else
+                    log "Container image matched expected image/tag"
+                fi
+            fi
+        else
+            log "Failed to load image. File does not exist: $FILE"
+            exit 3
+        fi
+        ;;
+
+    remove)
+        # don't fail if it does not exist
+        log "Removing image: ${MODULE_NAME}:${MODULE_VERSION}"
+        "$CONTAINER_CMD" rmi "${MODULE_NAME}:${MODULE_VERSION}" || true
+        ;;
+
+    prepare)
+        ;;
+
+    finalize)
+        ;;
+
+    update-list)
+        TAB=$(echo t | tr t \\t)
+        while IFS="$TAB" read -r ACTION MODULE VERSION FILE
+        do
+            sh -c "$0 '$ACTION' '$MODULE' --module-version '$VERSION' --file '$FILE'"
+        done
+        ;;
+esac
+exit 0
