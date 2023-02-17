@@ -98,7 +98,7 @@ case "$COMMAND" in
         "$CONTAINER_CLI" ps -a --format "{{.Names}}\t{{.Image}}" | while read -r line; do
             ITEM_NAME=$(echo "$line" | cut -f1)
             ITEM_IMAGE=$(echo "$line" | cut -f2 | sed 's/\(.*\)/\1/')
-            ITEM_VERSION=$("$CONTAINER_CLI" image ls "$ITEM_IMAGE" --format "{{.Tag}}@{{.ID}}")
+            ITEM_VERSION=$("$CONTAINER_CLI" image ls "$ITEM_IMAGE" --format "{{.Repository}}:{{.Tag}}@{{.ID}}")
 
             printf '%s\t%s\n' "$ITEM_NAME" "$ITEM_VERSION"
         done
