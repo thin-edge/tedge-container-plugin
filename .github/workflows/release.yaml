@@ -46,3 +46,12 @@ jobs:
           draft: true
           files: |
             ./dist/*
+
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/') && env.PUBLISH_TOKEN
+        env:
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+          PUBLISH_REPO: ${{ secrets.PUBLISH_REPO }}
+          PUBLISH_OWNER: ${{ secrets.PUBLISH_OWNER }}
+        run: |
+          ./ci/publish.sh ./dist --repo "$PUBLISH_REPO" --owner "$PUBLISH_OWNER"

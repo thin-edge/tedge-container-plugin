@@ -1,10 +1,16 @@
-# tedge-docker-sm-plugin
+# tedge-container-sm-plugin
 
-thin-edge.io software management plugin to install docker images to a device.
+thin-edge.io software management plugin to install and start container on a device.
+
+The plugin support the following docker compatible cli tools:
+
+* docker
+* podman
+* nerdctl
 
 ## Packaging
 
-The following linux package formats are provided on the releases package:
+The following linux package formats are provided on the releases page:
 
 * deb (Debian/Raspbian)
 * apk (Alpine Linux)

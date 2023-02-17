@@ -1,11 +1,11 @@
-name: tedge-docker-sm-plugin
+name: tedge-container-sm-plugin
 arch: all
 platform: linux
 version: ${SEMVER}
 section: misc
 priority: optional
 maintainer: Reuben Miller <reuben.d.miller@gmail.com>
-description: thin-edge.io docker image software management plugin
+description: thin-edge.io container software management plugin
 vendor: thin-edge.io
 homepage: https://github.com/reubenmiller/tedge-docker-sm-plugin
 license: MIT
@@ -13,8 +13,8 @@ apk:
   # Use noarch instead of "all"
   arch: noarch
 contents:
-  - src: ./src/docker-image
-    dst: /etc/tedge/sm-plugins/docker-image
+  - src: ./src/container
+    dst: /etc/tedge/sm-plugins/container
     type: config|noreplace
     file_info:
       mode: 0755
