@@ -1,0 +1,13 @@
+[Unit]
+Description=thin-edge.io container status monitor
+After=mosquitto.service
+
+[Service]
+ExecStart=/usr/bin/container-monitor
+Restart=always
+RestartSec=30
+EnvironmentFile=-/etc/container-monitor/env
+ExecReload=/usr/bin/kill -HUP $MAINPID
+
+[Install]
+WantedBy=multi-user.target

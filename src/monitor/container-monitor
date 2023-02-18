@@ -1,0 +1,343 @@
+#!/bin/sh
+####################################################################
+# Monitor the container status and report it back to thin-edge.io
+####################################################################
+set -e
+
+usage() {
+    echo "
+Monitor the container status and report it back to thin-edge.io.
+
+When it is called without any arguments, then it will continously monitor the status periodically. It will
+only exist when it receives a kill signal (e.g. ctrl-c etc.).
+
+When a container name is passed as a positional argument, then it will only get the status of the container
+and then exit (this is called ONE-SHOT mode).
+
+OVERVIEW
+
+    +------------+     +------------+     +------------+     +------------+
+    ! containers ! <-> !  monitor   ! <-> !   broker   ! <-> !   tedge    !
+    +------------+     +------------+     +------------+     +------------+
+                                                +
+                                                +    +------------+
+                                                +--> !   cloud    !
+                                                     +------------+
+
+USAGE
+    $0 [container_name] [--interval <seconds>] [--container-cli <docker|podman|nerdctl>] [--telemetry|--no-telemetry]
+
+POSITIONAL ARGS
+    container_name      Name of the container to check in one-shot mode.
+
+FLAGS
+    --container-cli <path>         Container cli, e.g. docker, podman, nerdctl. If left blank that it will be automatically detected
+    --log-level <string>           Log level. error, warn, info, debug, none. Warning level will be used if an invalid value is given
+    --telemetry/--no-telemetry     Publish telemetry data about the containers (e.g. cpu, memory, network io)
+    --interval <seconds>           Interval in seconds which the container status will be reported. This is the minimum interval between checks
+                                   (not including the time it takes to read the status)
+
+EXAMPLES
+    $0
+    Start the continous monitor. The status of all containers will be checked every <interval> seconds.
+
+    $0 mycontainer-name
+    Report the status of the 'mycontainer-name' container name (if it exists) once then exit
+    "
+}
+
+# Log levels: 1=error, 2=warn, 3=info, 4=debug, >=5 none
+LOG_LEVEL=${LOG_LEVEL:-3}
+
+# logging
+log() { level="$1"; shift; echo "$level $*" >&2; }
+debug() { if [ -n "$LOG_LEVEL" ] && [ "$LOG_LEVEL" -ge 4 ]; then log "DEBUG" "$@" >&2; fi }
+info() { if [ -n "$LOG_LEVEL" ] && [ "$LOG_LEVEL" -ge 3 ]; then log "INFO" "$@" >&2; fi }
+warn() { if [ -n "$LOG_LEVEL" ] && [ "$LOG_LEVEL" -ge 2 ]; then log "WARN" "$@" >&2; fi }
+error() { if [ -n "$LOG_LEVEL" ] && [ "$LOG_LEVEL" -ge 1 ]; then log "ERROR" "$@" >&2; fi }
+
+convert_loglevel() {
+    level=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+    case "$level" in
+        4|debug|trace) echo 4;;
+        3|info|information) echo 3;;
+        2|warn|warning) echo 2;;
+        1|error) echo 1;;
+        0|none) echo 0;;
+        *)
+            echo "WARN Invalid log level. Using 'warn' level instead" >&2
+            echo 2;;
+    esac
+}
+
+on_reload() {
+    info "Received SIGHUP signal"
+    load_settings
+}
+
+load_settings() {
+    # Don't allow this to be configured, as the user could change the setting in the
+    # file being sourced
+    SETTINGS_FILE=/etc/container-monitor/env
+
+    # Only read the file if it has the correct permissions, to prevent people from editing it
+    # and side-loading functions
+    FOUND_FILE=$(find "$SETTINGS_FILE" -perm 644 | head -1)
+
+    if [ -n "$FOUND_FILE" ]; then
+        debug "Reloading setting file: $SETTINGS_FILE" >&2
+        # shellcheck disable=SC1091,SC1090
+        . "$SETTINGS_FILE"
+
+        LOG_LEVEL=$(convert_loglevel "$LOG_LEVEL")
+    else
+        if [ -f "$SETTINGS_FILE" ]; then
+            warn "Settings file has insecure permissions. It will be ignored. Please change the permissions to using 'chmod 644 \"$SETTINGS_FILE\"" >&2
+        else
+            warn "Skipping settings file as it does not exist. file=$SETTINGS_FILE" >&2
+        fi
+    fi
+}
+
+load_settings
+
+#
+# Defaults
+#
+CONTAINER_CLI_OPTIONS="${CONTAINER_CLI_OPTIONS:-docker podman nerdctl}"
+CONTAINER_CLI=${CONTAINER_CLI:-}
+
+INTERVAL=${INTERVAL:-60}
+TELEMETRY=${TELEMETRY:-1}
+
+# Only used if tedge cli is not installed
+MQTT_HOST=${MQTT_HOST:-127.0.0.1}
+MQTT_PORT=${MQTT_PORT:-1883}
+
+# Internals
+SERVICE_NAME="container-monitor"
+SERVICE_TYPE=${SERVICE_TYPE:-container}
+SUB_PID=
+TAB=$(printf '\t')
+
+#
+# Argument parsing
+#
+POSITIONAL=
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --help|-h)
+            usage
+            exit 0
+            ;;
+
+        --interval)
+            INTERVAL="$2"
+            shift
+            ;;
+
+        --container-cli)
+            CONTAINER_CLI="$2"
+            shift
+            ;;
+
+        --log-level)
+            LOG_LEVEL="$2"
+            shift
+            ;;
+
+        --telemetry)
+            TELEMETRY=1
+            ;;
+        --no-telemetry)
+            TELEMETRY=0
+            ;;
+
+        *)
+            if [ -n "$POSITIONAL" ]; then
+                POSITIONAL="$POSITIONAL $1"
+            else
+                POSITIONAL="$1"
+            fi
+            ;;
+    esac
+    shift
+done
+
+# shellcheck disable=SC2086
+set -- $POSITIONAL
+
+
+# -------------------
+# Helpers
+# -------------------
+command_exists() { command -v "$1" >/dev/null 2>&1; }
+
+#
+# Auto-set values (if not already set)
+#
+
+LOG_LEVEL=$(convert_loglevel "$LOG_LEVEL")
+
+if command_exists tedge; then
+    if [ -z "$MQTT_HOST" ]; then
+        MQTT_HOST=$(tedge config list | grep "^mqtt.bind_address=" | sed 's/^.*=//g')
+    fi
+    if [ -z "$MQTT_PORT" ]; then
+        MQTT_PORT=$(tedge config list | grep "^mqtt.port=" | sed 's/^.*=//g')
+    fi
+fi
+
+# Detect which container cli is available, choose the first one found
+if [ -z "$CONTAINER_CLI" ]; then
+    for cli in $CONTAINER_CLI_OPTIONS; do
+        if command -v "$cli" >/dev/null 2>&1; then
+            info "Using $cli as the container cli"
+            CONTAINER_CLI="$cli"
+            break
+        fi
+    done
+fi
+
+# Check if telemetry data is supported
+if [ -n "$CONTAINER_CLI" ] && [ "$TELEMETRY" = "1" ]; then
+    if ! "$CONTAINER_CLI" stats --all --no-stream --format "{{.ID}}\t{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" > /dev/null 2>&1; then
+        error "'$CONTAINER_CLI stats --all --no-stream' command failed. This is common if you are running it from inside a container. Disabling container stats collection"
+        TELEMETRY=0
+    fi
+fi
+
+startup(){
+    # tedge mqtt sub
+    info "Starting monitor"
+    listen &
+    SUB_PID=$!
+
+    trap cleanup INT QUIT ABRT TERM
+    trap on_reload HUP
+
+    MESSAGE=$(printf '{"status":"up","pid":"%s","type":"service"}' "$SUB_PID")
+    publish "tedge/health/$SERVICE_NAME" "$MESSAGE"
+
+    info "Created background mqtt client. pid=$SUB_PID"
+}
+
+listen() {
+    if ! command_exists mosquitto_sub; then
+        warn "'mosquitto_sub' is not installed. The container-monitor on-demand request listener requires 'mosquitto_sub' to be installed"
+        return
+    fi
+    info "Creating mqtt client for monitor"
+    # Subscribe to the health-check topic, and just pass the topic to
+    # this same script (to do a single on-demand health check for the given service)
+    (mosquitto_sub \
+        --id "mosquitto_sub_${SERVICE_NAME}" \
+        -h "$MQTT_HOST" \
+        -p "$MQTT_PORT" \
+        --will-topic "tedge/health/${SERVICE_NAME}" \
+        --will-payload "{\"status\":\"down\",\"type\":\"service\"}" \
+        --will-retain \
+        -t "tedge/health-check/#" \
+        -F '%t' || true) | xargs -I %output% "$0" %output%
+}
+
+cleanup() {
+    info "Shutting down"
+    if [ -n "$SUB_PID" ]; then
+        info "Stopping mqtt client. pid=$SUB_PID"
+        kill "$SUB_PID" >/dev/null 2>&1 || true
+    fi
+    # try sending a manual message (not relying on the last will and testament)
+    publish "tedge/health/$SERVICE_NAME" '{"status":"down","type":"service"}'
+
+    # clean exit
+    exit 0
+}
+
+publish() {
+    TOPIC="$1"
+    MESSAGE="$2"
+
+    debug "[$TOPIC] $MESSAGE"
+
+    if command -v tedge >/dev/null 2>&1; then
+        tedge mqtt pub "$TOPIC" "$MESSAGE" || error "Failed to publish message"
+    elif command -v mosquitto_pub >/dev/null 2>&2; then
+        mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -t "$TOPIC" -m "$MESSAGE" || error "Failed to publish message"
+    else
+        warn "Could not publish message. Reason: No mqtt client found"
+    fi
+}
+
+check_health() {
+    NAMES=""
+
+    # optionally filter by specific name
+    if [ $# -gt 0 ]; then
+        NAMES="$1"
+    fi
+
+    "$CONTAINER_CLI" ps -a --format "{{.Names}}\t{{.State}}" --filter "name=$NAMES" | while IFS=$TAB read -r NAME STATE; do
+        # Normalize state, as podman returns a human friendly output, e.g. "Exited (0) 10 seconds ago"
+        STATE=${STATE%% *}
+        STATE=$(echo "$STATE" | tr '[:upper:]' '[:lower:]')
+        debug "$CONTAINER_CLI ps -a: $STATE"
+        case "$STATE" in
+            running|up)
+                STATUS="up"
+                ;;
+            *)
+                STATUS="down"
+                ;;
+        esac
+        TOPIC="tedge/health/$NAME"
+        MESSAGE=$(printf '{"pid":"%s","status":"%s","type":"%s"}' "$NAME" "$STATUS" "$SERVICE_TYPE")
+
+        publish "$TOPIC" "$MESSAGE"
+    done
+
+    #
+    # Optional container statistics
+    #
+    # TODO: Support uptime of a container
+    #   docker inspect -f '{{.State.StartedAt}}    {{.State.FinishedAt}}' mqtt-broker
+    #   started_at=$(date --date "$(docker inspect -f '{{.State.StartedAt}}{{.State.FinishedAt}}' mqtt-broker)" +'%s')
+    if [ "$TELEMETRY" = 1 ]; then
+        info "Collecting container stats"
+        "$CONTAINER_CLI" stats --all --no-stream --format "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" | while IFS=$TAB read -r NAME CPU_PERC MEM_PERC NET_IO; do
+            NET_IO=$(echo "$NET_IO" | sed 's/[^0-9.].*//g')
+            message=$(printf '{"container": {"cpu":%s,"memory":%s,"netio":%s}}' "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}")
+            publish "tedge/measurements/$NAME" "$message"
+        done
+    fi
+}
+
+main() {
+    startup
+
+    while :; do
+        check_health
+
+        debug "INTERVAL=$INTERVAL"
+        if [ -n "$INTERVAL" ] && [ "$INTERVAL" -gt 0 ]; then
+            sleep "$INTERVAL" || true
+        fi
+    done
+}
+
+if ! command_exists "$CONTAINER_CLI"; then
+    error "No container cli was detected. The following options were checked: '$CONTAINER_CLI_OPTIONS'"
+    error "Exiting"
+    exit 1
+fi
+
+# Single health check
+if [ $# -gt 0 ] && [ "$1" != "*" ]; then
+    NAME=$(echo "$1" | sed 's|^tedge/health-check/||g')
+    info "Checking health of $NAME"
+    check_health "$NAME"
+    exit 0
+fi
+
+# Continuous health check
+main

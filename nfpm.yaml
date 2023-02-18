@@ -9,13 +9,44 @@ description: thin-edge.io container software management plugin
 vendor: thin-edge.io
 homepage: https://github.com/reubenmiller/tedge-docker-sm-plugin
 license: MIT
+scripts:
+  postinstall: ./src/monitor/scripts/post-install
+  postremove: ./src/monitor/scripts/post-remove
 apk:
   # Use noarch instead of "all"
   arch: noarch
 contents:
   - src: ./src/container
     dst: /etc/tedge/sm-plugins/container
+    file_info:
+      mode: 0755
+      owner: tedge
+      group: tedge
+
+  - src: ./src/monitor/container-monitor
+    dst: /usr/bin/container-monitor
+    file_info:
+      mode: 0755
+      owner: tedge
+      group: tedge
+
+  - src: ./src/monitor/env
+    dst: /etc/container-monitor/env
     type: config|noreplace
+    file_info:
+      mode: 0644
+      owner: tedge
+      group: tedge
+
+  - src: ./src/monitor/services/systemd/container-monitor.service
+    dst: /usr/lib/systemd/system/container-monitor.service
+    file_info:
+      mode: 0755
+      owner: tedge
+      group: tedge
+
+  - src: ./src/monitor/services/init.d/container-monitor
+    dst: /etc/init.d/container-monitor
     file_info:
       mode: 0755
       owner: tedge

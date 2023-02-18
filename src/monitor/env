@@ -1,0 +1,18 @@
+#CONTAINER_CLI_OPTIONS=
+#CONTAINER_CLI=
+
+# Interval in seconds
+#INTERVAL=
+
+# Enable/disable telemetry (1/0)
+#TELEMETRY=
+
+# Only used if tedge cli is not installed
+#MQTT_HOST=
+#MQTT_PORT=
+
+# Log levels: error, warn, info, debug, none
+#LOG_LEVEL=
+
+# Service type to be used for the containers
+#SERVICE_TYPE=
