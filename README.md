@@ -2,6 +2,23 @@
 
 thin-edge.io software management plugin to install and start container on a device.
 
+## Plugin description
+
+The following thin-edge.io customization is included in the plugin.
+
+* Monitor container status (up/down)
+* Publish container metrics such as cpu, memory, network i/o
+
+|Type|Yes/No|
+|----|--|
+|Software Management plugin|✅|
+|Telemetry|✅|
+|Service Health|✅|
+|Operation handler|➖|
+
+
+## Features
+
 The plugin support the following docker compatible cli tools:
 
 * docker
