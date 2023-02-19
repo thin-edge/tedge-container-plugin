@@ -14,7 +14,7 @@ if ! command -V systemctl >/dev/null 2>&1; then
     install_service="False"
   fi
 else
-    systemd_version=$(systemctl --version | head -1 | sed 's/systemd //g')
+    systemd_version=$(systemctl --version | head -1 | sed 's/systemd //g' | cut -d' ' -f1)
 fi
 
 cleanup() {
