@@ -45,9 +45,8 @@ case "$1" in
       if is_running; then
           echo "Already started"
       else
-          echo "Starting $name"
+          echo "Starting $name (using '$SUDO $cmd')"
           cd "$dir" || (echo "Failed changing directory"; exit 1)
-          echo "Command: $SUDO $cmd"
           $SUDO $cmd >> "$stdout_log" 2>> "$stderr_log" &
           echo $! > "$pid_file"
 
