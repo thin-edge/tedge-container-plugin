@@ -1,4 +1,4 @@
-name: tedge-container-sm-plugin
+name: tedge-container-plugin
 arch: all
 platform: linux
 version: ${SEMVER}

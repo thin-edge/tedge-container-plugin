@@ -1,6 +1,6 @@
-# tedge-container-sm-plugin
+# tedge-container-plugin
 
-thin-edge.io software management plugin to install and start container on a device.
+thin-edge.io container plugin to install, start, stop and monitor containers on a device.
 
 ## Plugin description
 
@@ -11,19 +11,19 @@ The following thin-edge.io customization is included in the plugin.
 
 |Type|Yes/No|
 |----|--|
-|Software Management plugin|✅|
+|Software Management|✅|
 |Telemetry|✅|
-|Service Health|✅|
-|Operation handler|➖|
-
+|Monitoring|✅|
+|Operations|➖|
 
 ## Features
 
-The plugin support the following docker compatible cli tools:
+The following features are supported by the plugin:
 
-* docker
-* podman
-* nerdctl
+* Manage containers via the Cumulocity IoT software interface
+* Monitor container states (e.g. up/down) via Cumulocity IoT Services (only supported from tedge >= 0.10.0)
+* Download container images via Cumulocity IoT binaries if a URL is provided
+* Support for multiple container engines (docker, podman, nerdctl)
 
 ## Packaging
 
