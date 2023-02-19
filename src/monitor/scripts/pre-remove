@@ -1,0 +1,42 @@
+#!/bin/sh
+set -e
+
+SERVICE_NAME="container-monitor"
+
+stop_services() {
+    if [ -x "/usr/bin/deb-systemd-helper" ]; then
+        deb-systemd-helper mask "${SERVICE_NAME}.service" >/dev/null ||:
+    elif [ -x systemd ]; then
+        systemctl stop "${SERVICE_NAME}.service" || :
+        systemctl disable "${SERVICE_NAME}.service" || :
+    elif [ -x "/etc/init.d/${SERVICE_NAME}" ]; then
+        "/etc/init.d/${SERVICE_NAME}" stop || :
+    fi
+}
+
+remove() {
+    printf "\033[32m Pre Remove of a normal remove\033[0m\n"
+    stop_services
+}
+
+upgrade() {
+    printf "\033[32m Pre Remove of an upgrade\033[0m\n"
+    stop_services
+}
+
+echo "Running pre-remove: $*"
+
+action="$1"
+
+case "$action" in
+  "0" | "remove")
+    remove
+    ;;
+  "1" | "upgrade")
+    upgrade
+    ;;
+  *)
+    printf "\033[32m Alpine\033[0m"
+    remove
+    ;;
+esac

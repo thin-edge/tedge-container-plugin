@@ -10,6 +10,7 @@ vendor: thin-edge.io
 homepage: https://github.com/reubenmiller/tedge-docker-sm-plugin
 license: MIT
 scripts:
+  preremove: ./src/monitor/scripts/pre-remove
   postinstall: ./src/monitor/scripts/post-install
   postremove: ./src/monitor/scripts/post-remove
 apk:

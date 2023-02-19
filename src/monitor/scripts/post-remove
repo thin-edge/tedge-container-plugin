@@ -6,17 +6,7 @@ CONFIGURATION_DIR="/etc/${SERVICE_NAME:?}"
 remove() {
     printf "\033[32m Post Remove of a normal remove\033[0m\n"
 
-    if [ -x "/usr/bin/deb-systemd-helper" ]; then
-        deb-systemd-helper mask "${SERVICE_NAME}.service" >/dev/null
-    elif [ -x systemd ]; then
-        systemctl stop "${SERVICE_NAME}.service"
-        systemctl disable "${SERVICE_NAME}.service"
-    elif [ -x "/etc/init.d/${SERVICE_NAME}" ]; then
-        "/etc/init.d/${SERVICE_NAME}" stop
-        rm -f "/etc/init.d/${SERVICE_NAME}"
-    fi
-
-    # Remove conf dir if empty (as rpm does not have purge like debian)
+    # Remove conf dir if empty (as rpm/apk do not have purge mechanism like debian)
     if [ -d "$CONFIGURATION_DIR" ]
     then
       if [ -z "$(ls -A "$CONFIGURATION_DIR")" ]; then
