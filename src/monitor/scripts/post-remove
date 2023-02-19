@@ -1,6 +1,7 @@
 #!/bin/sh
 
 SERVICE_NAME="container-monitor"
+CONFIGURATION_DIR="/etc/${SERVICE_NAME:?}"
 
 remove() {
     printf "\033[32m Post Remove of a normal remove\033[0m\n"
@@ -14,11 +15,19 @@ remove() {
         "/etc/init.d/${SERVICE_NAME}" stop
         rm -f "/etc/init.d/${SERVICE_NAME}"
     fi
+
+    # Remove conf dir if empty (as rpm does not have purge like debian)
+    if [ -d "$CONFIGURATION_DIR" ]
+    then
+      if [ -z "$(ls -A "$CONFIGURATION_DIR")" ]; then
+        rm -rf "$CONFIGURATION_DIR"
+      fi
+    fi
 }
 
 purge() {
     printf "\033[32m Post Remove purge, deb only\033[0m\n"
-    rm -rf "/etc/${SERVICE_NAME:?}"
+    rm -rf "$CONFIGURATION_DIR"
 }
 
 upgrade() {
