@@ -272,29 +272,39 @@ listen() {
     info "Subscribing to health-check messages"
     # Subscribe to the health-check topic, and just pass the topic to
     # this same script (to do a single on-demand health check for the given service)
-    (mosquitto_sub \
+    mosquitto_sub \
         --id "mosquitto_sub_${SERVICE_NAME}" \
         -h "$MQTT_HOST" \
         -p "$MQTT_PORT" \
         --will-topic "tedge/health/${SERVICE_NAME}" \
         --will-payload "{\"status\":\"down\",\"type\":\"service\"}" \
         --will-retain \
-        -t "tedge/health-check/#" \
-        -F '%t' || :) | xargs -I %output% "$0" %output%
+        -t 'tedge/health-check/+' \
+        -F '%t' | while read -r topic; do
+            name="${topic#*/*/}"
+            info "Checking health of $name"
+            check_health "$name" || :
+        done
 }
 
 cleanup() {
     info "Shutting down"
+    info "Clearing traps"
+
+    trap - INT QUIT ABRT TERM
+    trap - HUP
+
     if [ -n "$SUB_PID" ]; then
-        info "Stopping mqtt client. pid=$SUB_PID"
+        info "Stopping background listener. pid=$SUB_PID"
         kill "$SUB_PID" >/dev/null 2>&1 || :
     fi
     # try sending a manual message (not relying on the last will and testament)
     publish "tedge/health/$SERVICE_NAME" '{"status":"down","type":"service"}' || :
 
-    # clean exit
     info "Exiting"
-    exit 0
+    # Kill all child processes
+    # https://spin.atomicobject.com/2017/08/24/start-stop-bash-background-process/
+    kill 0 ||:
 }
 
 publish() {
@@ -396,7 +406,7 @@ fi
 
 # Single health check
 if [ $# -gt 0 ] && [ "$1" != "*" ]; then
-    NAME=$(echo "$1" | sed 's|^tedge/health-check/||g')
+    NAME="${1#*/*/}"
     info "Checking health of $NAME"
     check_health "$NAME"
     exit 0
