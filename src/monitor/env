@@ -1,19 +1,19 @@
-#CONTAINER_CLI_OPTIONS=
-#CONTAINER_CLI=
+#CONTAINER_CLI_OPTIONS="docker podman nerdctl"
+#CONTAINER_CLI=docker
 
 # Interval in seconds
-#INTERVAL=
+#INTERVAL=60
 
 # Enable/disable telemetry (1/0)
-#TELEMETRY=
+#TELEMETRY=1
 
 # Only used if tedge cli is not installed
-#MQTT_HOST=
-#MQTT_PORT=
+#MQTT_HOST=127.0.0.1
+#MQTT_PORT=1883
 
 # Log levels: error, warn, info, debug, none
-#LOG_LEVEL=
+#LOG_LEVEL=info
 #LOG_TIMESTAMPS=1
 
 # Service type to be used for the containers
-#SERVICE_TYPE=
+#SERVICE_TYPE=container
