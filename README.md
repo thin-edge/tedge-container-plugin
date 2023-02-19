@@ -76,8 +76,8 @@ The software package properties are also describe below:
 
 The container software management plugin can be configured with the following properties.
 
-|Property|Value|Description|Example|
-|--|--|--|--|
+|Property|Value|Description|
+|--|--|--|
 |`PRUNE_IMAGES`|`0` or `1`|Prune any unused images after creating/deleting the containers. This is turned off by default|
 |`VALIDATE_TAR_CONTENTS`|`0` or `1`|If the image is in a tarball format, then this setting controls whether the contains of the tarball should be validated against the image name and tag provided in the `version` field of the software package. This is useful to protect against accidentally uploading the wrong binary images to the wrong software packages.|
 |`CONTAINER_RUN_OPTIONS`|String. Example `"--cpus 1 --memory 64m"`|Additional command options to be used when creating/starting the containers. The options will be used by all containers|
@@ -113,8 +113,8 @@ The plugin also includes a service which monitors the running status of the cont
 
 The container software management plugin can be configured with the following properties.
 
-|Property|Value|Description|Example|
-|--|--|--|--|
+|Property|Value|Description|
+|--|--|--|
 |`CONTAINER_CLI_OPTIONS`|`docker podman nerdctl`|List of container cli tools to auto detect. This has no effect if `CONTAINER_CLI` has a non-empty value. The first command which is found will be used. It assumes that the device is only running one container engine at a time.|
 |`CONTAINER_CLI`|`podman`|Explicitly control which container cli tool will be used. Set this if you know which cli is available on the device|
 |`INTERVAL`|`60`|Interval in seconds on how often the container status/telemetry should be collected. The interval will be the minimal interval as it is the time to sleep between collections|
