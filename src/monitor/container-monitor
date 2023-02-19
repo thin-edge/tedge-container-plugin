@@ -32,7 +32,7 @@ POSITIONAL ARGS
 
 FLAGS
     --container-cli <path>         Container cli, e.g. docker, podman, nerdctl. If left blank that it will be automatically detected
-    --log-level <string>           Log level. error, warn, info, debug, none. Warning level will be used if an invalid value is given
+    --log-level <string>           Log level. error, warn, info, debug, none. 'info' will be used if an invalid value is given
     --telemetry/--no-telemetry     Publish telemetry data about the containers (e.g. cpu, memory, network io)
     --interval <seconds>           Interval in seconds which the container status will be reported. This is the minimum interval between checks
                                    (not including the time it takes to read the status)
@@ -70,14 +70,28 @@ convert_loglevel() {
         1|error) echo 1;;
         0|none) echo 0;;
         *)
+            echo "WARN Invalid log level ('$1'). Using 'info' level instead" >&2
+            echo 3;;
+    esac
+}
+
+get_loglevel_name() {
+    level=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+    case "$level" in
+        4|debug|trace) echo debug;;
+        3|info|information) echo info;;
+        2|warn|warning) echo warn;;
+        1|error) echo error;;
+        0|none) echo none;;
+        *)
             echo "WARN Invalid log level. Using 'warn' level instead" >&2
-            echo 2;;
+            echo warn;;
     esac
 }
 
 on_reload() {
     info "Received SIGHUP signal"
-    load_settings
+    load_settings || :
 }
 
 load_settings() {
@@ -90,18 +104,23 @@ load_settings() {
     FOUND_FILE=$(find "$SETTINGS_FILE" -perm 644 | head -1)
 
     if [ -n "$FOUND_FILE" ]; then
-        debug "Reloading setting file: $SETTINGS_FILE" >&2
+        debug "Reloading setting file: $SETTINGS_FILE"
         # shellcheck disable=SC1091,SC1090
         . "$SETTINGS_FILE"
 
+        # Convert log level before using any of the log helpers!
         LOG_LEVEL=$(convert_loglevel "$LOG_LEVEL")
+        info "Current log level: $(get_loglevel_name "$LOG_LEVEL") ($LOG_LEVEL)"
+        info "Current interval: ${INTERVAL} (seconds)"
     else
         if [ -f "$SETTINGS_FILE" ]; then
-            warn "Settings file has insecure permissions. It will be ignored. Please change the permissions to using 'chmod 644 \"$SETTINGS_FILE\"" >&2
+            warn "Settings file has insecure permissions. It will be ignored. Please change the permissions to using 'chmod 644 \"$SETTINGS_FILE\""
         else
-            warn "Skipping settings file as it does not exist. file=$SETTINGS_FILE" >&2
+            warn "Skipping settings file as it does not exist. file=$SETTINGS_FILE"
         fi
     fi
+
+    info "Successfully loaded settings"
 }
 
 load_settings
@@ -188,6 +207,12 @@ is_positive_int() {
     esac
 }
 
+is_running() {
+  # shellcheck disable=SC2009
+  # Use ps/grep fallback as busybox does not support the "ps -p" option
+  ps | grep "^[[:blank:]]*$1" >/dev/null 2>&1
+}
+
 #
 # Auto-set values (if not already set)
 #
@@ -223,19 +248,20 @@ if [ -n "$CONTAINER_CLI" ] && [ "$TELEMETRY" = "1" ]; then
 fi
 
 startup(){
-    # tedge mqtt sub
-    info "Starting monitor"
-    listen &
-    SUB_PID=$!
-
     info "Registering signal handlers"
+    # Clear any existing traps
+    trap - INT QUIT ABRT TERM
+    trap - HUP
+
     trap cleanup INT QUIT ABRT TERM
     trap on_reload HUP
 
+    listen &
+    SUB_PID=$!
+    info "Started background health-check listener. pid=$SUB_PID"
+
     MESSAGE=$(printf '{"status":"up","pid":"%s","type":"service"}' "$SUB_PID")
     publish "tedge/health/$SERVICE_NAME" "$MESSAGE"
-
-    info "Created background mqtt client. pid=$SUB_PID"
 }
 
 listen() {
@@ -243,7 +269,7 @@ listen() {
         warn "'mosquitto_sub' is not installed. The container-monitor on-demand request listener requires 'mosquitto_sub' to be installed"
         return
     fi
-    info "Creating mqtt client for monitor"
+    info "Subscribing to health-check messages"
     # Subscribe to the health-check topic, and just pass the topic to
     # this same script (to do a single on-demand health check for the given service)
     (mosquitto_sub \
@@ -320,7 +346,7 @@ check_health() {
     #   docker inspect -f '{{.State.StartedAt}}    {{.State.FinishedAt}}' mqtt-broker
     #   started_at=$(date --date "$(docker inspect -f '{{.State.StartedAt}}{{.State.FinishedAt}}' mqtt-broker)" +'%s')
     if [ "$TELEMETRY" = 1 ]; then
-        info "Collecting container stats"
+        debug "Collecting container stats"
         "$CONTAINER_CLI" stats --all --no-stream --format "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" | while IFS=$TAB read -r NAME CPU_PERC MEM_PERC NET_IO; do
             NET_IO=$(echo "$NET_IO" | sed 's/[^0-9.].*//g')
             message=$(printf '{"container": {"cpu":%s,"memory":%s,"netio":%s}}' "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}")
@@ -339,13 +365,24 @@ wait_interval() {
     if [ -n "$INTERVAL" ] && [ "$INTERVAL" -gt 0 ]; then
         # Sleep in the background so the traps can still be received
         sleep "$INTERVAL" &
-        wait $!
+
+        # Don't fail, as sleep could have been killed by another signal
+        wait $! || :
     fi
 }
 
 main() {
     startup
     while :; do
+
+        # Check if background listener is still running
+        if [ -n "$SUB_PID" ]; then
+            if ! is_running "$SUB_PID"; then
+                error "Background health-check listener is no longer running. Re-initializing"
+                startup
+            fi
+        fi
+        
         check_health
         wait_interval
     done
