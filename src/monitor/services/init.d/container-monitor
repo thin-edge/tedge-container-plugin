@@ -25,19 +25,19 @@ if command -V sudo >/dev/null 2>&1; then
   if [ -n "$user" ]; then
     SUDO="sudo -u $user"
   fi
-else command -V su >/dev/null
+elif command -V su >/dev/null 2>&1; then
   SUDO="su"
   if [ -n "$user" ]; then
     SUDO="su - $user"
   fi
 fi
 
-get_pid() {
-    cat "$pid_file"
-}
+get_pid() { cat "$pid_file"; }
 
 is_running() {
-    [ -f "$pid_file" ] && ps -p "$(get_pid)" > /dev/null 2>&1
+  # shellcheck disable=SC2009
+  # Use ps/grep fallback as busybox does not support the "ps -p" option
+  [ -f "$pid_file" ] && (ps | grep "^[[:blank:]]*$(get_pid)" >/dev/null 2>&1)
 }
 
 case "$1" in
@@ -46,24 +46,41 @@ case "$1" in
           echo "Already started"
       else
           echo "Starting $name"
-          cd "$dir" || exit 1
+          cd "$dir" || (echo "Failed changing directory"; exit 1)
+          echo "Command: $SUDO $cmd"
           $SUDO $cmd >> "$stdout_log" 2>> "$stderr_log" &
           echo $! > "$pid_file"
+
+          i=10
+          printf "Waiting for %s.." "$name"
+          while [ $i -gt 0 ]; do
+            if is_running; then
+                break
+            fi
+            printf "."
+            i=$((i-1))
+            sleep 1
+          done
+
           if ! is_running; then
               echo "Unable to start, see $stdout_log and $stderr_log"
               exit 1
+          else
+            echo "started"
           fi
       fi
       ;;
     stop)
       if is_running; then
-          printf "Stopping %s.." "$name"
+          printf "Stopping (pid=%s) %s.." "$(get_pid)" "$name"
           kill "$(get_pid)"
-          for _ in 1 2 3 4 5 6 7 8 9 10; do
-              if ! is_running; then
+          i=10
+          while [ $i -gt 0 ]; do
+            if ! is_running; then
                   break
               fi
               printf "."
+              i=$((i-1))
               sleep 1
           done
           echo
@@ -72,7 +89,7 @@ case "$1" in
               echo "Not stopped; may still be shutting down or shutdown may have failed"
               exit 1
           else
-              echo "Stopped"
+              echo "stopped"
               if [ -f "$pid_file" ]; then
                   rm "$pid_file"
               fi
@@ -85,6 +102,8 @@ case "$1" in
       if is_running; then
           echo "Reloading configuration"
           kill -HUP "$(get_pid)"
+      else
+          echo "Not running"
       fi
       ;;
     restart)
