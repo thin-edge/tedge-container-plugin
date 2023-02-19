@@ -1,6 +1,6 @@
 #!/bin/sh
 
-SERVICE_NAME="container-monitor"
+SERVICE_NAME="tedge-container-monitor"
 CONFIGURATION_DIR="/etc/${SERVICE_NAME:?}"
 
 remove() {

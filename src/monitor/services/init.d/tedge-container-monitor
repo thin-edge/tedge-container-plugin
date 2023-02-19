@@ -1,6 +1,6 @@
 #!/bin/sh
 ### BEGIN INIT INFO
-# Provides:          container-monitor
+# Provides:          tedge-container-monitor
 # Required-Start:    $remote_fs $syslog
 # Required-Stop:     $remote_fs $syslog
 # Default-Start:     2 3 4 5
@@ -10,7 +10,7 @@
 ### END INIT INFO
 
 dir="/var"
-cmd="/usr/bin/container-monitor"
+cmd="/usr/bin/tedge-container-monitor"
 user="root"
 
 name=$(basename "$0")

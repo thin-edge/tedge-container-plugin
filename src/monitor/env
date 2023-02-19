@@ -17,3 +17,9 @@
 
 # Service type to be used for the containers
 #SERVICE_TYPE=container
+
+#
+# container sm-plugin settings
+#PRUNE_IMAGES=0
+#VALIDATE_TAR_CONTENTS=0
+#CONTAINER_RUN_OPTIONS="--cpus 1 -v /tmp:/app"

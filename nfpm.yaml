@@ -5,9 +5,9 @@ version: ${SEMVER}
 section: misc
 priority: optional
 maintainer: Reuben Miller <reuben.d.miller@gmail.com>
-description: thin-edge.io container software management plugin
+description: thin-edge.io container plugin for container software management and monitoring
 vendor: thin-edge.io
-homepage: https://github.com/reubenmiller/tedge-docker-sm-plugin
+homepage: https://github.com/reubenmiller/tedge-container-plugin
 license: MIT
 scripts:
   preremove: ./src/monitor/scripts/pre-remove
@@ -24,30 +24,30 @@ contents:
       owner: tedge
       group: tedge
 
-  - src: ./src/monitor/container-monitor
-    dst: /usr/bin/container-monitor
+  - src: ./src/monitor/tedge-container-monitor
+    dst: /usr/bin/tedge-container-monitor
     file_info:
       mode: 0755
       owner: tedge
       group: tedge
 
   - src: ./src/monitor/env
-    dst: /etc/container-monitor/env
+    dst: /etc/tedge-container-plugin/env
     type: config|noreplace
     file_info:
       mode: 0644
       owner: tedge
       group: tedge
 
-  - src: ./src/monitor/services/systemd/container-monitor.service
-    dst: /usr/lib/systemd/system/container-monitor.service
+  - src: ./src/monitor/services/systemd/tedge-container-monitor.service
+    dst: /usr/lib/systemd/system/tedge-container-monitor.service
     file_info:
       mode: 0755
       owner: tedge
       group: tedge
 
-  - src: ./src/monitor/services/init.d/container-monitor
-    dst: /etc/init.d/container-monitor
+  - src: ./src/monitor/services/init.d/tedge-container-monitor
+    dst: /etc/init.d/tedge-container-monitor
     file_info:
       mode: 0755
       owner: tedge

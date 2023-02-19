@@ -97,7 +97,7 @@ on_reload() {
 load_settings() {
     # Don't allow this to be configured, as the user could change the setting in the
     # file being sourced
-    SETTINGS_FILE=/etc/container-monitor/env
+    SETTINGS_FILE=/etc/tedge-container-plugin/env
 
     # Only read the file if it has the correct permissions, to prevent people from editing it
     # and side-loading functions
@@ -139,7 +139,7 @@ MQTT_HOST=${MQTT_HOST:-127.0.0.1}
 MQTT_PORT=${MQTT_PORT:-1883}
 
 # Internals
-SERVICE_NAME="container-monitor"
+SERVICE_NAME="tedge-container-monitor"
 SERVICE_TYPE=${SERVICE_TYPE:-container}
 SUB_PID=
 TAB=$(printf '\t')

@@ -3,10 +3,10 @@ Description=thin-edge.io container status monitor
 After=mosquitto.service
 
 [Service]
-ExecStart=/usr/bin/container-monitor
+ExecStart=/usr/bin/tedge-container-monitor
 Restart=always
 RestartSec=30
-EnvironmentFile=-/etc/container-monitor/env
+EnvironmentFile=-/etc/tedge-container-plugin/env
 ExecReload=/usr/bin/kill -HUP $MAINPID
 
 [Install]
