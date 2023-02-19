@@ -48,9 +48,14 @@ EXAMPLES
 
 # Log levels: 1=error, 2=warn, 3=info, 4=debug, >=5 none
 LOG_LEVEL=${LOG_LEVEL:-3}
+LOG_TIMESTAMPS=${LOG_TIMESTAMPS:-1}
+
+timestamp() {
+    [ "$LOG_TIMESTAMPS" = "1" ] && date +"%Y-%m-%dT%H:%M:%S%z " || echo ""
+}
 
 # logging
-log() { level="$1"; shift; echo "$level $*" >&2; }
+log() { level="$1"; shift; echo "$(timestamp)[pid=$$] $level $*" >&2; }
 debug() { if [ -n "$LOG_LEVEL" ] && [ "$LOG_LEVEL" -ge 4 ]; then log "DEBUG" "$@" >&2; fi }
 info() { if [ -n "$LOG_LEVEL" ] && [ "$LOG_LEVEL" -ge 3 ]; then log "INFO" "$@" >&2; fi }
 warn() { if [ -n "$LOG_LEVEL" ] && [ "$LOG_LEVEL" -ge 2 ]; then log "WARN" "$@" >&2; fi }
@@ -173,6 +178,16 @@ set -- $POSITIONAL
 # -------------------
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
+is_positive_int() {
+    if [ -z "$1" ]; then
+        return 1
+    fi
+    case "$1" in
+        ''|*[!0-9]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
 #
 # Auto-set values (if not already set)
 #
@@ -213,6 +228,7 @@ startup(){
     listen &
     SUB_PID=$!
 
+    info "Registering signal handlers"
     trap cleanup INT QUIT ABRT TERM
     trap on_reload HUP
 
@@ -238,19 +254,20 @@ listen() {
         --will-payload "{\"status\":\"down\",\"type\":\"service\"}" \
         --will-retain \
         -t "tedge/health-check/#" \
-        -F '%t' || true) | xargs -I %output% "$0" %output%
+        -F '%t' || :) | xargs -I %output% "$0" %output%
 }
 
 cleanup() {
     info "Shutting down"
     if [ -n "$SUB_PID" ]; then
         info "Stopping mqtt client. pid=$SUB_PID"
-        kill "$SUB_PID" >/dev/null 2>&1 || true
+        kill "$SUB_PID" >/dev/null 2>&1 || :
     fi
     # try sending a manual message (not relying on the last will and testament)
-    publish "tedge/health/$SERVICE_NAME" '{"status":"down","type":"service"}'
+    publish "tedge/health/$SERVICE_NAME" '{"status":"down","type":"service"}' || :
 
     # clean exit
+    info "Exiting"
     exit 0
 }
 
@@ -312,16 +329,25 @@ check_health() {
     fi
 }
 
+wait_interval() {
+    if ! is_positive_int "$INTERVAL"; then
+        BAD_INTERVAL="$INTERVAL"
+        INTERVAL=60
+        warn "Invalid interval value '$BAD_INTERVAL'. Expected a positive integer representing seconds. Using default value '$INTERVAL'"
+    fi
+    debug "INTERVAL=$INTERVAL"
+    if [ -n "$INTERVAL" ] && [ "$INTERVAL" -gt 0 ]; then
+        # Sleep in the background so the traps can still be received
+        sleep "$INTERVAL" &
+        wait $!
+    fi
+}
+
 main() {
     startup
-
     while :; do
         check_health
-
-        debug "INTERVAL=$INTERVAL"
-        if [ -n "$INTERVAL" ] && [ "$INTERVAL" -gt 0 ]; then
-            sleep "$INTERVAL" || true
-        fi
+        wait_interval
     done
 }
 

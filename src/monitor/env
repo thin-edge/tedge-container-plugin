@@ -13,6 +13,7 @@
 
 # Log levels: error, warn, info, debug, none
 #LOG_LEVEL=
+#LOG_TIMESTAMPS=1
 
 # Service type to be used for the containers
 #SERVICE_TYPE=
