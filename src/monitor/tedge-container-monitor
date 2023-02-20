@@ -266,7 +266,7 @@ startup(){
 
 listen() {
     if ! command_exists mosquitto_sub; then
-        warn "'mosquitto_sub' is not installed. The container-monitor on-demand request listener requires 'mosquitto_sub' to be installed"
+        warn "'mosquitto_sub' is not installed. The tedge-container-monitor on-demand request listener requires 'mosquitto_sub' to be installed"
         return
     fi
     info "Subscribing to health-check messages"
@@ -330,6 +330,11 @@ check_health() {
         NAMES="$1"
     fi
 
+    DEVICE_ID=
+    if command_exists tedge; then
+        DEVICE_ID="$(tedge config list | grep "^device.id=" | sed 's/^.*=//g')_"
+    fi
+
     "$CONTAINER_CLI" ps -a --format "{{.Names}}\t{{.State}}" --filter "name=$NAMES" | while IFS=$TAB read -r NAME STATE; do
         # Normalize state, as podman returns a human friendly output, e.g. "Exited (0) 10 seconds ago"
         STATE=${STATE%% *}
@@ -360,7 +365,9 @@ check_health() {
         "$CONTAINER_CLI" stats --all --no-stream --format "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" | while IFS=$TAB read -r NAME CPU_PERC MEM_PERC NET_IO; do
             NET_IO=$(echo "$NET_IO" | sed 's/[^0-9.].*//g')
             message=$(printf '{"container": {"cpu":%s,"memory":%s,"netio":%s}}' "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}")
-            publish "tedge/measurements/$NAME" "$message"
+            # FIXME: Change topic once tedge supports a service specific measurement topic
+            # so that the user does not need to know that the service name is prefixed with the "{device.id}_"
+            publish "tedge/measurements/${DEVICE_ID}${NAME}" "$message"
         done
     fi
 }
