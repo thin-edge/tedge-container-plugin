@@ -261,7 +261,7 @@ startup(){
     info "Started background health-check listener. pid=$SUB_PID"
 
     MESSAGE=$(printf '{"status":"up","pid":"%s","type":"service"}' "$SUB_PID")
-    publish "tedge/health/$SERVICE_NAME" "$MESSAGE" -r
+    publish_retain "tedge/health/$SERVICE_NAME" "$MESSAGE"
 }
 
 listen() {
@@ -299,7 +299,7 @@ cleanup() {
         kill "$SUB_PID" >/dev/null 2>&1 || :
     fi
     # try sending a manual message (not relying on the last will and testament)
-    publish "tedge/health/$SERVICE_NAME" '{"status":"down","type":"service"}' -r || :
+    publish_retain "tedge/health/$SERVICE_NAME" '{"status":"down","type":"service"}' || :
 
     info "Exiting"
     # Kill all child processes
@@ -310,18 +310,32 @@ cleanup() {
 publish() {
     TOPIC="$1"
     MESSAGE="$2"
-    OPTIONS="${3:-}"
+
+    debug "[$TOPIC] $MESSAGE"
+
+    if command -v tedge >/dev/null 2>&1; then
+        tedge mqtt pub "$TOPIC" "$MESSAGE" || error "Failed to publish message"
+    elif command -v mosquitto_pub >/dev/null 2>&2; then
+        mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" -t "$TOPIC" -m "$MESSAGE" || error "Failed to publish message"
+    else
+        warn "Could not publish message. Reason: No mqtt client found"
+    fi
+}
+
+publish_retain() {
+    TOPIC="$1"
+    MESSAGE="$2"
 
     debug "[$TOPIC] $MESSAGE"
 
     if command -v tedge >/dev/null 2>&1; then
         # We actuall want globbing here, as sometimes options are provided and sometimes not
         # shellcheck disable=SC2086
-        tedge mqtt pub $OPTIONS "$TOPIC" "$MESSAGE" || error "Failed to publish message"
+        tedge mqtt pub -r "$TOPIC" "$MESSAGE" || error "Failed to publish message"
     elif command -v mosquitto_pub >/dev/null 2>&2; then
         # We actuall want globbing here, as sometimes options are provided and sometimes not
         # shellcheck disable=SC2086
-        mosquitto_pub $OPTIONS -h "$MQTT_HOST" -p "$MQTT_PORT" -t "$TOPIC" -m "$MESSAGE" || error "Failed to publish message"
+        mosquitto_pub -r -h "$MQTT_HOST" -p "$MQTT_PORT" -t "$TOPIC" -m "$MESSAGE" || error "Failed to publish message"
     else
         warn "Could not publish message. Reason: No mqtt client found"
     fi
@@ -356,7 +370,7 @@ check_health() {
         TOPIC="tedge/health/$NAME"
         MESSAGE=$(printf '{"pid":"%s","status":"%s","type":"%s"}' "$NAME" "$STATUS" "$SERVICE_TYPE")
 
-        publish "$TOPIC" "$MESSAGE" -r
+        publish_retain "$TOPIC" "$MESSAGE"
     done
 
     #
