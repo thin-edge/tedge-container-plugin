@@ -315,9 +315,13 @@ publish() {
     debug "[$TOPIC] $MESSAGE"
 
     if command -v tedge >/dev/null 2>&1; then
-        tedge mqtt pub "$OPTIONS" "$TOPIC" "$MESSAGE" || error "Failed to publish message"
+        # We actuall want globbing here, as sometimes options are provided and sometimes not
+        # shellcheck disable=SC2086
+        tedge mqtt pub $OPTIONS "$TOPIC" "$MESSAGE" || error "Failed to publish message"
     elif command -v mosquitto_pub >/dev/null 2>&2; then
-        mosquitto_pub "$OPTIONS" -h "$MQTT_HOST" -p "$MQTT_PORT" -t "$TOPIC" -m "$MESSAGE" || error "Failed to publish message"
+        # We actuall want globbing here, as sometimes options are provided and sometimes not
+        # shellcheck disable=SC2086
+        mosquitto_pub $OPTIONS -h "$MQTT_HOST" -p "$MQTT_PORT" -t "$TOPIC" -m "$MESSAGE" || error "Failed to publish message"
     else
         warn "Could not publish message. Reason: No mqtt client found"
     fi
