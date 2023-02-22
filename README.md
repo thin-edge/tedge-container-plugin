@@ -6,20 +6,12 @@ thin-edge.io container plugin to install, start, stop and monitor containers on 
 
 The following thin-edge.io customization is included in the plugin.
 
-:construction: :construction: :construction: Uses planned thin-edge.io features :construction: :construction: :construction:
-The container monitoring requires a thin-edge.io feature (service monitoring) which is not yet merged into the `main` branch (as of `0.9.0`).
+The container monitoring requires a thin-edge.io feature (service monitoring) which is only available > `0.9.0`. You can try the version by following the [pre-release guide](https://github.com/thin-edge/thin-edge.io/blob/main/docs/src/developer/DEBIAN_PACKAGE_HOSTING.md).
 
 ### What will be deployed to the device?
 
 * A service called `tedge-container-plugin`. This provides the monitoring of the containers
 * A software management plugin which is called when installing and removing containers via Cumulocity IoT
-
-|Type|Yes/No|Child device|
-|----|--|--|
-|Software Management Plugin|✅|:x:|
-|Telemetry|✅|:x:|
-|Monitoring|✅|:x:|
-|Operation Handler|➖|➖|
 
 **Note**
 
@@ -32,7 +24,7 @@ The following details the technical aspects of the plugin to get an idea what sy
 |||
 |--|--|
 |**Languages**|`shell` (posix compatible)|
-|**CPU Architectures**|`all/noarch`. Not CPU specific, supported everyone in single package|
+|**CPU Architectures**|`all/noarch`|
 |**Supported init systems**|`systemd` and `init.d/open-rc`|
 |**Required Dependencies**|-|
 |**Optional Dependencies (feature specific)**|`mosquitto_sub`|
