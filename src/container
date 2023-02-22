@@ -176,6 +176,14 @@ case "$COMMAND" in
         log "Removing container: ${MODULE_NAME}:${MODULE_VERSION}"
         "$CONTAINER_CLI" stop "${MODULE_NAME}" || true
         "$CONTAINER_CLI" rm "${MODULE_NAME}" || true
+
+        # TODO: service monitoring does not support deleting a service
+        # so at least mark it as uninstalled
+        if command -V tedge >/dev/null 2>&1; then
+            log "Updating health endpoint to being uninstalled"
+            MESSAGE="$(printf '{"status":"uninstalled","type":"%s"}' "${SERVICE_TYPE:-container}" )"
+            tedge mqtt pub -r "tedge/health/$MODULE_NAME" "$MESSAGE" ||:
+        fi
         ;;
 
     prepare)
