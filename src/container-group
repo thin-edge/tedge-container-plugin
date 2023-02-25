@@ -194,7 +194,7 @@ case "$COMMAND" in
             docker ps -a --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.ID}}" | xargs docker rm --force
 
             log "Removing any networks related to $MODULE_NAME"
-            docker network ls --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.Name}}" | xargs docker network rm --force
+            docker network ls --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.Name}}" | xargs docker network rm
 
             log "Removing any volumes related to $MODULE_NAME"
             docker volume ls --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.Name}}" | xargs docker volume rm --force
