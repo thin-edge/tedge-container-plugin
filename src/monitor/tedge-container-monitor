@@ -380,6 +380,11 @@ check_health() {
     #   docker inspect -f '{{.State.StartedAt}}    {{.State.FinishedAt}}' mqtt-broker
     #   started_at=$(date --date "$(docker inspect -f '{{.State.StartedAt}}{{.State.FinishedAt}}' mqtt-broker)" +'%s')
     if [ "$TELEMETRY" = 1 ]; then
+        if [ -z "$DEVICE_ID" ]; then
+            warn "Skipping telemetry data as the device id is empty"
+            return
+        fi
+
         debug "Collecting container stats"
         "$CONTAINER_CLI" stats --all --no-stream --format "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" | while IFS=$TAB read -r NAME CPU_PERC MEM_PERC NET_IO; do
             NET_IO=$(echo "$NET_IO" | sed 's/[^0-9.].*//g')
