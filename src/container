@@ -45,7 +45,6 @@ CONTAINER_RUN_OPTIONS=
 # Only read the file if it has the correct permissions, to prevent people from editing it
 # and side-loading functions
 SETTINGS_FILE=/etc/tedge-container-plugin/env
-SETTINGS_FILE=/Users/reubenmiller/dev/projects/tedge/code/community-plugins/tedge-container-plugin/src/monitor/env
 FOUND_FILE=
 if [ -f "$SETTINGS_FILE" ]; then
     FOUND_FILE=$(find "$SETTINGS_FILE" -perm 644 | head -1)
