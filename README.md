@@ -11,7 +11,9 @@ The container monitoring requires a thin-edge.io feature (service monitoring) wh
 ### What will be deployed to the device?
 
 * A service called `tedge-container-plugin`. This provides the monitoring of the containers
-* A software management plugin which is called when installing and removing containers via Cumulocity IoT
+* The following software management plugins which is called when installing and removing containers/container groups via Cumulocity IoT
+    * `container` - Deploy a single container (`docker run xxx` equivalent)
+    * `container-group` - Deploy one or more container as defined by a `docker-compose.yaml` file (`docker compose up` equivalent)
 
 **Note**
 
@@ -43,6 +45,7 @@ The following linux package formats are provided on the releases page and also i
 The following features are supported by the plugin:
 
 * Install/remove containers via the Cumulocity IoT software interface
+* Install multiple containers as one group using a `docker-compose.yaml` file
 * Monitor container states (e.g. up/down) via Cumulocity IoT Services (only supported from tedge >= 0.10.0)
 * Download container images via Cumulocity IoT binaries if a URL is provided
 * Support for multiple container engines (docker, podman, nerdctl)
@@ -50,7 +53,7 @@ The following features are supported by the plugin:
 
 ## Documentation
 
-### Install/remove containers
+### Install/remove single containers
 
 Containers can be installed and removed via the Cumulocity IoT Software Management interface in the Device Management Application.
 
@@ -63,6 +66,19 @@ The software package properties are also describe below:
 |`name`|Name of the container to create and start. There can only be one instance with this name, but this name can be anything you like. It is recommended to give it a functional name, and not a version. e.g. for a MQTT broker it could be called `mqtt-broker` (not `mosquitto`).|
 |`version`|Container image and tag to be used to create the container with the `name` value. (e.g. `eclipse-mosquitto:2.0.15`). The container images usually follow the format `<image>:<tag>`, where the tag is mostly used as a version description of the image.|
 |`url`|Optional url pointing to the container image in a tarball format. The file is downloaded and loaded into the container engine, prior to starting the container. The image inside the gzip **MUST** match the one given by the `version` property!|
+
+### Install/remove a `container-group`
+
+A `container-group` is the name given to deploy a `docker-compose.yaml` file. A docker compose file allows use to deploy multiple containers/networks/volumes and allows you maximum control over how the container is started. This means you can create a complex setup of persisted volumes, isolated networks, and also facilitate communication between containers. Check out the [docker compose documentation](https://docs.docker.com/compose/compose-file/) for more details on how to write your own service definition.
+
+The software package properties are also describe below:
+
+|Property|Description|
+|----|-----|
+|`name`|Name of the project (this will be the logical name that represents all of the services/networks/volumes in the docker compose file|
+|`version`|A custom defined version number to help track which version of the docker compose file is deployed. Technically this can be anything as it does not have an influence on the actual docker compose command, it is purely used for tracking on the cloud side.|
+|`url`|The url to the uploaded `docker-compose.yaml` file. This is a MANDATORY field and cannot be left blank.|
+
 
 #### Configuration
 
@@ -110,9 +126,11 @@ The container software management plugin can be configured with the following pr
 |`CONTAINER_CLI_OPTIONS`|`docker podman nerdctl`|List of container cli tools to auto detect. This has no effect if `CONTAINER_CLI` has a non-empty value. The first command which is found will be used. It assumes that the device is only running one container engine at a time.|
 |`CONTAINER_CLI`|`podman`|Explicitly control which container cli tool will be used. Set this if you know which cli is available on the device|
 |`INTERVAL`|`60`|Interval in seconds on how often the container status/telemetry should be collected. The interval will be the minimal interval as it is the time to sleep between collections|
-|`TELEMETRY`|`1` or `0`|Enable/disable the container telemetry metrics such as memory etc. Regardless of this value, the containers status will still be sent, but the measurements will not.|
+|`TELEMETRY`|`1` or `0`|Enable/disable the container telemetry metrics such as memory etc. Regardless of this value, the containers status will still be sent, but the measurements will not|
+|`MONITOR_COMPOSE_PROJECTS`|`1` or `0`|Enable/disable the monitoring of docker compose deployments. It is turned on by default, however it will be automatically disabled if docker compose is not available.|
 |`LOG_LEVEL`|`debug`, `info`, `warn`, `error`|Service log level|
-|`SERVICE_TYPE`|`container`|Service type to be used in the service monitoring.|
+|`SERVICE_TYPE`|`container`|Service type to be used in the service monitoring for single container deployments|
+|`GROUP_SERVICE_TYPE`|`container-group`|Service type used in the service monitoring for docker compose deployments|
 
 The configuration is managed from the following file, and an example of the contents are shown below.
 
@@ -141,8 +159,9 @@ MQTT_PORT=1883
 LOG_LEVEL=info
 LOG_TIMESTAMPS=1
 
-# Service type to be used for the containers
+# Service type to be used for the containers and container groups
 SERVICE_TYPE=container
+GROUP_SERVICE_TYPE=container-group
 ```
 
 
