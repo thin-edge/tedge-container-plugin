@@ -112,7 +112,8 @@ case "$COMMAND" in
     list)
         # Get all container and lookup the image id related to it
         # The version is a combination of the tag (human friendly) and the id (for uniqueness), e.g. Version="{Tag}@{Id}"
-        "$CONTAINER_CLI" ps -a --format "{{.Names}}\t{{.Image}}" | while read -r line; do
+        # Exclude docker compose containers
+        "$CONTAINER_CLI" ps -a --format "{{.Names}}\t{{.Image}}\t{{.Labels}}" | grep -v "com.docker.compose" | while read -r line; do
             ITEM_NAME=$(echo "$line" | cut -f1)
             ITEM_IMAGE=$(echo "$line" | cut -f2 | sed 's/\(.*\)/\1/')
             ITEM_VERSION=$("$CONTAINER_CLI" image ls "$ITEM_IMAGE" --format "{{.Repository}}:{{.Tag}}@{{.ID}}")
