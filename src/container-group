@@ -186,7 +186,18 @@ case "$COMMAND" in
             log "Removing project path: $LOCAL_MODULE_PATH"
             rm -rf "$LOCAL_MODULE_PATH"
         else
-            log "Project path does not exist: $LOCAL_MODULE_PATH "
+            log "Project path does not exist: $LOCAL_MODULE_PATH"
+            log "Cleaning up any left over resources"
+
+            log "Removing any networks related to $MODULE_NAME"
+            docker ps -a --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.ID}}" | xargs docker stop
+            docker ps -a --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.ID}}" | xargs docker rm --force
+
+            log "Removing any networks related to $MODULE_NAME"
+            docker network ls --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.Name}}" | xargs docker network rm --force
+
+            log "Removing any volumes related to $MODULE_NAME"
+            docker volume ls --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.Name}}" | xargs docker volume rm --force
         fi
 
         # TODO: service monitoring does not support deleting a service
