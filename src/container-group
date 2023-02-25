@@ -156,7 +156,7 @@ case "$COMMAND" in
 
         EXIT_CODE="$EXIT_OK"
         log "Deploying project from path $LOCAL_MODULE_PATH"
-        if ! $COMPOSE_CLI up --detach; then
+        if ! $COMPOSE_CLI up --detach --remove-orphans; then
             log "Failed to start project"
 
             EXIT_CODE="$EXIT_FAILURE"
@@ -178,15 +178,15 @@ case "$COMMAND" in
         # don't fail if it does not exist
         LOCAL_MODULE_PATH="$(get_project_dir)"
 
-        # log "Removing container: ${MODULE_NAME}:${MODULE_VERSION}"
-
         if [ -d "$LOCAL_MODULE_PATH" ]; then
             cd "$LOCAL_MODULE_PATH"
-            log "Stopping project from path $LOCAL_MODULE_PATH"
-            $COMPOSE_CLI down ||:
+            log "Stopping project from path: $LOCAL_MODULE_PATH"
+            $COMPOSE_CLI down --remove-orphans --volumes ||:
 
-            log "Removing project path $LOCAL_MODULE_PATH"
+            log "Removing project path: $LOCAL_MODULE_PATH"
             rm -rf "$LOCAL_MODULE_PATH"
+        else
+            log "Project path does not exist: $LOCAL_MODULE_PATH "
         fi
 
         # TODO: service monitoring does not support deleting a service
