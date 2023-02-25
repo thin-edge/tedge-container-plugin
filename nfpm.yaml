@@ -24,6 +24,13 @@ contents:
       owner: tedge
       group: tedge
 
+  - src: ./src/container-group
+    dst: /etc/tedge/sm-plugins/container-group
+    file_info:
+      mode: 0755
+      owner: tedge
+      group: tedge
+
   - src: ./src/monitor/tedge-container-monitor
     dst: /usr/bin/tedge-container-monitor
     file_info:

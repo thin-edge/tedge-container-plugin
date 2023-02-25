@@ -130,6 +130,8 @@ load_settings
 #
 CONTAINER_CLI_OPTIONS="${CONTAINER_CLI_OPTIONS:-docker podman nerdctl}"
 CONTAINER_CLI=${CONTAINER_CLI:-}
+COMPOSE_CLI=${COMPOSE_CLI:-}
+MONITOR_COMPOSE_PROJECTS=${MONITOR_COMPOSE_PROJECTS:-1}
 
 INTERVAL=${INTERVAL:-60}
 TELEMETRY=${TELEMETRY:-1}
@@ -140,7 +142,8 @@ MQTT_PORT=${MQTT_PORT:-1883}
 
 # Internals
 SERVICE_NAME="tedge-container-monitor"
-SERVICE_TYPE=${SERVICE_TYPE:-container}
+SERVICE_TYPE="${SERVICE_TYPE:-container}"
+GROUP_SERVICE_TYPE="${GROUP_SERVICE_TYPE:-"container-group"}"
 SUB_PID=
 TAB=$(printf '\t')
 
@@ -244,6 +247,21 @@ if [ -n "$CONTAINER_CLI" ] && [ "$TELEMETRY" = "1" ]; then
     if ! "$CONTAINER_CLI" stats --all --no-stream --format "{{.ID}}\t{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" > /dev/null 2>&1; then
         error "'$CONTAINER_CLI stats --all --no-stream' command failed. This is common if you are running it from inside a container. Disabling container stats collection"
         TELEMETRY=0
+    fi
+fi
+
+if [ "$MONITOR_COMPOSE_PROJECTS" != "0" ]; then
+    if [ -z "$COMPOSE_CLI" ]; then
+        if docker compose >/dev/null 2>&1; then
+            COMPOSE_CLI="docker compose"
+        elif command -v "docker-compose" >/dev/null 2>&1; then
+            COMPOSE_CLI="docker-compose"
+        elif command -v "podman-compose" >/dev/null 2>&1; then
+            COMPOSE_CLI="podman-compose"
+        else
+            warn "Could not find a docker compose compatible cli. Disabling compose project monitoring"
+            MONITOR_COMPOSE_PROJECTS=0
+        fi
     fi
 fi
 
@@ -354,7 +372,7 @@ check_health() {
         DEVICE_ID="$(tedge config list | grep "^device.id=" | sed 's/^.*=//g')_"
     fi
 
-    "$CONTAINER_CLI" ps -a --format "{{.Names}}\t{{.State}}" --filter "name=$NAMES" | while IFS=$TAB read -r NAME STATE; do
+    "$CONTAINER_CLI" ps -a --format "{{.Names}}\t{{.State}}\t{{.Labels}}" --filter "name=$NAMES" | grep -v "com.docker.compose" | while IFS=$TAB read -r NAME STATE; do
         # Normalize state, as podman returns a human friendly output, e.g. "Exited (0) 10 seconds ago"
         STATE=${STATE%% *}
         STATE=$(echo "$STATE" | tr '[:upper:]' '[:lower:]')
@@ -373,9 +391,32 @@ check_health() {
         publish_retain "$TOPIC" "$MESSAGE"
     done
 
+    # Check docker compose projects
+    if [ "$MONITOR_COMPOSE_PROJECTS" = 1 ]; then
+        debug "Checking compose projects"
+        $COMPOSE_CLI ls -a --format pretty --filter "name=$NAMES" | tail +2 | sed 's/  \+/ /g' | while IFS=' ' read -r NAME STATE _OTHER; do
+            STATE=${STATE%% *}
+            STATE=$(echo "$STATE" | tr '[:upper:]' '[:lower:]')
+            debug "$COMPOSE_CLI ls -a: $STATE"
+            case "$STATE" in
+                running*|up*)
+                    STATUS="up"
+                    ;;
+                *)
+                    STATUS="down"
+                    ;;
+            esac
+            TOPIC="tedge/health/$NAME"
+            MESSAGE=$(printf '{"pid":"%s","status":"%s","type":"%s"}' "$NAME" "$STATUS" "$GROUP_SERVICE_TYPE")
+
+            publish_retain "$TOPIC" "$MESSAGE"
+        done
+    fi
+
     #
     # Optional container statistics
     #
+    # TODO: Exclude metrics for docker compose containers (as their names will not match the project name)
     # TODO: Support uptime of a container
     #   docker inspect -f '{{.State.StartedAt}}    {{.State.FinishedAt}}' mqtt-broker
     #   started_at=$(date --date "$(docker inspect -f '{{.State.StartedAt}}{{.State.FinishedAt}}' mqtt-broker)" +'%s')

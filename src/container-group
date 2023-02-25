@@ -1,0 +1,216 @@
+#!/bin/sh
+set -e
+
+EXIT_OK=0
+EXIT_USAGE=1
+EXIT_FAILURE=2
+# EXIT_RETRY=3
+
+usage() {
+    echo "
+USAGE
+    docker compose (or equivalent) plugin for thin-edge.io
+
+    $0 <COMMAND> [MODULE_NAME] [--module-version [VERSION]] [--file [FILE]]
+
+    $0 install <MODULE_NAME> [--module-version [VERSION]] [--file [FILE]]
+    $0 list
+    $0 remove <MODULE_NAME> [--module-version [VERSION]]
+    $0 prepare <MODULE_NAME> [--module-version [VERSION]] [--file [FILE]]
+    $0 finalize <MODULE_NAME> [--module-version [VERSION]] [--file [FILE]]
+    $0 update-list <MODULE_NAME> [--module-version [VERSION]] [--file [FILE]]
+    "
+}
+
+log() { echo "$@" >&2; }
+
+if [ $# -lt 1 ]; then
+    log "Invalid number of positional arguments."
+    usage
+    exit "$EXIT_USAGE"
+fi
+
+COMMAND="$1"
+shift
+MODULE_VERSION=latest
+FILE=
+
+# settings
+COMPOSE_CLI=
+# COMPOSE_CLI_OPTIONS="docker compose,docker-compose,podman-compose"
+
+# Only read the file if it has the correct permissions, to prevent people from editing it
+# and side-loading functions
+SETTINGS_FILE=/etc/tedge-container-plugin/env
+FOUND_FILE=
+if [ -f "$SETTINGS_FILE" ]; then
+    FOUND_FILE=$(find "$SETTINGS_FILE" -perm 644 | head -1)
+fi
+
+if [ -n "$FOUND_FILE" ]; then
+    log "Loading setting file: $SETTINGS_FILE"
+    # shellcheck disable=SC1091,SC1090
+    . "$SETTINGS_FILE"
+fi
+
+# Detect which container cli is available
+# We have to use the command directly as docker compose v2 uses a subcommand of docker rather than a separate binary
+if [ -z "$COMPOSE_CLI" ]; then
+    if docker compose >/dev/null 2>&1; then
+        COMPOSE_CLI="docker compose"
+    elif command -v "docker-compose" >/dev/null 2>&1; then
+        COMPOSE_CLI="docker-compose"
+    elif command -v "podman-compose" >/dev/null 2>&1; then
+        COMPOSE_CLI="podman-compose"
+    fi
+fi
+
+# argument parsing
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --module-version)
+        MODULE_VERSION="$2"
+        shift
+        ;;
+    --file)
+        FILE="$2"
+        shift
+        ;;
+    -h|--help)
+        usage
+        exit "$EXIT_USAGE"
+        ;;
+    --*|-*)
+        log "Unknown option $1"
+        exit "$EXIT_USAGE"
+        ;;
+    *)
+        MODULE_NAME="$1"
+
+        if [ -z "$MODULE_NAME" ]; then
+            log "Ignoring unknown positional argument: $1"
+        fi
+      ;;
+  esac
+  shift
+done
+
+if ! $COMPOSE_CLI >/dev/null 2>&1; then
+    log "$COMPOSE_CLI is not installed"
+    exit "$EXIT_FAILURE"
+fi
+
+if ! $COMPOSE_CLI ls >/dev/null 2>&1; then
+    log "$COMPOSE_CLI does not have permissions to run"
+    exit "$EXIT_FAILURE"
+fi
+
+
+get_project_dir() {
+    echo "/var/tedge-container-plugin/compose/$1"
+}
+
+case "$COMMAND" in
+    list)
+        # Get all compose projects and lookup version stored in the local file (if it was deployed by this plugin)
+        $COMPOSE_CLI ls -a --format pretty | tail +2 | sed 's/  \+/ /g' | cut -d' ' -f1 | while read -r name; do
+            # Check if there is a local version file (stored when installing it via this plugin)
+            # If not fallback to 'latest'
+            version_file="$(get_project_dir "$name")/version"
+
+            version=
+            if [ -f "$version_file" ]; then
+                version="$(head -1 "$version_file")"
+            fi
+            printf '%s\t%s\n' "$name" "${version:-latest}"
+        done
+        ;;
+
+    install)
+
+        # Software must have a file, because a docker compose project name alone is meaningless
+        if [ ! -f "$FILE" ]; then
+            log "software did not have a url link. docker compose software must always provide a binary to be installed"
+            exit "$EXIT_FAILURE"
+        fi
+
+        LOCAL_MODULE_PATH=$(get_project_dir "$MODULE_NAME")
+        VERSION_FILE="$LOCAL_MODULE_PATH/version"
+        STOP_COMPOSE=1
+
+        if [ ! -d "$LOCAL_MODULE_PATH" ]; then
+            STOP_COMPOSE=0
+            mkdir -p "$LOCAL_MODULE_PATH"
+        fi
+
+        cd "$LOCAL_MODULE_PATH"
+
+        if [ "$STOP_COMPOSE" = 1 ]; then
+            log "Running docker compose down"
+            $COMPOSE_CLI down ||:
+        fi
+
+        log "Storing module version: $VERSION_FILE"
+        cp "$FILE" "$LOCAL_MODULE_PATH/docker-compose.yaml"
+        echo "${MODULE_VERSION}" > "$VERSION_FILE"
+
+        EXIT_CODE="$EXIT_OK"
+        log "Deploying project from path $LOCAL_MODULE_PATH"
+        if ! $COMPOSE_CLI up --detach; then
+            log "Failed to start project"
+
+            EXIT_CODE="$EXIT_FAILURE"
+        else
+            log "Succesfully deployed project"
+        fi
+
+        if command -v /usr/bin/tedge-container-monitor >/dev/null 2>&1; then
+            # Wait before checking the first status
+            sleep 1
+            log "Trying to update container health status for $MODULE_NAME"
+            /usr/bin/tedge-container-monitor "$MODULE_NAME" ||:
+        fi
+
+        exit "$EXIT_CODE"
+        ;;
+
+    remove)
+        # don't fail if it does not exist
+        LOCAL_MODULE_PATH="$(get_project_dir)"
+
+        # log "Removing container: ${MODULE_NAME}:${MODULE_VERSION}"
+
+        if [ -d "$LOCAL_MODULE_PATH" ]; then
+            cd "$LOCAL_MODULE_PATH"
+            log "Stopping project from path $LOCAL_MODULE_PATH"
+            $COMPOSE_CLI down ||:
+
+            log "Removing project path $LOCAL_MODULE_PATH"
+            rm -rf "$LOCAL_MODULE_PATH"
+        fi
+
+        # TODO: service monitoring does not support deleting a service
+        # so at least mark it as uninstalled
+        if command -V tedge >/dev/null 2>&1; then
+            log "Updating health endpoint to being uninstalled"
+            MESSAGE="$(printf '{"status":"uninstalled","type":"%s"}' "${GROUP_SERVICE_TYPE:-"container-group"}" )"
+            tedge mqtt pub -r "tedge/health/$MODULE_NAME" "$MESSAGE" ||:
+        fi
+        ;;
+
+    prepare)
+        ;;
+
+    finalize)
+        ;;
+
+    update-list)
+        TAB=$(echo t | tr t \\t)
+        while IFS="$TAB" read -r ACTION MODULE VERSION FILE
+        do
+            sh -c "$0 '$ACTION' '$MODULE' --module-version '$VERSION' --file '$FILE'"
+        done
+        ;;
+esac
+
+exit "$EXIT_OK"

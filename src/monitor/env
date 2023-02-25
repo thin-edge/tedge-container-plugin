@@ -17,6 +17,7 @@
 
 # Service type to be used for the containers
 #SERVICE_TYPE=container
+#GROUP_SERVICE_TYPE=container-group
 
 #
 # container sm-plugin settings
