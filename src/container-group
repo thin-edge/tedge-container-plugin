@@ -176,28 +176,46 @@ case "$COMMAND" in
 
     remove)
         # don't fail if it does not exist
-        LOCAL_MODULE_PATH="$(get_project_dir)"
+        LOCAL_MODULE_PATH="$(get_project_dir "$MODULE_NAME")"
 
+        MANUAL_CLEANUP=1
         if [ -d "$LOCAL_MODULE_PATH" ]; then
             cd "$LOCAL_MODULE_PATH"
             log "Stopping project from path: $LOCAL_MODULE_PATH"
-            $COMPOSE_CLI down --remove-orphans --volumes ||:
+
+            if $COMPOSE_CLI down --remove-orphans --volumes; then
+                MANUAL_CLEANUP=0
+            fi
 
             log "Removing project path: $LOCAL_MODULE_PATH"
             rm -rf "$LOCAL_MODULE_PATH"
-        else
+        fi
+
+        # Run manual cleanup (in case docker-compose failed, or the docker compose file has been lost)
+        if [ "$MANUAL_CLEANUP" = 1 ]; then
             log "Project path does not exist: $LOCAL_MODULE_PATH"
             log "Cleaning up any left over resources"
 
-            log "Removing any networks related to $MODULE_NAME"
-            docker ps -a --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.ID}}" | xargs docker stop
-            docker ps -a --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.ID}}" | xargs docker rm --force
+            # Use for loops as older docker cli does throws errors if you pass it
+            # an empty list (and stderr should be kept open for real errors)
+            log "Removing any containers related to $MODULE_NAME"
+            for item in $(docker ps -a --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.ID}}"); do
+                docker stop "$item"
+            done
+
+            for item in $(docker ps -a --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.ID}}"); do
+                docker rm --force "$item"
+            done
 
             log "Removing any networks related to $MODULE_NAME"
-            docker network ls --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.Name}}" | xargs docker network rm
+            for item in $(docker network ls --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.Name}}"); do
+                docker network rm "$item"
+            done
 
             log "Removing any volumes related to $MODULE_NAME"
-            docker volume ls --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.Name}}" | xargs docker volume rm --force
+            for item in $(docker volume ls --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.Name}}"); do
+                docker volume rm --force "$item"
+            done
         fi
 
         # TODO: service monitoring does not support deleting a service
