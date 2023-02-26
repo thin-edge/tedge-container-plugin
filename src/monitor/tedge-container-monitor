@@ -367,9 +367,14 @@ check_health() {
         NAMES="$1"
     fi
 
-    DEVICE_ID=
+    DEVICE_ID=${DEVICE_ID:-}
     if command_exists tedge; then
-        DEVICE_ID="$(tedge config list | grep "^device.id=" | sed 's/^.*=//g')_"
+        DEVICE_ID_VALUE="$(tedge config list | grep "^device.id=" | sed 's/^.*=//g')_"
+
+        if [ -n "$DEVICE_ID_VALUE" ]; then
+            debug "Using device.id found from tedge"
+            DEVICE_ID="$DEVICE_ID_VALUE"
+        fi
     fi
 
     "$CONTAINER_CLI" ps -a --format "{{.Names}}\t{{.State}}\t{{.Labels}}" --filter "name=$NAMES" | grep -v "com.docker.compose" | while IFS=$TAB read -r NAME STATE _OTHER; do
