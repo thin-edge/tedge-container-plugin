@@ -415,7 +415,9 @@ check_health() {
             publish_retain "$TOPIC" "$MESSAGE"
         done
     fi
+}
 
+check_telemetry() {
     #
     # Optional container statistics
     #
@@ -458,6 +460,11 @@ wait_interval() {
 
 main() {
     startup
+
+    # Number of internvals to skip before potentially activating the telemetry metrics
+    # as the services must register first, otherwise the measurements will cause a child
+    # device to be registered instead of a service (child addition)
+    skip_cycles=1
     while :; do
 
         # Check if background listener is still running
@@ -467,8 +474,15 @@ main() {
                 startup
             fi
         fi
-        
+
         check_health
+
+        if [ "$skip_cycles" -lt 1 ]; then
+            check_telemetry
+        else
+            skip_cycles=$((skip_cycles-1))
+            debug "Skipping telemetry interval (remaining intervals=$skip_cycles)"
+        fi
         wait_interval
     done
 }
