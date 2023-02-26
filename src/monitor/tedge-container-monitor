@@ -369,7 +369,7 @@ check_health() {
 
     DEVICE_ID=${DEVICE_ID:-}
     if command_exists tedge; then
-        DEVICE_ID_VALUE="$(tedge config list | grep "^device.id=" | sed 's/^.*=//g')_"
+        DEVICE_ID_VALUE="$(tedge config list | grep "^device.id=" | sed 's/^.*=//g')"
 
         if [ -n "$DEVICE_ID_VALUE" ]; then
             debug "Using device.id found from tedge"
@@ -442,7 +442,7 @@ check_telemetry() {
             message=$(printf '{"container": {"cpu":%s,"memory":%s,"netio":%s}}' "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}")
             # FIXME: Change topic once tedge supports a service specific measurement topic
             # so that the user does not need to know that the service name is prefixed with the "{device.id}_"
-            publish "tedge/measurements/${DEVICE_ID}${NAME}" "$message"
+            publish "tedge/measurements/${DEVICE_ID}_${NAME}" "$message"
         done
     fi
 }
