@@ -106,15 +106,9 @@ VALIDATE_TAR_CONTENTS=0
 CONTAINER_RUN_OPTIONS="--cpus 1 --memory 64m"
 ```
 
-#### Notes/Limitations
-
-Whilst there is support for adding custom arguments to the container creation command (e.g. `docker run`), these custom arguments would be applied to each container, and cannot be made to be container specific. For example you can't add specific volume mounting for a specific container.
-
-In the future it would make more sense to also add support for providing a `docker-compose.yaml` file in the `url` field, which can then control all of the requirements for running the container. This would eliminate the need for the plugin to know the container specifics, as everything can be clearly defined in the `docker-compose.yaml` file. Obviously, this could open up some problems, as you might want to restrict what functionality the user is allowed to use in such a file, otherwise it could open up some isolation/security issues.
-
 ### Monitoring
 
-The plugin also includes a service which monitors the running status of the containers and includes some runtime metrics such as memory, cpu and network io.
+The plugin also includes a service which monitors the running status of the containers and includes some runtime metrics such as memory, cpu and network io. Please note that access to the container monitoring might not be supported by your container engine. When in doubt, just manually do a `docker stats` and if the data is only showing zeros, then the plugin will also see zeros.
 
 
 #### Configuration
