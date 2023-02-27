@@ -10,7 +10,7 @@ The container monitoring requires a thin-edge.io feature (service monitoring) wh
 
 ### What will be deployed to the device?
 
-* A service called `tedge-container-plugin`. This provides the monitoring of the containers
+* A service called `tedge-container-monitor`. This provides the monitoring of the containers
 * The following software management plugins which is called when installing and removing containers/container groups via Cumulocity IoT
     * `container` - Deploy a single container (`docker run xxx` equivalent)
     * `container-group` - Deploy one or more container as defined by a `docker-compose.yaml` file (`docker compose up` equivalent)
