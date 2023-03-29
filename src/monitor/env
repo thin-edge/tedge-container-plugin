@@ -7,6 +7,9 @@
 # Enable/disable telemetry (1/0)
 #TELEMETRY=1
 
+# Enable/disable meta info (1/0)
+#META_INFO=1
+
 # Only used if tedge cli is not installed
 #MQTT_HOST=127.0.0.1
 #MQTT_PORT=1883
