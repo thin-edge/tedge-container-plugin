@@ -110,6 +110,9 @@ CONTAINER_RUN_OPTIONS="--cpus 1 --memory 64m"
 
 The plugin also includes a service which monitors the running status of the containers and includes some runtime metrics such as memory, cpu and network io. Please note that access to the container monitoring might not be supported by your container engine. When in doubt, just manually do a `docker stats` and if the data is only showing zeros, then the plugin will also see zeros.
 
+#### Telemetry
+
+Checkout the [TELEMETRY](./docs/TELEMETRY.md) docs for details on what is included in the telemetry data.
 
 #### Configuration
 
@@ -121,6 +124,7 @@ The container software management plugin can be configured with the following pr
 |`CONTAINER_CLI`|`podman`|Explicitly control which container cli tool will be used. Set this if you know which cli is available on the device|
 |`INTERVAL`|`60`|Interval in seconds on how often the container status/telemetry should be collected. The interval will be the minimal interval as it is the time to sleep between collections|
 |`TELEMETRY`|`1` or `0`|Enable/disable the container telemetry metrics such as memory etc. Regardless of this value, the containers status will still be sent, but the measurements will not|
+|`META_INFO`|`1` or `0`|Enable/disable the container meta information collection (e.g. container id, image, ports, network etc.|
 |`MONITOR_COMPOSE_PROJECTS`|`1` or `0`|Enable/disable the monitoring of docker compose deployments. It is turned on by default, however it will be automatically disabled if docker compose is not available.|
 |`LOG_LEVEL`|`debug`, `info`, `warn`, `error`|Service log level|
 |`SERVICE_TYPE`|`container`|Service type to be used in the service monitoring for single container deployments|
@@ -144,6 +148,9 @@ INTERVAL=60
 
 # Enable/disable telemetry (1/0)
 TELEMETRY=1
+
+# Enable/disable meta info (1/0)
+META_INFO=1
 
 # Only used if tedge cli is not installed
 MQTT_HOST=127.0.0.1
