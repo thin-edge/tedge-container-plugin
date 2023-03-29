@@ -34,6 +34,7 @@ FLAGS
     --container-cli <path>         Container cli, e.g. docker, podman, nerdctl. If left blank that it will be automatically detected
     --log-level <string>           Log level. error, warn, info, debug, none. 'info' will be used if an invalid value is given
     --telemetry/--no-telemetry     Publish telemetry data about the containers (e.g. cpu, memory, network io)
+    --meta/--no-meta               Publish meta information about the conatiners (e.g. id, image name, ports etc.)
     --interval <seconds>           Interval in seconds which the container status will be reported. This is the minimum interval between checks
                                    (not including the time it takes to read the status)
 
@@ -135,6 +136,7 @@ MONITOR_COMPOSE_PROJECTS=${MONITOR_COMPOSE_PROJECTS:-1}
 
 INTERVAL=${INTERVAL:-60}
 TELEMETRY=${TELEMETRY:-1}
+META_INFO=${META_INFO:-1}
 
 # Only used if tedge cli is not installed
 MQTT_HOST=${MQTT_HOST:-127.0.0.1}
@@ -178,6 +180,13 @@ while [ $# -gt 0 ]; do
             ;;
         --no-telemetry)
             TELEMETRY=0
+            ;;
+
+        --meta)
+            META_INFO=1
+            ;;
+        --no-meta)
+            META_INFO=0
             ;;
 
         *)
@@ -422,6 +431,34 @@ check_health() {
     fi
 }
 
+check_container_info() {
+    #
+    # Collect container meta information and add it to the managed object
+    #
+    if [ "$META_INFO" = 1 ]; then
+        if [ -z "$DEVICE_ID" ]; then
+            warn "Skipping telemetry data as the device id is empty"
+            return
+        fi
+
+        NAMES=""
+        # optionally filter by specific name
+        if [ $# -gt 0 ]; then
+            NAMES="$1"
+        fi
+
+        debug "Collecting container meta information"
+        "$CONTAINER_CLI" ps --no-trunc --all --filter "name=$NAMES" --format "{{.ID}}\t{{or .Labels \" \"}}\t{{or .State \" \"}}\t{{or .Status \" \"}}\t{{.CreatedAt}}\t{{.Image}}\t{{or .Ports \" \"}}\t{{or .Networks \" \"}}\t{{or .RunningFor \" \"}}\t{{or .Size \" \"}}\t{{or .Command \" \"}}" | grep -v "com.docker.compose" | while IFS=$TAB read -r ID _LABELS STATE STATUS CREATEDAT IMAGE PORTS NETWORKS RUNNINGFOR SIZE COMMAND; do
+            # Escape quotes for json
+            COMMAND=$(echo "$COMMAND" | sed 's/"/\\"/g')
+            message=$(printf '{"containerId":"%s","state":"%s","status":"%s","createdAt":"%s","image":"%s","ports":"%s","networks":"%s","runningFor":"%s","filesystem":"%s","command":"%s"}' "${ID%% }" "${STATE%% }" "${STATUS%% }" "${CREATEDAT%% }" "${IMAGE%% }" "${PORTS%% }" "${NETWORKS%% }" "${RUNNINGFOR%% }" "${SIZE%% }" "${COMMAND%% }")
+            # FIXME: Change topic once tedge supports a service specific measurement topic
+            # so that the user does not need to know that the service name is prefixed with the "{device.id}_"
+            publish "c8y/inventory/managedObjects/update/${DEVICE_ID}_${NAMES}" "$message"
+        done
+    fi
+}
+
 check_telemetry() {
     #
     # Optional container statistics
@@ -484,6 +521,7 @@ main() {
 
         if [ "$skip_cycles" -lt 1 ]; then
             check_telemetry
+            check_container_info
         else
             skip_cycles=$((skip_cycles-1))
             debug "Skipping telemetry interval (remaining intervals=$skip_cycles)"
@@ -503,6 +541,14 @@ if [ $# -gt 0 ] && [ "$1" != "*" ]; then
     NAME="${1#*/*/}"
     info "Checking health of $NAME"
     check_health "$NAME"
+
+    if [ "$META_INFO" = 1 ]; then
+        check_container_info "$NAME"
+    fi
+
+    if [ "$TELEMETRY" = 1 ]; then
+        check_telemetry
+    fi
     exit 0
 fi
 
