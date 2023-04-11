@@ -408,10 +408,12 @@ check_health() {
     # Check docker compose projects
     if [ "$MONITOR_COMPOSE_PROJECTS" = 1 ]; then
         debug "Checking compose projects"
-        $COMPOSE_CLI ls -a --format pretty --filter "name=$NAMES" | tail +2 | sed 's/  \+/ /g' | while IFS=' ' read -r NAME STATE _OTHER; do
+        # Filtering is not supported for these names!
+        "$CONTAINER_CLI" ps --no-trunc --all --format "{{or .Labels \" \"}}\t{{or .State \" \"}}\t{{.Label \"com.docker.compose.project\" }}\t{{.Label \"com.docker.compose.service\" }}" | grep "com.docker.compose" | while IFS=$TAB read -r _LABELS STATE PROJECT_NAME PROJECT_SERVICE_NAME; do
+            CLOUD_SERVICE_NAME="${PROJECT_NAME}::${PROJECT_SERVICE_NAME}"
             STATE=${STATE%% *}
             STATE=$(echo "$STATE" | tr '[:upper:]' '[:lower:]')
-            debug "$COMPOSE_CLI ls -a: $STATE"
+            info "State: service=$CLOUD_SERVICE_NAME, state=$STATE"
             case "$STATE" in
                 running*|up*)
                     STATUS="up"
@@ -423,11 +425,33 @@ check_health() {
                     STATUS="down"
                     ;;
             esac
-            TOPIC="tedge/health/$NAME"
-            MESSAGE=$(printf '{"pid":"%s","status":"%s","type":"%s"}' "$NAME" "$STATUS" "$GROUP_SERVICE_TYPE")
 
+            TOPIC="tedge/health/$CLOUD_SERVICE_NAME"
+            MESSAGE=$(printf '{"pid":"%s","status":"%s","type":"%s"}' "$CLOUD_SERVICE_NAME" "$STATUS" "$GROUP_SERVICE_TYPE")
             publish_retain "$TOPIC" "$MESSAGE"
         done
+
+        # TODO: Remove after validation of alternative method
+        # $COMPOSE_CLI ls -a --format pretty --filter "name=$NAMES" | tail +2 | sed 's/  \+/ /g' | while IFS=' ' read -r NAME STATE _OTHER; do
+        #     STATE=${STATE%% *}
+        #     STATE=$(echo "$STATE" | tr '[:upper:]' '[:lower:]')
+        #     debug "$COMPOSE_CLI ls -a: $STATE"
+        #     case "$STATE" in
+        #         running*|up*)
+        #             STATUS="up"
+        #             ;;
+        #         create*)
+        #             STATUS="created"
+        #             ;;
+        #         *)
+        #             STATUS="down"
+        #             ;;
+        #     esac
+        #     TOPIC="tedge/health/$NAME"
+        #     MESSAGE=$(printf '{"pid":"%s","status":"%s","type":"%s"}' "$NAME" "$STATUS" "$GROUP_SERVICE_TYPE")
+
+        #     publish_retain "$TOPIC" "$MESSAGE"
+        # done
     fi
 }
 
@@ -458,6 +482,23 @@ check_container_info() {
                 publish "c8y/inventory/managedObjects/update/${DEVICE_ID}_${NAME}" "$message"
             fi
         done
+
+        if [ "$MONITOR_COMPOSE_PROJECTS" = 1 ]; then
+            debug "Collecting container-group meta information"
+            # Note: Project filtering is not supported!
+            # --filter "name=$NAMES"
+            "$CONTAINER_CLI" ps --no-trunc --all --format "{{.ID}}\t{{or .Names \" \"}}\t{{or .Labels \" \"}}\t{{or .State \" \"}}\t{{or .Status \" \"}}\t{{.CreatedAt}}\t{{.Image}}\t{{or .Ports \" \"}}\t{{or .Networks \" \"}}\t{{or .RunningFor \" \"}}\t{{or .Size \" \"}}\t{{or .Command \" \"}}\t{{.Label \"com.docker.compose.project\" }}\t{{.Label \"com.docker.compose.service\" }}" | grep "com.docker.compose" | while IFS=$TAB read -r ID NAME _LABELS STATE STATUS CREATEDAT IMAGE PORTS NETWORKS RUNNINGFOR SIZE COMMAND PROJECT_NAME PROJECT_SERVICE_NAME; do
+                CLOUD_SERVICE_NAME="${PROJECT_NAME}::${PROJECT_SERVICE_NAME}"
+                if [ -n "${CLOUD_SERVICE_NAME%% }" ]; then
+                    # Escape quotes for json
+                    COMMAND=$(echo "$COMMAND" | sed 's/"/\\"/g')
+                    message=$(printf '{"containerId":"%s","containerName":"%s","state":"%s","status":"%s","createdAt":"%s","image":"%s","ports":"%s","networks":"%s","runningFor":"%s","filesystem":"%s","command":"%s","projectName":"%s","serviceName":"%s"}' "${ID%% }" "${NAME%% }" "${STATE%% }" "${STATUS%% }" "${CREATEDAT%% }" "${IMAGE%% }" "${PORTS%% }" "${NETWORKS%% }" "${RUNNINGFOR%% }" "${SIZE%% }" "${COMMAND%% }" "${PROJECT_NAME}" "${PROJECT_SERVICE_NAME}")
+                    # FIXME: Change topic once tedge supports a service specific measurement topic
+                    # so that the user does not need to know that the service name is prefixed with the "{device.id}_"
+                    publish "c8y/inventory/managedObjects/update/${DEVICE_ID}_${CLOUD_SERVICE_NAME}" "$message"
+                fi
+            done
+        fi
     fi
 }
 
