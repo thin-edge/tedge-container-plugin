@@ -58,3 +58,30 @@ The following properties are stored on the service managed object.
   "type": "c8y_Service"
 }
 ```
+
+### Container Groups (container-group)
+
+The following properties are stored on the service managed object.
+
+```json
+{
+  "command": "\"/lib/systemd/systemd\"",
+  "containerId": "33870eaa5f67ef7ef98b1e526a7f1956101ae586d4e439b1bc75af7986a549ba",
+  "containerName": "tedge-device-tedge-1",
+  "createdAt": "2023-04-11 13:54:42 +0200 CEST",
+  "filesystem": "8.4MB (virtual 136MB)",
+  "id": "921038541",
+  "image": "reubenmiller/tedge-device:0.9.0-218-gd8bd3b33-9",
+  "name": "tedge-device::tedge",
+  "networks": "tedge-device_default",
+  "owner": "device_rmi_raspberrypi3",
+  "ports": "",
+  "projectName": "tedge-device",
+  "runningFor": "52 minutes ago",
+  "serviceName": "tedge",
+  "serviceType": "container-group",
+  "state": "running",
+  "status": "Up 52 minutes",
+  "type": "c8y_Service"
+}
+```
