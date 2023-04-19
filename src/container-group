@@ -178,6 +178,18 @@ case "$COMMAND" in
         # don't fail if it does not exist
         LOCAL_MODULE_PATH="$(get_project_dir "$MODULE_NAME")"
 
+        # TODO: service monitoring does not support deleting a service
+        # so at least mark it as uninstalled
+        if command -V tedge >/dev/null 2>&1; then
+            for item in $(docker ps -a --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.Label \"com.docker.compose.project\" }}::{{.Label \"com.docker.compose.service\" }}"); do
+                if [ "$item" != "::" ]; then
+                    log "Updating health endpoint status to uninstalled. service=$item"
+                    MESSAGE="$(printf '{"status":"uninstalled","type":"%s"}' "${GROUP_SERVICE_TYPE:-"container-group"}" )"
+                    tedge mqtt pub -r "tedge/health/$item" "$MESSAGE" ||:
+                fi
+            done
+        fi
+
         MANUAL_CLEANUP=1
         if [ -d "$LOCAL_MODULE_PATH" ]; then
             cd "$LOCAL_MODULE_PATH"
@@ -216,14 +228,6 @@ case "$COMMAND" in
             for item in $(docker volume ls --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.Name}}"); do
                 docker volume rm --force "$item"
             done
-        fi
-
-        # TODO: service monitoring does not support deleting a service
-        # so at least mark it as uninstalled
-        if command -V tedge >/dev/null 2>&1; then
-            log "Updating health endpoint to being uninstalled"
-            MESSAGE="$(printf '{"status":"uninstalled","type":"%s"}' "${GROUP_SERVICE_TYPE:-"container-group"}" )"
-            tedge mqtt pub -r "tedge/health/$MODULE_NAME" "$MESSAGE" ||:
         fi
         ;;
 
