@@ -517,12 +517,22 @@ check_telemetry() {
         fi
 
         debug "Collecting container stats"
-        "$CONTAINER_CLI" stats --all --no-stream --format "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" | while IFS=$TAB read -r NAME CPU_PERC MEM_PERC NET_IO; do
+        "$CONTAINER_CLI" stats --all --no-stream --format "{{.Name}}\t{{or .Labels \" \"}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" | grep -v "com.docker.compose" | while IFS=$TAB read -r NAME _LABELS CPU_PERC MEM_PERC NET_IO; do
             NET_IO=$(echo "$NET_IO" | sed 's/[^0-9.].*//g')
             message=$(printf '{"container": {"cpu":%s,"memory":%s,"netio":%s}}' "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}")
             # FIXME: Change topic once tedge supports a service specific measurement topic
             # so that the user does not need to know that the service name is prefixed with the "{device.id}_"
             publish "tedge/measurements/${DEVICE_ID}_${NAME}" "$message"
+        done
+
+        debug "Collecting container-group stats"
+        "$CONTAINER_CLI" stats --all --no-stream --format "{{.Name}}\t{{or .Labels \" \"}\t{{.Label \"com.docker.compose.project\" }}\t{{.Label \"com.docker.compose.service\" }}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" | grep  "com.docker.compose" | while IFS=$TAB read -r NAME _LABELS PROJECT_NAME PROJECT_SERVICE_NAME CPU_PERC MEM_PERC NET_IO; do
+            CLOUD_SERVICE_NAME="${PROJECT_NAME}::${PROJECT_SERVICE_NAME}"
+            NET_IO=$(echo "$NET_IO" | sed 's/[^0-9.].*//g')
+            message=$(printf '{"container": {"cpu":%s,"memory":%s,"netio":%s}}' "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}")
+            # FIXME: Change topic once tedge supports a service specific measurement topic
+            # so that the user does not need to know that the service name is prefixed with the "{device.id}_"
+            publish "tedge/measurements/${DEVICE_ID}_${CLOUD_SERVICE_NAME}" "$message"
         done
     fi
 }
