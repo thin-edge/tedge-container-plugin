@@ -476,7 +476,7 @@ check_container_info() {
             if [ -n "${NAME%% }" ]; then
                 # Escape quotes for json
                 COMMAND=$(echo "$COMMAND" | sed 's/"/\\"/g')
-                message=$(printf '{"containerId":"%s","state":"%s","status":"%s","createdAt":"%s","image":"%s","ports":"%s","networks":"%s","runningFor":"%s","filesystem":"%s","command":"%s"}' "${ID%% }" "${STATE%% }" "${STATUS%% }" "${CREATEDAT%% }" "${IMAGE%% }" "${PORTS%% }" "${NETWORKS%% }" "${RUNNINGFOR%% }" "${SIZE%% }" "${COMMAND%% }")
+                message=$(printf '{"containerId":"%s","state":"%s","containerStatus":"%s","createdAt":"%s","image":"%s","ports":"%s","networks":"%s","runningFor":"%s","filesystem":"%s","command":"%s"}' "${ID%% }" "${STATE%% }" "${STATUS%% }" "${CREATEDAT%% }" "${IMAGE%% }" "${PORTS%% }" "${NETWORKS%% }" "${RUNNINGFOR%% }" "${SIZE%% }" "${COMMAND%% }")
                 # FIXME: Change topic once tedge supports a service specific measurement topic
                 # so that the user does not need to know that the service name is prefixed with the "{device.id}_"
                 publish "c8y/inventory/managedObjects/update/${DEVICE_ID}_${NAME}" "$message"
@@ -492,7 +492,7 @@ check_container_info() {
                 if [ -n "${CLOUD_SERVICE_NAME%% }" ]; then
                     # Escape quotes for json
                     COMMAND=$(echo "$COMMAND" | sed 's/"/\\"/g')
-                    message=$(printf '{"containerId":"%s","containerName":"%s","state":"%s","status":"%s","createdAt":"%s","image":"%s","ports":"%s","networks":"%s","runningFor":"%s","filesystem":"%s","command":"%s","projectName":"%s","serviceName":"%s"}' "${ID%% }" "${NAME%% }" "${STATE%% }" "${STATUS%% }" "${CREATEDAT%% }" "${IMAGE%% }" "${PORTS%% }" "${NETWORKS%% }" "${RUNNINGFOR%% }" "${SIZE%% }" "${COMMAND%% }" "${PROJECT_NAME}" "${PROJECT_SERVICE_NAME}")
+                    message=$(printf '{"containerId":"%s","containerName":"%s","state":"%s","containerStatus":"%s","createdAt":"%s","image":"%s","ports":"%s","networks":"%s","runningFor":"%s","filesystem":"%s","command":"%s","projectName":"%s","serviceName":"%s"}' "${ID%% }" "${NAME%% }" "${STATE%% }" "${STATUS%% }" "${CREATEDAT%% }" "${IMAGE%% }" "${PORTS%% }" "${NETWORKS%% }" "${RUNNINGFOR%% }" "${SIZE%% }" "${COMMAND%% }" "${PROJECT_NAME}" "${PROJECT_SERVICE_NAME}")
                     # FIXME: Change topic once tedge supports a service specific measurement topic
                     # so that the user does not need to know that the service name is prefixed with the "{device.id}_"
                     publish "c8y/inventory/managedObjects/update/${DEVICE_ID}_${CLOUD_SERVICE_NAME}" "$message"

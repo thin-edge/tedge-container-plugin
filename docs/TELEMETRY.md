@@ -45,6 +45,7 @@ The following properties are stored on the service managed object.
 {
   "command": "\"/bin/bash /entrypoint.sh /bin/sh -c 'exec /usr/local/bin/step-ca --password-file $PWDPATH $CONFIGPATH'\"",
   "containerId": "efe670e1c55434677ff23245199dac9a2797c45c0a3ad2f4640c16e648b5adf1",
+  "containerStatus": "Exited (0) 2 weeks ago",
   "createdAt": "2023-03-04 16:57:26 +0100 CET",
   "filesystem": "0B (virtual 136MB)",
   "image": "smallstep/step-ca",
@@ -54,7 +55,7 @@ The following properties are stored on the service managed object.
   "runningFor": "3 weeks ago",
   "serviceType": "container",
   "state": "exited",
-  "status": "Exited (0) 2 weeks ago",
+  "status": "up",
   "type": "c8y_Service"
 }
 ```
@@ -68,6 +69,7 @@ The following properties are stored on the service managed object.
   "command": "\"/lib/systemd/systemd\"",
   "containerId": "33870eaa5f67ef7ef98b1e526a7f1956101ae586d4e439b1bc75af7986a549ba",
   "containerName": "tedge-device-tedge-1",
+  "containerStatus": "Up 52 minutes",
   "createdAt": "2023-04-11 13:54:42 +0200 CEST",
   "filesystem": "8.4MB (virtual 136MB)",
   "id": "921038541",
@@ -81,7 +83,7 @@ The following properties are stored on the service managed object.
   "serviceName": "tedge",
   "serviceType": "container-group",
   "state": "running",
-  "status": "Up 52 minutes",
+  "status": "up",
   "type": "c8y_Service"
 }
 ```
