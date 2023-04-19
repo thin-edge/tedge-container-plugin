@@ -517,7 +517,11 @@ check_telemetry() {
         fi
 
         debug "Collecting container stats"
-        "$CONTAINER_CLI" stats --all --no-stream --format "{{.Name}}\t{{or .Labels \" \"}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" | grep -v "com.docker.compose" | while IFS=$TAB read -r NAME _LABELS CPU_PERC MEM_PERC NET_IO; do
+        # Get list of containers which are not docker compose projects
+        CONTAINERS=$(docker ps -a --format "{{or .Names \" \"}}\t{{.Labels}}" | grep -v "com.docker.compose" | cut -f1 | tr '\n' ' ')
+
+        # shellcheck disable=SC2046,SC2116
+        "$CONTAINER_CLI" stats --all --no-stream --format "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" $(echo "$CONTAINERS") | while IFS=$TAB read -r NAME CPU_PERC MEM_PERC NET_IO; do
             NET_IO=$(echo "$NET_IO" | sed 's/[^0-9.].*//g')
             message=$(printf '{"container": {"cpu":%s,"memory":%s,"netio":%s}}' "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}")
             # FIXME: Change topic once tedge supports a service specific measurement topic
@@ -526,8 +530,13 @@ check_telemetry() {
         done
 
         debug "Collecting container-group stats"
-        "$CONTAINER_CLI" stats --all --no-stream --format "{{.Name}}\t{{or .Labels \" \"}\t{{.Label \"com.docker.compose.project\" }}\t{{.Label \"com.docker.compose.service\" }}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" | grep  "com.docker.compose" | while IFS=$TAB read -r NAME _LABELS PROJECT_NAME PROJECT_SERVICE_NAME CPU_PERC MEM_PERC NET_IO; do
-            CLOUD_SERVICE_NAME="${PROJECT_NAME}::${PROJECT_SERVICE_NAME}"
+        # Get list of containers which are docker compose projects
+        CONTAINERS=$("$CONTAINER_CLI" ps --format "{{or .Names \" \"}}\t{{.Labels}}" | grep "com.docker.compose" | cut -f1 | tr '\n' ' ')
+
+        # shellcheck disable=SC2046,SC2116
+        "$CONTAINER_CLI" stats --all --no-stream --format "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" $(echo "$CONTAINERS") | while IFS=$TAB read -r NAME CPU_PERC MEM_PERC NET_IO; do
+            # lookup compose project and service name
+            CLOUD_SERVICE_NAME=$("$CONTAINER_CLI" ps -a --format "{{.Label \"com.docker.compose.project\" }}::{{.Label \"com.docker.compose.service\" }}" --filter "name=$NAME")
             NET_IO=$(echo "$NET_IO" | sed 's/[^0-9.].*//g')
             message=$(printf '{"container": {"cpu":%s,"memory":%s,"netio":%s}}' "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}")
             # FIXME: Change topic once tedge supports a service specific measurement topic
