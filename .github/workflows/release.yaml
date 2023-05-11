@@ -23,7 +23,7 @@ jobs:
         name: Install dependencies      
       - name: Install node.js dependencies
         run: | 
-              cd /ui
+              cd ./ui
               npm install npm -g 
               npm ci --no-optional 
               cd -
@@ -35,7 +35,7 @@ jobs:
           SEMVER: ${{ env.RELEASE_VERSION }}
       - name: Build and zip UI-Plugin
         run : |
-              cd /ui
+              cd ./ui
               npm run build-ci
               cd dist/apps/tedge-container-plugin-ui
               zip -r -q ../../../../dist/tedge-container-plugin-ui.zip *
