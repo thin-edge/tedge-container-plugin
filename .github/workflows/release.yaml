@@ -20,16 +20,26 @@ jobs:
         with:
           go-version: '>=1.17.0'
       - run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
-        name: Install dependencies
-
+        name: Install dependencies      
+      - name: Install node.js dependencies
+        run: | 
+              cd /ui
+              npm install npm -g 
+              npm ci --no-optional 
+              cd -
       - name: Set version
         run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
-
       - name: Package
         run: ./ci/build.sh
         env:
           SEMVER: ${{ env.RELEASE_VERSION }}
-
+      - name: Build and zip UI-Plugin
+        run : |
+              cd /ui
+              npm run build-ci
+              cd dist/apps/tedge-container-plugin-ui
+              zip -r -q ../../../../dist/tedge-container-plugin-ui.zip *
+              cd -
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
