@@ -542,7 +542,7 @@ check_telemetry() {
 
             # FIXME: Use tedge/measurements/{} topic once it can be controlled to not create a child device, but instead a child service
             TIMESTAMP=$(date +"%Y-%m-%dT%H:%M:%S%z")
-            message=$(printf '{"externalSource":{"externalId":"%s","type":"c8y_Serial"},"container":{"cpu":{"value":%s},"memory":{"value":%s},"netio":{"value":%s}},"time":"%s","type":"ThinEdgeMeasurement"}' "${CLOUD_SERVICE_NAME}" "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}" "${TIMESTAMP}")
+            message=$(printf '{"externalSource":{"externalId":"%s","type":"c8y_Serial"},"container":{"cpu":{"value":%s},"memory":{"value":%s},"netio":{"value":%s}},"time":"%s","type":"ThinEdgeMeasurement"}' "${DEVICE_ID}_${CLOUD_SERVICE_NAME}" "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}" "${TIMESTAMP}")
             publish "c8y/measurement/measurements/create" "$message"
             # message=$(printf '{"container": {"cpu":%s,"memory":%s,"netio":%s}}' "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}")
             # publish "tedge/measurements/${DEVICE_ID}_${CLOUD_SERVICE_NAME}" "$message"
