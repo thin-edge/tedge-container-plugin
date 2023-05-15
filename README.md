@@ -1,6 +1,7 @@
 # tedge-container-plugin
 
 thin-edge.io container plugin to install, start, stop and monitor containers on a device.
+Cumulocity UI Plugin to monitor running containers in the UI.
 
 ## Plugin summary
 
@@ -221,6 +222,35 @@ sudo service tedge-container-monitor reload
 tail -f /var/log/tedge-container-monitor.err
 ```
 
+### UI Plugin
+
+With the UI plugin, container monitoring can be added to the Cumulocity UI. The Ui plugin contains 3 components that add the following tabs to the UI:
+
+| Plug-In                        | Function                                                                                                                   |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| Container Info Tab             | Adds a tab to a container service to display all relevant container information.                                           |
+| Container Management Tab       | Adds a tab to the device to monitor containers. The tab can include/exclude the containers hosted within container groups. |
+| Container Group Management Tab | Adds a tab to the device to monitor container groups (aka. docker compose).                                                |
+
+The UI Plugin was developed for the Device Management application, but can also be added to the Cockpit if needed.
+
+To use the UI-Plugin, download the tedge-container-plugin-ui.zip version that matches your Cumulocity UI version form the releases and upload it in the Cumulocity administration. Detailed instructions on how to install UI plugins can also be found [here](https://cumulocity.com/guides/users-guide/administration/#custom-applications).
+
+#### Container Info Tab
+
+The tab will be enabled for all services of type container. Displays the container properties that are stored in the managed Object.
+![Container Info Screenshot](./docs/img/container-info.png)
+
+#### Container Management Tab
+
+The tab will be enabled for all devices with a childAddtion with serviceType=container. Lists all containers in a grid or list.The search can be used for the image name and the project id. The list can include/exclude the containers that are part of a container group.
+![Container Container Management Screenshot](./docs/img/container-management.png)
+
+#### Container Group Management Tab
+
+The tab will be enabled for all devices with a childAddtion with serviceType=container. Lists all containers that are part of a project. The filter/search can be used to search for project names or container images.
+![Container Container Management Screenshot](./docs/img/container-group-management.png)
+
 ## Developers
 
 This section details everything you need to know about building the package yourself.
@@ -250,3 +280,34 @@ To build the linux packages use the following steps:
     ```
 
     The built packages are created under the `./dist` folder.
+
+### Building UI
+
+To build the ui use the following steps:
+
+1. Checkout the project
+
+2. Install dependencies:
+   ```sh
+   npm install
+   ```
+3. (Optional) Run the UI locally.
+   Add your tenant in the package.json file:
+   ```json
+    "scripts": {
+    "start": "c8ycli server -u https://{{add the url of your tenant here}} --shell devicemanagement",
+    ...
+    }
+   ```
+   Start the UI locally via:
+   ```sh
+   npm start
+   ```
+4. Build the Plugin
+   ```sh
+    npm run build
+   ```
+5. Deploy the Plugin
+   ```sh
+   npm run deploy
+   ```

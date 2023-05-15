@@ -1,0 +1,107 @@
+<div class="card-group" *ngIf="container">
+  <div class="col-md-4 col-xs-12">
+    <div class="card">
+      <div class="card-header separator">
+        <small>CONTAINER STATUS</small>
+      </div>
+      <div class="card-block">
+        <div class="text-center">
+          <i
+            *ngIf="container.status == 'up'"
+            class="text-success dlt-c8y-icon-check-circle"
+            style="font-size: 6em"></i>
+          <i
+            *ngIf="container.status == 'down'"
+            class="text-danger dlt-c8y-icon-exclamation-circle"
+            style="font-size: 6em"></i>
+          <h4 class="m-t-4">
+            <span>Container Status: {{ container.state }}</span>
+          </h4>
+          <span class="description ng-binding ng-scope statusOk">{{
+            container.runningFor
+          }}</span>
+          <p><label class="small m-b-0">Last updated</label></p>
+          <p style="margin-top: -4px">{{ container.lastUpdated | date }}</p>
+        </div>
+      </div>
+      <div class="card-block bg-gray-white">
+        <c8y-list-group>
+          <li>
+            <div class="col-xs-4">
+              <label>Device</label>
+            </div>
+            <div *ngIf="parentDevice" class="col-xs-8">
+              <a
+                class="interact"
+                title="Parent"
+                href="#/device/{{ parentDevice.id }}">
+                {{ parentDevice.name }}
+              </a>
+            </div>
+          </li>
+        </c8y-list-group>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-8 col-xs-12">
+    <div class="card">
+      <div class="card-header separator">
+        <small>CONTAINER DETAILS</small>
+      </div>
+      <div class="card-block">
+        <div class="col-xs-12">
+          <ul class="list-group">
+            <li class="list-group-item height-auto">
+              <div class="col-xs-4">
+                <label>Container Id</label>
+              </div>
+              <div class="col-xs-8">
+                {{ container.containerId }}
+              </div>
+            </li>
+            <li class="list-group-item">
+              <div class="col-xs-4">
+                <label>Ports</label>
+              </div>
+              <div class="col-xs-8">
+                {{ container.ports }}
+              </div>
+            </li>
+            <li class="list-group-item height-auto">
+              <div class="col-xs-4">
+                <label>Command</label>
+              </div>
+              <div class="col-xs-8" no-wrap>
+                {{ container.command }}
+              </div>
+            </li>
+            <li class="list-group-item">
+              <div class="col-xs-4">
+                <label>Networks</label>
+              </div>
+              <div class="col-xs-8">
+               {{ container.networks }}
+              </div>
+            </li>
+            <li class="list-group-item">
+              <div class="col-xs-4">
+                <label>Filesystem</label>
+              </div>
+              <div class="col-xs-8">
+                {{ container.filesystem }}
+              </div>
+            </li>
+            <li class="list-group-item">
+              <div class="col-xs-4">
+                <label>Image</label>
+              </div>
+              <div class="col-xs-8">
+                {{ container.image }}
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
