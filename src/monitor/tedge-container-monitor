@@ -516,37 +516,44 @@ check_telemetry() {
 
         debug "Collecting container stats"
         # Get list of containers which are not docker compose projects
-        CONTAINERS=$(docker ps -a --format "{{or .Names \" \"}}\t{{.Labels}}" | grep -v "com.docker.compose" | cut -f1 | tr '\n' ' ')
+        CONTAINERS=$("$CONTAINER_CLI" ps -a --format "{{or .Names \" \"}}\t{{.Labels}}" | grep -v "com.docker.compose" | cut -f1 | tr '\n' ' ')
+        if [ -n "$CONTAINERS" ]; then
+            # shellcheck disable=SC2046,SC2116
+            "$CONTAINER_CLI" stats --all --no-stream --format "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" $(echo "$CONTAINERS") | while IFS=$TAB read -r NAME CPU_PERC MEM_PERC NET_IO; do
+                NET_IO=$(echo "$NET_IO" | sed 's/[^0-9.].*//g')
 
-        # shellcheck disable=SC2046,SC2116
-        "$CONTAINER_CLI" stats --all --no-stream --format "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" $(echo "$CONTAINERS") | while IFS=$TAB read -r NAME CPU_PERC MEM_PERC NET_IO; do
-            NET_IO=$(echo "$NET_IO" | sed 's/[^0-9.].*//g')
-
-            # FIXME: Use tedge/measurements/{} topic once it can be controlled to not create a child device, but instead a child service
-            TIMESTAMP=$(date +"%Y-%m-%dT%H:%M:%S%z")
-            message=$(printf '{"externalSource":{"externalId":"%s","type":"c8y_Serial"},"container":{"cpu":{"value":%s},"memory":{"value":%s},"netio":{"value":%s}},"time":"%s","type":"ThinEdgeMeasurement"}' "${DEVICE_ID}_${NAME}" "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}" "${TIMESTAMP}")
-            publish "c8y/measurement/measurements/create" "$message"
-            # message=$(printf '{"container": {"cpu":%s,"memory":%s,"netio":%s}}' "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}")
-            # publish "tedge/measurements/${DEVICE_ID}_${NAME}" "$message"
-        done
+                # FIXME: Use tedge/measurements/{} topic once it can be controlled to not create a child device, but instead a child service
+                TIMESTAMP=$(date +"%Y-%m-%dT%H:%M:%S%z")
+                message=$(printf '{"externalSource":{"externalId":"%s","type":"c8y_Serial"},"container":{"cpu":{"value":%s},"memory":{"value":%s},"netio":{"value":%s}},"time":"%s","type":"ThinEdgeMeasurement"}' "${DEVICE_ID}_${NAME}" "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}" "${TIMESTAMP}")
+                publish "c8y/measurement/measurements/create" "$message"
+                # message=$(printf '{"container": {"cpu":%s,"memory":%s,"netio":%s}}' "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}")
+                # publish "tedge/measurements/${DEVICE_ID}_${NAME}" "$message"
+            done
+        else
+            debug "No containers found, therefore no metrics to collect"
+        fi
 
         debug "Collecting container-group stats"
         # Get list of containers which are docker compose projects
         CONTAINERS=$("$CONTAINER_CLI" ps --format "{{or .Names \" \"}}\t{{.Labels}}" | grep "com.docker.compose" | cut -f1 | tr '\n' ' ')
 
-        # shellcheck disable=SC2046,SC2116
-        "$CONTAINER_CLI" stats --all --no-stream --format "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" $(echo "$CONTAINERS") | while IFS=$TAB read -r NAME CPU_PERC MEM_PERC NET_IO; do
-            # lookup compose project and service name
-            CLOUD_SERVICE_NAME=$("$CONTAINER_CLI" ps -a --format "{{.Label \"com.docker.compose.project\" }}::{{.Label \"com.docker.compose.service\" }}" --filter "name=$NAME")
-            NET_IO=$(echo "$NET_IO" | sed 's/[^0-9.].*//g')
+        if [ -n "$CONTAINERS" ]; then
+            # shellcheck disable=SC2046,SC2116
+            "$CONTAINER_CLI" stats --all --no-stream --format "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" $(echo "$CONTAINERS") | while IFS=$TAB read -r NAME CPU_PERC MEM_PERC NET_IO; do
+                # lookup compose project and service name
+                CLOUD_SERVICE_NAME=$("$CONTAINER_CLI" ps -a --format "{{.Label \"com.docker.compose.project\" }}::{{.Label \"com.docker.compose.service\" }}" --filter "name=$NAME")
+                NET_IO=$(echo "$NET_IO" | sed 's/[^0-9.].*//g')
 
-            # FIXME: Use tedge/measurements/{} topic once it can be controlled to not create a child device, but instead a child service
-            TIMESTAMP=$(date +"%Y-%m-%dT%H:%M:%S%z")
-            message=$(printf '{"externalSource":{"externalId":"%s","type":"c8y_Serial"},"container":{"cpu":{"value":%s},"memory":{"value":%s},"netio":{"value":%s}},"time":"%s","type":"ThinEdgeMeasurement"}' "${DEVICE_ID}_${CLOUD_SERVICE_NAME}" "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}" "${TIMESTAMP}")
-            publish "c8y/measurement/measurements/create" "$message"
-            # message=$(printf '{"container": {"cpu":%s,"memory":%s,"netio":%s}}' "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}")
-            # publish "tedge/measurements/${DEVICE_ID}_${CLOUD_SERVICE_NAME}" "$message"
-        done
+                # FIXME: Use tedge/measurements/{} topic once it can be controlled to not create a child device, but instead a child service
+                TIMESTAMP=$(date +"%Y-%m-%dT%H:%M:%S%z")
+                message=$(printf '{"externalSource":{"externalId":"%s","type":"c8y_Serial"},"container":{"cpu":{"value":%s},"memory":{"value":%s},"netio":{"value":%s}},"time":"%s","type":"ThinEdgeMeasurement"}' "${DEVICE_ID}_${CLOUD_SERVICE_NAME}" "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}" "${TIMESTAMP}")
+                publish "c8y/measurement/measurements/create" "$message"
+                # message=$(printf '{"container": {"cpu":%s,"memory":%s,"netio":%s}}' "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}")
+                # publish "tedge/measurements/${DEVICE_ID}_${CLOUD_SERVICE_NAME}" "$message"
+            done
+        else
+            debug "No container-groups found, therefore no metrics to collect"
+        fi
     fi
 }
 
