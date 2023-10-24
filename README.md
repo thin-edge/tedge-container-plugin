@@ -38,7 +38,7 @@ The following linux package formats are provided on the releases page and also i
 
 |Operating System|Repository link|
 |--|--|
-|Debian/Raspian (deb)|[![Latest version of 'tedge-container-plugin' @ Cloudsmith](https://api-prd.cloudsmith.io/v1/badges/version/thinedge/community/deb/tedge-container-plugin/latest/a=all;d=any-distro%252Fany-version;t=binary/?render=true&show_latest=true)](https://cloudsmith.io/~thinedge/repos/community/packages/detail/deb/tedge-container-plugin/latest/a=all;d=any-distro%252Fany-version;t=binary/)|
+|Debian/Raspbian (deb)|[![Latest version of 'tedge-container-plugin' @ Cloudsmith](https://api-prd.cloudsmith.io/v1/badges/version/thinedge/community/deb/tedge-container-plugin/latest/a=all;d=any-distro%252Fany-version;t=binary/?render=true&show_latest=true)](https://cloudsmith.io/~thinedge/repos/community/packages/detail/deb/tedge-container-plugin/latest/a=all;d=any-distro%252Fany-version;t=binary/)|
 |Alpine Linux (apk)|[![Latest version of 'tedge-container-plugin' @ Cloudsmith](https://api-prd.cloudsmith.io/v1/badges/version/thinedge/community/alpine/tedge-container-plugin/latest/a=noarch;d=alpine%252Fany-version/?render=true&show_latest=true)](https://cloudsmith.io/~thinedge/repos/community/packages/detail/alpine/tedge-container-plugin/latest/a=noarch;d=alpine%252Fany-version/)|
 |RHEL/CentOS/Fedora (rpm)|[![Latest version of 'tedge-container-plugin' @ Cloudsmith](https://api-prd.cloudsmith.io/v1/badges/version/thinedge/community/rpm/tedge-container-plugin/latest/a=noarch;d=any-distro%252Fany-version;t=binary/?render=true&show_latest=true)](https://cloudsmith.io/~thinedge/repos/community/packages/detail/rpm/tedge-container-plugin/latest/a=noarch;d=any-distro%252Fany-version;t=binary/)|
 ## Features
@@ -243,12 +243,12 @@ The tab will be enabled for all services of type container. Displays the contain
 
 #### Container Management Tab
 
-The tab will be enabled for all devices with a childAddtion with serviceType=container. Lists all containers in a grid or list.The search can be used for the image name and the project id. The list can include/exclude the containers that are part of a container group.
+The tab will be enabled for all devices with a childAddition with serviceType=container. Lists all containers in a grid or list.The search can be used for the image name and the project id. The list can include/exclude the containers that are part of a container group.
 ![Container Container Management Screenshot](./docs/img/container-management.png)
 
 #### Container Group Management Tab
 
-The tab will be enabled for all devices with a childAddtion with serviceType=container. Lists all containers that are part of a project. The filter/search can be used to search for project names or container images.
+The tab will be enabled for all devices with a childAddition with serviceType=container. Lists all containers that are part of a project. The filter/search can be used to search for project names or container images.
 ![Container Container Management Screenshot](./docs/img/container-group-management.png)
 
 ## Developers
