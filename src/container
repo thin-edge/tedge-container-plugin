@@ -107,6 +107,25 @@ if ! "$CONTAINER_CLI" ps >/dev/null 2>&1; then
     exit "$EXIT_FAILURE"
 fi
 
+publish_health() {
+    TOPIC_ROOT=$(tedge config get mqtt.topic_root)
+    TOPIC_ID=$(tedge config get mqtt.device_topic_id)
+    SERVICE_NAME="$1"
+    MESSAGE="$2"
+    
+    SERVICE_TOPIC=""
+    case "$TOPIC_ID" in
+        */*//)
+            parent="$(echo "$TOPIC_ID" | sed 's/\/*$//')"
+            SERVICE_TOPIC="$parent/service/$SERVICE_NAME"
+            ;;
+    esac
+
+    if [ -n "$SERVICE_TOPIC" ]; then
+        tedge mqtt pub -r "$TOPIC_ROOT/$SERVICE_TOPIC/status/health" "$2" ||:
+    fi
+}
+
 case "$COMMAND" in
     list)
         # Get all container and lookup the image id related to it
@@ -190,7 +209,7 @@ case "$COMMAND" in
         if command -V tedge >/dev/null 2>&1; then
             log "Updating health endpoint to being uninstalled"
             MESSAGE="$(printf '{"status":"uninstalled","type":"%s"}' "${SERVICE_TYPE:-container}" )"
-            tedge mqtt pub -r "tedge/health/$MODULE_NAME" "$MESSAGE" ||:
+            publish_health "$MODULE_NAME" "$MESSAGE" ||:
         fi
         ;;
 

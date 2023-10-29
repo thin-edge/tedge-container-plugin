@@ -105,6 +105,24 @@ if ! $COMPOSE_CLI ls >/dev/null 2>&1; then
     exit "$EXIT_FAILURE"
 fi
 
+publish_health() {
+    TOPIC_ROOT=$(tedge config get mqtt.topic_root)
+    TOPIC_ID=$(tedge config get mqtt.device_topic_id)
+    SERVICE_NAME="$1"
+    MESSAGE="$2"
+    
+    SERVICE_TOPIC=""
+    case "$TOPIC_ID" in
+        */*//)
+            parent="$(echo "$TOPIC_ID" | sed 's/\/*$//')"
+            SERVICE_TOPIC="$parent/service/$SERVICE_NAME"
+            ;;
+    esac
+
+    if [ -n "$SERVICE_TOPIC" ]; then
+        tedge mqtt pub -r "$TOPIC_ROOT/$SERVICE_TOPIC/status/health" "$2" ||:
+    fi
+}
 
 get_project_dir() {
     echo "/var/tedge-container-plugin/compose/$1"
@@ -185,7 +203,7 @@ case "$COMMAND" in
                 if [ "$item" != "::" ]; then
                     log "Updating health endpoint status to uninstalled. service=$item"
                     MESSAGE="$(printf '{"status":"uninstalled","type":"%s"}' "${GROUP_SERVICE_TYPE:-"container-group"}" )"
-                    tedge mqtt pub -r "tedge/health/$item" "$MESSAGE" ||:
+                    publish_health "$item" "$MESSAGE" ||:
                 fi
             done
         fi
