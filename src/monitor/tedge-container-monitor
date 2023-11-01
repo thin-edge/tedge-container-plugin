@@ -393,16 +393,6 @@ check_health() {
         NAMES="$1"
     fi
 
-    DEVICE_ID=${DEVICE_ID:-}
-    if command_exists tedge; then
-        DEVICE_ID_VALUE="$(tedge config list | grep "^device.id=" | sed 's/^.*=//g')"
-
-        if [ -n "$DEVICE_ID_VALUE" ]; then
-            debug "Using device.id found from tedge"
-            DEVICE_ID="$DEVICE_ID_VALUE"
-        fi
-    fi
-
     "$CONTAINER_CLI" ps -a --format "{{.Names}}\t{{.State}}\t{{.Labels}}" --filter "name=$NAMES" | grep -v "com.docker.compose" | while IFS=$TAB read -r NAME STATE _OTHER; do
         # Normalize state, as podman returns a human friendly output, e.g. "Exited (0) 10 seconds ago"
         STATE=${STATE%% *}
@@ -452,10 +442,6 @@ check_container_info() {
     # Collect container meta information and add it to the managed object
     #
     if [ "$META_INFO" = 1 ]; then
-        if [ -z "$DEVICE_ID" ]; then
-            warn "Skipping telemetry data as the device id is empty"
-            return
-        fi
 
         NAMES=""
         # optionally filter by specific name
@@ -497,10 +483,6 @@ check_telemetry() {
     #   docker inspect -f '{{.State.StartedAt}}    {{.State.FinishedAt}}' mqtt-broker
     #   started_at=$(date --date "$(docker inspect -f '{{.State.StartedAt}}{{.State.FinishedAt}}' mqtt-broker)" +'%s')
     if [ "$TELEMETRY" = 1 ]; then
-        if [ -z "$DEVICE_ID" ]; then
-            warn "Skipping telemetry data as the device id is empty"
-            return
-        fi
 
         debug "Collecting container stats"
         # Get list of containers which are not docker compose projects
