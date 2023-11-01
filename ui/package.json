@@ -1,6 +1,6 @@
 {
   "name": "tedge-container-plugin-ui",
-  "version": "0.0.3",
+  "version": "1.0.0",
   "description": "UI for the tedge-container-plugin to monitor installed containers and container groups.",
   "scripts": {
     "start": "c8ycli server -u https://mbay.eu-latest.cumulocity.com --shell devicemanagement",
