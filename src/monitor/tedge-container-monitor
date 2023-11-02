@@ -203,6 +203,23 @@ done
 # shellcheck disable=SC2086
 set -- $POSITIONAL
 
+# topic config
+TOPIC_ROOT=$(tedge config get mqtt.topic_root || echo 'te')
+TOPIC_ID=$(tedge config get mqtt.device_topic_id || echo 'device/main//')
+
+TOPIC_PREFIX="$TOPIC_ROOT/device/main"
+case "$TOPIC_ID" in
+    */*//)
+        parent="$(echo "$TOPIC_ID" | sed 's/\/*$//')"
+        TOPIC_PREFIX="$TOPIC_ROOT/$parent"
+        ;;
+esac
+
+publish_health() {
+    SERVICE_NAME="$1"
+    MESSAGE="$2"
+    publish_retain "$TOPIC_PREFIX/service/$SERVICE_NAME/status/health" "$MESSAGE" ||:
+}
 
 # -------------------
 # Helpers
@@ -288,7 +305,7 @@ startup(){
     info "Started background health-check listener. pid=$SUB_PID"
 
     MESSAGE=$(printf '{"status":"up","pid":"%s","type":"service"}' "$SUB_PID")
-    publish_retain "tedge/health/$SERVICE_NAME" "$MESSAGE"
+    publish_health "$SERVICE_NAME" "$MESSAGE"
 }
 
 listen() {
@@ -303,12 +320,12 @@ listen() {
         --id "mosquitto_sub_${SERVICE_NAME}" \
         -h "$MQTT_HOST" \
         -p "$MQTT_PORT" \
-        --will-topic "tedge/health/${SERVICE_NAME}" \
+        --will-topic "$TOPIC_PREFIX/service/${SERVICE_NAME}/status/health" \
         --will-payload "{\"status\":\"down\",\"type\":\"service\"}" \
         --will-retain \
-        -t 'tedge/health-check/+' \
+        -t "$TOPIC_PREFIX/service/+/cmd/health/check" \
         -F '%t' | while read -r topic; do
-            name="${topic#*/*/}"
+            name=$(echo "$topic" | cut -d/ -f 5)
             info "Checking health of $name"
             check_health "$name" || :
         done
@@ -326,7 +343,7 @@ cleanup() {
         kill "$SUB_PID" >/dev/null 2>&1 || :
     fi
     # try sending a manual message (not relying on the last will and testament)
-    publish_retain "tedge/health/$SERVICE_NAME" '{"status":"down","type":"service"}' || :
+    publish_health "$SERVICE_NAME" '{"status":"down","type":"service"}' || :
 
     info "Exiting"
     # Kill all child processes
@@ -376,16 +393,6 @@ check_health() {
         NAMES="$1"
     fi
 
-    DEVICE_ID=${DEVICE_ID:-}
-    if command_exists tedge; then
-        DEVICE_ID_VALUE="$(tedge config list | grep "^device.id=" | sed 's/^.*=//g')"
-
-        if [ -n "$DEVICE_ID_VALUE" ]; then
-            debug "Using device.id found from tedge"
-            DEVICE_ID="$DEVICE_ID_VALUE"
-        fi
-    fi
-
     "$CONTAINER_CLI" ps -a --format "{{.Names}}\t{{.State}}\t{{.Labels}}" --filter "name=$NAMES" | grep -v "com.docker.compose" | while IFS=$TAB read -r NAME STATE _OTHER; do
         # Normalize state, as podman returns a human friendly output, e.g. "Exited (0) 10 seconds ago"
         STATE=${STATE%% *}
@@ -399,10 +406,8 @@ check_health() {
                 STATUS="down"
                 ;;
         esac
-        TOPIC="tedge/health/$NAME"
         MESSAGE=$(printf '{"pid":"%s","status":"%s","type":"%s"}' "$NAME" "$STATUS" "$SERVICE_TYPE")
-
-        publish_retain "$TOPIC" "$MESSAGE"
+        publish_health "$NAME" "$MESSAGE"
     done
 
     # Check docker compose projects
@@ -410,7 +415,7 @@ check_health() {
         debug "Checking compose projects"
         # Filtering is not supported for these names!
         "$CONTAINER_CLI" ps --no-trunc --all --format "{{or .Labels \" \"}}\t{{or .State \" \"}}\t{{.Label \"com.docker.compose.project\" }}\t{{.Label \"com.docker.compose.service\" }}" | grep "com.docker.compose" | while IFS=$TAB read -r _LABELS STATE PROJECT_NAME PROJECT_SERVICE_NAME; do
-            CLOUD_SERVICE_NAME="${PROJECT_NAME}::${PROJECT_SERVICE_NAME}"
+            CLOUD_SERVICE_NAME="${PROJECT_NAME}@${PROJECT_SERVICE_NAME}"
             STATE=${STATE%% *}
             STATE=$(echo "$STATE" | tr '[:upper:]' '[:lower:]')
             info "State: service=$CLOUD_SERVICE_NAME, state=$STATE"
@@ -426,32 +431,9 @@ check_health() {
                     ;;
             esac
 
-            TOPIC="tedge/health/$CLOUD_SERVICE_NAME"
             MESSAGE=$(printf '{"pid":"%s","status":"%s","type":"%s"}' "$CLOUD_SERVICE_NAME" "$STATUS" "$GROUP_SERVICE_TYPE")
-            publish_retain "$TOPIC" "$MESSAGE"
+            publish_health "$CLOUD_SERVICE_NAME" "$MESSAGE"
         done
-
-        # TODO: Remove after validation of alternative method
-        # $COMPOSE_CLI ls -a --format pretty --filter "name=$NAMES" | tail +2 | sed 's/  \+/ /g' | while IFS=' ' read -r NAME STATE _OTHER; do
-        #     STATE=${STATE%% *}
-        #     STATE=$(echo "$STATE" | tr '[:upper:]' '[:lower:]')
-        #     debug "$COMPOSE_CLI ls -a: $STATE"
-        #     case "$STATE" in
-        #         running*|up*)
-        #             STATUS="up"
-        #             ;;
-        #         create*)
-        #             STATUS="created"
-        #             ;;
-        #         *)
-        #             STATUS="down"
-        #             ;;
-        #     esac
-        #     TOPIC="tedge/health/$NAME"
-        #     MESSAGE=$(printf '{"pid":"%s","status":"%s","type":"%s"}' "$NAME" "$STATUS" "$GROUP_SERVICE_TYPE")
-
-        #     publish_retain "$TOPIC" "$MESSAGE"
-        # done
     fi
 }
 
@@ -460,10 +442,6 @@ check_container_info() {
     # Collect container meta information and add it to the managed object
     #
     if [ "$META_INFO" = 1 ]; then
-        if [ -z "$DEVICE_ID" ]; then
-            warn "Skipping telemetry data as the device id is empty"
-            return
-        fi
 
         NAMES=""
         # optionally filter by specific name
@@ -476,9 +454,7 @@ check_container_info() {
         "$CONTAINER_CLI" ps --no-trunc --all --filter "name=$NAMES" --format "{{.ID}}\t{{or .Names \" \"}}\t{{or .Labels \" \"}}\t{{or .State \" \"}}\t{{or .Status \" \"}}\t{{.CreatedAt}}\t{{.Image}}\t{{or .Ports \" \"}}\t{{or .Networks \" \"}}\t{{or .RunningFor \" \"}}\t{{or .Size \" \"}}\t{{json (or .Command \" \")}}" | grep -v "com.docker.compose" | while IFS=$TAB read -r ID NAME _LABELS STATE STATUS CREATEDAT IMAGE PORTS NETWORKS RUNNINGFOR SIZE COMMAND; do
             if [ -n "${NAME%% }" ]; then
                 message=$(printf '{"containerId":"%s","state":"%s","containerStatus":"%s","createdAt":"%s","image":"%s","ports":"%s","networks":"%s","runningFor":"%s","filesystem":"%s","command":%s}' "${ID%% }" "${STATE%% }" "${STATUS%% }" "${CREATEDAT%% }" "${IMAGE%% }" "${PORTS%% }" "${NETWORKS%% }" "${RUNNINGFOR%% }" "${SIZE%% }" "${COMMAND%% }")
-                # FIXME: Change topic once tedge supports a service specific measurement topic
-                # so that the user does not need to know that the service name is prefixed with the "{device.id}_"
-                publish "c8y/inventory/managedObjects/update/${DEVICE_ID}_${NAME}" "$message"
+                publish_retain "$TOPIC_PREFIX/service/$NAME/twin/container" "$message"
             fi
         done
 
@@ -488,12 +464,10 @@ check_container_info() {
             # Note: Use json template func in --format to allow docker to do the json escaping
             # --filter "name=$NAMES"
             "$CONTAINER_CLI" ps --no-trunc --all --format "{{.ID}}\t{{or .Names \" \"}}\t{{or .Labels \" \"}}\t{{or .State \" \"}}\t{{or .Status \" \"}}\t{{.CreatedAt}}\t{{.Image}}\t{{or .Ports \" \"}}\t{{or .Networks \" \"}}\t{{or .RunningFor \" \"}}\t{{or .Size \" \"}}\t{{json (or .Command \" \")}}\t{{.Label \"com.docker.compose.project\" }}\t{{.Label \"com.docker.compose.service\" }}" | grep "com.docker.compose" | while IFS=$TAB read -r ID NAME _LABELS STATE STATUS CREATEDAT IMAGE PORTS NETWORKS RUNNINGFOR SIZE COMMAND PROJECT_NAME PROJECT_SERVICE_NAME; do
-                CLOUD_SERVICE_NAME="${PROJECT_NAME}::${PROJECT_SERVICE_NAME}"
+                CLOUD_SERVICE_NAME="${PROJECT_NAME}@${PROJECT_SERVICE_NAME}"
                 if [ -n "${CLOUD_SERVICE_NAME%% }" ]; then
                     message=$(printf '{"containerId":"%s","containerName":"%s","state":"%s","containerStatus":"%s","createdAt":"%s","image":"%s","ports":"%s","networks":"%s","runningFor":"%s","filesystem":"%s","command":%s,"projectName":"%s","serviceName":"%s"}' "${ID%% }" "${NAME%% }" "${STATE%% }" "${STATUS%% }" "${CREATEDAT%% }" "${IMAGE%% }" "${PORTS%% }" "${NETWORKS%% }" "${RUNNINGFOR%% }" "${SIZE%% }" "${COMMAND%% }" "${PROJECT_NAME}" "${PROJECT_SERVICE_NAME}")
-                    # FIXME: Change topic once tedge supports a service specific measurement topic
-                    # so that the user does not need to know that the service name is prefixed with the "{device.id}_"
-                    publish "c8y/inventory/managedObjects/update/${DEVICE_ID}_${CLOUD_SERVICE_NAME}" "$message"
+                    publish_retain "$TOPIC_PREFIX/service/$CLOUD_SERVICE_NAME/twin/container" "$message"
                 fi
             done
         fi
@@ -509,10 +483,6 @@ check_telemetry() {
     #   docker inspect -f '{{.State.StartedAt}}    {{.State.FinishedAt}}' mqtt-broker
     #   started_at=$(date --date "$(docker inspect -f '{{.State.StartedAt}}{{.State.FinishedAt}}' mqtt-broker)" +'%s')
     if [ "$TELEMETRY" = 1 ]; then
-        if [ -z "$DEVICE_ID" ]; then
-            warn "Skipping telemetry data as the device id is empty"
-            return
-        fi
 
         debug "Collecting container stats"
         # Get list of containers which are not docker compose projects
@@ -522,12 +492,9 @@ check_telemetry() {
             "$CONTAINER_CLI" stats --all --no-stream --format "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" $(echo "$CONTAINERS") | while IFS=$TAB read -r NAME CPU_PERC MEM_PERC NET_IO; do
                 NET_IO=$(echo "$NET_IO" | sed 's/[^0-9.].*//g')
 
-                # FIXME: Use tedge/measurements/{} topic once it can be controlled to not create a child device, but instead a child service
-                TIMESTAMP=$(date +"%Y-%m-%dT%H:%M:%S%z")
-                message=$(printf '{"externalSource":{"externalId":"%s","type":"c8y_Serial"},"container":{"cpu":{"value":%s},"memory":{"value":%s},"netio":{"value":%s}},"time":"%s","type":"ThinEdgeMeasurement"}' "${DEVICE_ID}_${NAME}" "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}" "${TIMESTAMP}")
-                publish "c8y/measurement/measurements/create" "$message"
-                # message=$(printf '{"container": {"cpu":%s,"memory":%s,"netio":%s}}' "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}")
-                # publish "tedge/measurements/${DEVICE_ID}_${NAME}" "$message"
+                # Publish service metrics
+                message=$(printf '{"container":{"cpu":%s,"memory":%s,"netio":%s}}' "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}")
+                publish "$TOPIC_PREFIX/service/$NAME/m/resource_usage" "$message"
             done
         else
             debug "No containers found, therefore no metrics to collect"
@@ -541,15 +508,12 @@ check_telemetry() {
             # shellcheck disable=SC2046,SC2116
             "$CONTAINER_CLI" stats --all --no-stream --format "{{.Name}}\t{{.CPUPerc}}\t{{.MemPerc}}\t{{.NetIO}}" $(echo "$CONTAINERS") | while IFS=$TAB read -r NAME CPU_PERC MEM_PERC NET_IO; do
                 # lookup compose project and service name
-                CLOUD_SERVICE_NAME=$("$CONTAINER_CLI" ps -a --format "{{.Label \"com.docker.compose.project\" }}::{{.Label \"com.docker.compose.service\" }}" --filter "name=$NAME")
+                CLOUD_SERVICE_NAME=$("$CONTAINER_CLI" ps -a --format "{{.Label \"com.docker.compose.project\" }}@{{.Label \"com.docker.compose.service\" }}" --filter "name=$NAME")
                 NET_IO=$(echo "$NET_IO" | sed 's/[^0-9.].*//g')
 
-                # FIXME: Use tedge/measurements/{} topic once it can be controlled to not create a child device, but instead a child service
-                TIMESTAMP=$(date +"%Y-%m-%dT%H:%M:%S%z")
-                message=$(printf '{"externalSource":{"externalId":"%s","type":"c8y_Serial"},"container":{"cpu":{"value":%s},"memory":{"value":%s},"netio":{"value":%s}},"time":"%s","type":"ThinEdgeMeasurement"}' "${DEVICE_ID}_${CLOUD_SERVICE_NAME}" "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}" "${TIMESTAMP}")
-                publish "c8y/measurement/measurements/create" "$message"
-                # message=$(printf '{"container": {"cpu":%s,"memory":%s,"netio":%s}}' "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}")
-                # publish "tedge/measurements/${DEVICE_ID}_${CLOUD_SERVICE_NAME}" "$message"
+                # Publish service metrics
+                message=$(printf '{"container":{"cpu":%s,"memory":%s,"netio":%s}}' "${CPU_PERC%%%*}" "${MEM_PERC%%%*}" "${NET_IO}")
+                publish "$TOPIC_PREFIX/service/$CLOUD_SERVICE_NAME/m/resource_usage" "$message"
             done
         else
             debug "No container-groups found, therefore no metrics to collect"

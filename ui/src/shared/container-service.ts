@@ -39,24 +39,25 @@ export class ContainerService {
     console.log(
       'Stopping Container' +
         container.containerId +
-        ', unfortnunatley it is not implementet yet'
+        ', unfortunately it is not implemented yet'
     );
   }
 
   private managedObjectToContainer(mo: IManagedObject): Container {
+    const container = mo.container;
     return {
       id: mo.id,
       name: mo.name,
-      containerId: mo.containerId,
-      ports: mo.ports,
-      command: mo.command,
-      networks: mo.networks,
-      filesystem: mo.filesystem,
-      image: mo.image,
-      runningFor: mo.runningFor,
-      state: mo.state,
-      status: mo.status,
-      project: mo.projectName,
+      containerId: container.containerId,
+      ports: container.ports,
+      command: container.command,
+      networks: container.networks,
+      filesystem: container.filesystem,
+      image: container.image,
+      runningFor: container.runningFor,
+      state: container.state,
+      status: container.status,
+      project: container.projectName,
       lastUpdated: mo.lastUpdated,
     };
   }
