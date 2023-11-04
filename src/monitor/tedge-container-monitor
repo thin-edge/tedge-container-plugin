@@ -215,6 +215,13 @@ case "$TOPIC_ID" in
         ;;
 esac
 
+register_service() {
+    name="$1"
+    type="$2"
+    message=$(printf '{"@type":"service","name":"%s","type":"%s"}' "$name" "$type")
+    publish_retain "$TOPIC_PREFIX/service/$name" "$message" ||:
+}
+
 publish_health() {
     SERVICE_NAME="$1"
     MESSAGE="$2"
@@ -304,7 +311,8 @@ startup(){
     SUB_PID=$!
     info "Started background health-check listener. pid=$SUB_PID"
 
-    MESSAGE=$(printf '{"status":"up","pid":"%s","type":"service"}' "$SUB_PID")
+    register_service "$SERVICE_NAME" "service"
+    MESSAGE=$(printf '{"status":"up","pid":"%s"}' "$SUB_PID")
     publish_health "$SERVICE_NAME" "$MESSAGE"
 }
 
@@ -406,7 +414,8 @@ check_health() {
                 STATUS="down"
                 ;;
         esac
-        MESSAGE=$(printf '{"pid":"%s","status":"%s","type":"%s"}' "$NAME" "$STATUS" "$SERVICE_TYPE")
+        register_service "$NAME" "$SERVICE_TYPE"
+        MESSAGE=$(printf '{"pid":"%s","status":"%s"}' "$NAME" "$STATUS")
         publish_health "$NAME" "$MESSAGE"
     done
 
@@ -431,7 +440,8 @@ check_health() {
                     ;;
             esac
 
-            MESSAGE=$(printf '{"pid":"%s","status":"%s","type":"%s"}' "$CLOUD_SERVICE_NAME" "$STATUS" "$GROUP_SERVICE_TYPE")
+            register_service "$CLOUD_SERVICE_NAME" "$GROUP_SERVICE_TYPE"
+            MESSAGE=$(printf '{"pid":"%s","status":"%s"}' "$CLOUD_SERVICE_NAME" "$STATUS")
             publish_health "$CLOUD_SERVICE_NAME" "$MESSAGE"
         done
     fi
