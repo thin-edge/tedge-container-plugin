@@ -329,7 +329,7 @@ listen() {
         -h "$MQTT_HOST" \
         -p "$MQTT_PORT" \
         --will-topic "$TOPIC_PREFIX/service/${SERVICE_NAME}/status/health" \
-        --will-payload "{\"status\":\"down\",\"type\":\"service\"}" \
+        --will-payload "{\"status\":\"down\"}" \
         --will-retain \
         -t "$TOPIC_PREFIX/service/+/cmd/health/check" \
         -F '%t' | while read -r topic; do
@@ -351,7 +351,7 @@ cleanup() {
         kill "$SUB_PID" >/dev/null 2>&1 || :
     fi
     # try sending a manual message (not relying on the last will and testament)
-    publish_health "$SERVICE_NAME" '{"status":"down","type":"service"}' || :
+    publish_health "$SERVICE_NAME" '{"status":"down"}' || :
 
     info "Exiting"
     # Kill all child processes
