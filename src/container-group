@@ -62,6 +62,9 @@ if [ -z "$COMPOSE_CLI" ]; then
         COMPOSE_CLI="docker-compose"
     elif command -v "podman-compose" >/dev/null 2>&1; then
         COMPOSE_CLI="podman-compose"
+    else
+        log "No docker-compose compatible binary found. container-group software types will not be supported"
+        exit "$EXIT_USAGE"
     fi
 fi
 
