@@ -48,6 +48,7 @@ export class ContainerService {
     return {
       id: mo.id,
       name: mo.name,
+      status: mo.status,
       containerId: container.containerId,
       ports: container.ports,
       command: container.command,
@@ -56,7 +57,6 @@ export class ContainerService {
       image: container.image,
       runningFor: container.runningFor,
       state: container.state,
-      status: container.status,
       project: container.projectName,
       lastUpdated: mo.lastUpdated,
     };
