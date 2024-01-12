@@ -59,7 +59,7 @@
       "noAppSwitcher": true,
       "brandingEntry": "./src/branding/branding.less",
       "package": "plugin",
-      "requiredPlatformVersion": ">=1016.0.0",
+      "requiredPlatformVersion": ">=1018.0.0",
       "exports": [
         {
           "name": "Container Info Tab",
