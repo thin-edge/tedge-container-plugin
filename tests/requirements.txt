@@ -1,0 +1,3 @@
+robotframework~=6.0.0
+robotframework-c8y @ git+https://github.com/reubenmiller/robotframework-c8y.git@0.31.3
+robotframework-devicelibrary[docker] @ git+https://github.com/reubenmiller/robotframework-devicelibrary.git@1.13.0

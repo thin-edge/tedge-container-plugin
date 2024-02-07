@@ -1,0 +1,1 @@
+CONTAINER_RUN_OPTIONS="--network tedge"
