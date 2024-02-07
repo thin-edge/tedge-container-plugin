@@ -24,6 +24,7 @@ jobs:
 
   test:
     name: Test
+    needs: [approve]
     environment:
       name: Test Auto
     runs-on: ubuntu-latest
@@ -108,8 +109,11 @@ jobs:
   generate_report:
     name: Publish report
     if: ${{ always() && github.event_name == 'pull_request_target' }}
+    continue-on-error: true
     needs: [test]
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     steps:
     - uses: actions/checkout@v4
     - name: Download reports
