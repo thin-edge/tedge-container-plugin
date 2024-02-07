@@ -171,29 +171,67 @@ case "$COMMAND" in
             $COMPOSE_CLI down ||:
         fi
 
-        # Handling zip files 
-        log "Removing files in $LOCAL_MODULE_PATH except for 'version'"
-        find "$LOCAL_MODULE_PATH" -mindepth 1 -path "$LOCAL_MODULE_PATH/version" -prune -o -exec rm -rf {} +
-
-        IS_ZIP_FILE=false
-        if file "$FILE" | grep -q 'Zip archive data'; then        
-            log "Extracting zip file to $LOCAL_MODULE_PATH"
-            unzip -o "$FILE" -d "$LOCAL_MODULE_PATH"
-            DOCKER_COMPOSE_FILE=$(find "$LOCAL_MODULE_PATH" -name 'docker-compose.yaml' -o -name 'docker-compose.yml' | head -1)
-            if [ -z "$DOCKER_COMPOSE_FILE" ]; then
-                log "No docker-compose file found in the zip archive."
-                exit "$EXIT_FAILURE"
-            fi
-            FILE="$DOCKER_COMPOSE_FILE"
-            IS_ZIP_FILE=true
+        if [ -n "$LOCAL_MODULE_PATH" ]; then
+            log "Removing files in $LOCAL_MODULE_PATH"
+            rm -Rf "${LOCAL_MODULE_PATH:?}/"*
         fi
+
+        # Try getting the mime-type from the file
+        # Use file if available, otherwise try to validate
+        # the file using various tools to guess the correct type.
+        # Note: alpine does not have "file" installed out of the box
+        FILE_TYPE="unknown"
+        if command -v file >/dev/null 2>&1; then
+            FILE_TYPE=$(file -db --mime-type "$FILE")
+        elif unzip -t "$FILE" >/dev/null 2>&1; then
+            FILE_TYPE="application/zip"
+        elif tar tf "$FILE" >/dev/null 2>&1; then
+            FILE_TYPE="application/gzip"
+        fi
+
+        log "Detected file type: $FILE_TYPE ($FILE)"
+        case "$FILE_TYPE" in
+            application/zip)
+                if ! command -v unzip >/dev/null 2>&1; then
+                    log "unzip is not installed on your system. It is required to handle zip files"
+                    exit 1
+                fi
+
+                if ! unzip -l "$FILE" "docker-compose.yaml" >/dev/null 2>&1 && ! unzip -l "$FILE" "docker-compose.yml" >/dev/null 2>&1; then
+                    log "No docker-compose file found in the zip archive."
+                    exit "$EXIT_FAILURE"
+                fi
+
+                log "Extracting zip file to $LOCAL_MODULE_PATH"
+                unzip -o "$FILE" -d "$LOCAL_MODULE_PATH"
+                ;;
+            
+            application/gzip)
+                if ! command -v tar >/dev/null 2>&1; then
+                    log "tar is not installed on your system. It is required to handle gzip files"
+                    exit 1
+                fi
+                if ! tar tf "$FILE" "docker-compose.yaml" >/dev/null 2>&1 && ! tar tf "$FILE" "docker-compose.yml" >/dev/null 2>&1; then
+                    log "No docker-compose file found in the gzip archive."
+                    exit "$EXIT_FAILURE"
+                fi
+
+                log "Extracting gzip file to $LOCAL_MODULE_PATH"
+                tar xzvf "$FILE" -C "$LOCAL_MODULE_PATH" >&2
+                ;;
+            text/plain)
+                log "Copying file to $LOCAL_MODULE_PATH"
+                cp "$FILE" "$LOCAL_MODULE_PATH/docker-compose.yaml"
+                ;;
+            *)
+                # let's assume it is a text file and try anyway, docker compose
+                # will fail if it is not in the correct format
+                log "Copying file (of unrecognized file type $FILE_TYPE) to $LOCAL_MODULE_PATH"
+                cp "$FILE" "$LOCAL_MODULE_PATH/docker-compose.yaml"
+                ;;
+        esac
 
         log "Storing module version: $VERSION_FILE"
-
-        # Copy the file to docker-compose.yaml only if it's not a zip file
-        if [ "$IS_ZIP_FILE" = false ]; then
-            cp "$FILE" "$LOCAL_MODULE_PATH/docker-compose.yaml"
-        fi
         echo "${MODULE_VERSION}" > "$VERSION_FILE"
 
         EXIT_CODE="$EXIT_OK"
