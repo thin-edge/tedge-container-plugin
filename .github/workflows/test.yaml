@@ -1,0 +1,123 @@
+name: Test
+
+on:
+  workflow_dispatch:
+  # Use a manual approval process before PR's are given access to
+  # the secrets which are required to run the integration tests.
+  # The PR code should be manually approved to see if it can be trusted.
+  # When in doubt, do not approve the test run.
+  # Reference: https://dev.to/petrsvihlik/using-environment-protection-rules-to-secure-secrets-when-building-external-forks-with-pullrequesttarget-hci
+  pull_request_target:
+    branches: [ main ]
+  merge_group:
+jobs:
+  approve:
+    name: Approve
+    environment:
+      # For security reasons, all pull requests need to be approved first before granting access to secrets
+      # So the environment should be set to have a reviewer/s inspect it before approving it
+      name: ${{ github.event_name == 'pull_request_target' && 'Test Pull Request' || 'Test Auto'  }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for approval
+        run: echo "Approved"
+
+  test:
+    name: Test
+    environment:
+      name: Test Auto
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_PROJECT_NAME: ci_${{github.run_id}}_${{github.run_attempt || '1'}}
+      DEVICE_ID: ci_${{github.run_id}}_${{github.run_attempt || '1'}}
+    steps:
+      # Checkout either the PR or the branch
+      - name: Checkout PR
+        if: ${{ github.event_name == 'pull_request_target' }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }} # Check out the code of the PR. Only after the manual approval process
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        if: ${{ github.event_name != 'pull_request_target' }}
+
+      - name: create .env file
+        run: |
+          touch .env
+          echo "DEVICE_ID=$DEVICE_ID" >> .env
+          echo 'C8Y_BASEURL="${{ secrets.C8Y_BASEURL }}"' >> .env
+          echo 'C8Y_USER="${{ secrets.C8Y_USER }}"' >> .env
+          echo 'C8Y_PASSWORD="${{ secrets.C8Y_PASSWORD }}"' >> .env
+          cat .env
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+          cache-dependency-path: |
+            tests/requirements.txt
+
+      - uses: extractions/setup-just@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      #
+      # Build
+      #
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.17.0'
+      - name: Install dependencies
+        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+      - name: Build package (for testing)
+        run: just build
+
+      #
+      # Test
+      #
+      - name: Install dependencies
+        run: |
+          just venv
+
+      - name: Start demo
+        run: |
+          just up
+          just bootstrap --no-prompt
+
+      - name: Run tests
+        run: just test
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports
+          path: output
+
+      - name: Stop demo
+        if: always()
+        run: just down-all
+
+      - uses: reubenmiller/setup-go-c8y-cli@main
+      - name: Cleanup Devices
+        if: always()
+        run: |
+          just cleanup "$DEVICE_ID"
+
+  generate_report:
+    name: Publish report
+    if: ${{ always() && github.event_name == 'pull_request_target' }}
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Download reports
+      uses: actions/download-artifact@v4
+      with:
+        name: reports
+        path: reports
+    - name: Send report to commit
+      uses: joonvena/robotframework-reporter-action@v2.3
+      with:
+        gh_access_token: ${{ secrets.GITHUB_TOKEN }}
