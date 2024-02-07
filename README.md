@@ -302,7 +302,13 @@ To run the tests you will need to have python3 &gt;> 3.9 installed on your syste
    C8Y_PASSWORD="mypassword"
    ```
 
-2. Startup the test setup, and bootstrap it
+2. Build the software management plugin
+
+   ```
+   just build
+   ```
+
+3. Startup the test setup, and bootstrap it
 
    ```
    just up
@@ -310,13 +316,13 @@ To run the tests you will need to have python3 &gt;> 3.9 installed on your syste
    just bootstrap
    ```
 
-3. Setup the python3 virtual environment and install the test dependencies
+4. Setup the python3 virtual environment and install the test dependencies
 
    ```
    just venv
    ```
 
-4. Run the RobotFramework tests
+5. Run the RobotFramework tests
 
    ```
    just test
