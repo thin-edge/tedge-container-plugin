@@ -11,9 +11,8 @@ RUN install -m 0755 -d /etc/apt/keyrings \
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         docker-ce-cli \
-        docker-compose-plugin
-    # && groupadd docker \
-    # && usermod -aG docker
+        docker-compose-plugin \
+        unzip
 
 COPY ./images/container-env /etc/tedge-container-plugin/env
 
