@@ -7,7 +7,7 @@ Cumulocity UI Plugin to monitor running containers in the UI.
 
 The following thin-edge.io customization is included in the plugin.
 
-The container monitoring requires a thin-edge.io feature (service monitoring) which is only available > `0.9.0`. You can try the version by following the [pre-release guide](https://github.com/thin-edge/thin-edge.io/blob/main/docs/src/developer/DEBIAN_PACKAGE_HOSTING.md).
+The instructions assume that you are using thin-edge.io &gt;= 1.0.0
 
 ### What will be deployed to the device?
 
@@ -65,7 +65,8 @@ The software package properties are also describe below:
 |Property|Description|
 |----|-----|
 |`name`|Name of the container to create and start. There can only be one instance with this name, but this name can be anything you like. It is recommended to give it a functional name, and not a version. e.g. for a MQTT broker it could be called `mqtt-broker` (not `mosquitto`).|
-|`version`|Container image and tag to be used to create the container with the `name` value. (e.g. `eclipse-mosquitto:2.0.15::container`). The container images usually follow the format `<image>:<tag>::container`, where the tag is mostly used as a version description of the image. The version must have a suffix of `::container` to indicate that the package should be managed by the `container` sm-plugin |
+|`version`|Container image and tag to be used to create the container with the `name` value. (e.g. `eclipse-mosquitto:2.0.15`). The container images usually follow the format `<image>:<tag>`, where the tag is mostly used as a version description of the image|
+|`softwareType`|`container`. This indicates that the package should be managed by the `container` software management plugin|
 |`url`|Optional url pointing to the container image in a tarball format. The file is downloaded and loaded into the container engine, prior to starting the container. The image inside the gzip **MUST** match the one given by the `version` property!|
 
 ### Install/remove a `container-group`
@@ -77,7 +78,8 @@ The software package properties are also describe below:
 |Property|Description|
 |----|-----|
 |`name`|Name of the project (this will be the logical name that represents all of the services/networks/volumes in the docker compose file|
-|`version`|A custom defined version number to help track which version of the docker compose file is deployed. Technically this can be anything as it does not have an influence on the actual docker compose command, it is purely used for tracking on the cloud side. The version must have a suffix of `::container-group` to indicate that the package should be managed by the `container-group` sm-plugin|
+|`version`|A custom defined version number to help track which version of the docker compose file is deployed. Technically this can be anything as it does not have an influence on the actual docker compose command, it is purely used for tracking on the cloud side|
+|`softwareType`|`container-group`. This indicates that the package should be managed by the `container-group` software management plugin|
 |`url`|The url to the uploaded `docker-compose.yaml` file. This is a MANDATORY field and cannot be left blank.|
 
 
