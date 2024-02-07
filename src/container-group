@@ -171,8 +171,29 @@ case "$COMMAND" in
             $COMPOSE_CLI down ||:
         fi
 
+        # Handling zip files 
+        log "Removing files in $LOCAL_MODULE_PATH except for 'version'"
+        find "$LOCAL_MODULE_PATH" -mindepth 1 -path "$LOCAL_MODULE_PATH/version" -prune -o -exec rm -rf {} +
+
+        IS_ZIP_FILE=false
+        if file "$FILE" | grep -q 'Zip archive data'; then        
+            log "Extracting zip file to $LOCAL_MODULE_PATH"
+            unzip -o "$FILE" -d "$LOCAL_MODULE_PATH"
+            DOCKER_COMPOSE_FILE=$(find "$LOCAL_MODULE_PATH" -name 'docker-compose.yaml' -o -name 'docker-compose.yml' | head -1)
+            if [ -z "$DOCKER_COMPOSE_FILE" ]; then
+                log "No docker-compose file found in the zip archive."
+                exit "$EXIT_FAILURE"
+            fi
+            FILE="$DOCKER_COMPOSE_FILE"
+            IS_ZIP_FILE=true
+        fi
+
         log "Storing module version: $VERSION_FILE"
-        cp "$FILE" "$LOCAL_MODULE_PATH/docker-compose.yaml"
+
+        # Copy the file to docker-compose.yaml only if it's not a zip file
+        if [ "$IS_ZIP_FILE" = false ]; then
+            cp "$FILE" "$LOCAL_MODULE_PATH/docker-compose.yaml"
+        fi
         echo "${MODULE_VERSION}" > "$VERSION_FILE"
 
         EXIT_CODE="$EXIT_OK"
