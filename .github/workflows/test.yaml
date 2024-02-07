@@ -108,6 +108,7 @@ jobs:
 
   generate_report:
     name: Publish report
+    permissions: write-all
     if: ${{ always() && github.event_name == 'pull_request_target' }}
     continue-on-error: true
     needs: [test]
