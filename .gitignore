@@ -1,5 +1,4 @@
 dist/
-.vscode/
 .DS_Store
 *.env
 

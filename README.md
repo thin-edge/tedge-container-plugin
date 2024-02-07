@@ -283,6 +283,45 @@ To build the linux packages use the following steps:
 
     The built packages are created under the `./dist` folder.
 
+### Running system tests
+
+You can run the system tests can be run locally, however if you're having problem, look at the [test.yaml](.github/workflows/test.yaml) workflow for the tests as this is known to work.
+
+If you're using VS Code, then you can also install the following extensions to enable running tests via the `tests/*robot` files:
+* robocorp.robocorp-code
+* robocorp.robotframework-lsp
+
+To run the tests you will need to have python3 &gt;> 3.9 installed on your system, then run the following
+
+1. Create a `.env` file, and set you Cumulocity IoT credentials
+
+   ```
+   DEVICE_ID=ci_mydevice
+   C8Y_BASEURL=mytenant.eu-latest.cumulocity.com
+   C8Y_USER=admin
+   C8Y_PASSWORD="mypassword"
+   ```
+
+2. Startup the test setup, and bootstrap it
+
+   ```
+   just up
+
+   just bootstrap
+   ```
+
+3. Setup the python3 virtual environment and install the test dependencies
+
+   ```
+   just venv
+   ```
+
+4. Run the RobotFramework tests
+
+   ```
+   just test
+   ```
+
 ### Building UI
 
 To build the ui use the following steps:
