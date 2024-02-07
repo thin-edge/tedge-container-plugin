@@ -24,6 +24,7 @@ jobs:
 
   test:
     name: Test
+    needs: [approve]
     environment:
       name: Test Auto
     runs-on: ubuntu-latest
