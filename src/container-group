@@ -202,8 +202,8 @@ case "$COMMAND" in
         # TODO: service monitoring does not support deleting a service
         # so at least mark it as uninstalled
         if command -V tedge >/dev/null 2>&1; then
-            for item in $(docker ps -a --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.Label \"com.docker.compose.project\" }}::{{.Label \"com.docker.compose.service\" }}"); do
-                if [ "$item" != "::" ]; then
+            for item in $(docker ps -a --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.Label \"com.docker.compose.project\" }}@{{.Label \"com.docker.compose.service\" }}"); do
+                if [ "$item" != "@" ]; then
                     log "Updating health endpoint status to uninstalled. service=$item"
                     MESSAGE="$(printf '{"status":"uninstalled","type":"%s"}' "${GROUP_SERVICE_TYPE:-"container-group"}" )"
                     publish_health "$item" "$MESSAGE" ||:

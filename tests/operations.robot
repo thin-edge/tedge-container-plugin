@@ -23,11 +23,13 @@ Install container-group package
     ${operation}=    Cumulocity.Execute Shell Command    wget -O- nginx:80
     Operation Should Be SUCCESSFUL    ${operation}
     Should Contain    ${operation.to_json()["c8y_Command"]["result"]}    Welcome to nginx
+    Cumulocity.Should Have Services    name=nginx@nginx    service_type=container-group    status=up
 
 Uninstall container-group
     ${operation}=     Cumulocity.Uninstall Software    {"name": "nginx", "version": "1.0.0", "softwareType": "container-group"}
     Operation Should Be SUCCESSFUL    ${operation}
     Device Should Not Have Installed Software    nginx
+    Cumulocity.Should Have Services    name=nginx@nginx    service_type=container-group    status=uninstalled
 
 Install container package
     ${operation}=    Cumulocity.Install Software    {"name": "webserver", "version": "httpd:2.4", "softwareType": "container"}

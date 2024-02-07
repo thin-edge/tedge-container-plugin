@@ -83,7 +83,7 @@ The following properties are stored on the service managed object.
     "serviceName": "tedge",
     "state": "running",
   },
-  "name": "tedge-device::tedge",
+  "name": "tedge-device@tedge",
   "serviceType": "container-group",
   "status": "up",
   "type": "c8y_Service",
