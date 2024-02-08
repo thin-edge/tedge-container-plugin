@@ -14,7 +14,7 @@ The instructions assume that you are using thin-edge.io &gt;= 1.0.0
 * A service called `tedge-container-monitor`. This provides the monitoring of the containers
 * The following software management plugins which is called when installing and removing containers/container groups via Cumulocity IoT
     * `container` - Deploy a single container (`docker run xxx` equivalent)
-    * `container-group` - Deploy one or more container as defined by a `docker-compose.yaml` file (`docker compose up` equivalent)
+    * `container-group` - Deploy one or more container as defined by a `docker-compose.yaml` file (`docker compose up` equivalent), or an archive (gzip or zip)
 
 **Note**
 
@@ -46,7 +46,7 @@ The following linux package formats are provided on the releases page and also i
 The following features are supported by the plugin:
 
 * Install/remove containers via the Cumulocity IoT software interface
-* Install multiple containers as one group using a `docker-compose.yaml` file
+* Install multiple containers as one group using a `docker-compose.yaml` file or an archive container a `docker-compose.yaml` file
 * Monitor container states (e.g. up/down) via Cumulocity IoT Services (only supported from tedge >= 0.10.0)
 * Download container images via Cumulocity IoT binaries if a URL is provided
 * Support for multiple container engines (docker, podman, nerdctl)
@@ -71,7 +71,7 @@ The software package properties are also describe below:
 
 ### Install/remove a `container-group`
 
-A `container-group` is the name given to deploy a `docker-compose.yaml` file. A docker compose file allows use to deploy multiple containers/networks/volumes and allows you maximum control over how the container is started. This means you can create a complex setup of persisted volumes, isolated networks, and also facilitate communication between containers. Check out the [docker compose documentation](https://docs.docker.com/compose/compose-file/) for more details on how to write your own service definition.
+A `container-group` is the name given to deploy a `docker-compose.yaml` file or an archive (zip or gzip file) with the `docker-compose.yaml` file at the root level of the archive. A docker compose file allows use to deploy multiple containers/networks/volumes and allows you maximum control over how the container is started. This means you can create a complex setup of persisted volumes, isolated networks, and also facilitate communication between containers. Check out the [docker compose documentation](https://docs.docker.com/compose/compose-file/) for more details on how to write your own service definition.
 
 The software package properties are also describe below:
 
@@ -302,7 +302,13 @@ To run the tests you will need to have python3 &gt;> 3.9 installed on your syste
    C8Y_PASSWORD="mypassword"
    ```
 
-2. Startup the test setup, and bootstrap it
+2. Build the software management plugin
+
+   ```
+   just build
+   ```
+
+3. Startup the test setup, and bootstrap it
 
    ```
    just up
@@ -310,13 +316,13 @@ To run the tests you will need to have python3 &gt;> 3.9 installed on your syste
    just bootstrap
    ```
 
-3. Setup the python3 virtual environment and install the test dependencies
+4. Setup the python3 virtual environment and install the test dependencies
 
    ```
    just venv
    ```
 
-4. Run the RobotFramework tests
+5. Run the RobotFramework tests
 
    ```
    just test
