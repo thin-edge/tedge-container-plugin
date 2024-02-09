@@ -182,7 +182,7 @@ case "$COMMAND" in
         # Note: alpine does not have "file" installed out of the box
         FILE_TYPE="unknown"
         if command -v file >/dev/null 2>&1; then
-            FILE_TYPE=$(file -db --mime-type "$FILE")
+            FILE_TYPE=$(file -db --mime-type "$FILE" 2>/dev/null)
         elif unzip -t "$FILE" >/dev/null 2>&1; then
             FILE_TYPE="application/zip"
         elif tar tf "$FILE" >/dev/null 2>&1; then
