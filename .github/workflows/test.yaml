@@ -59,9 +59,7 @@ jobs:
           cache-dependency-path: |
             tests/requirements.txt
 
-      - uses: extractions/setup-just@v1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: taiki-e/install-action@just
 
       #
       # Build
