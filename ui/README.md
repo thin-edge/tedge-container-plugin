@@ -20,8 +20,8 @@ The tab will be enabled for all services of type container. Displays the contain
 
 ### Container Management Tab
 
-The tab will be enabled for all devices with a childAddtion with serviceType=container. Lists all containers in a grid or list.The search can be used for the image name and the project id. The list can include/exclude the containers that are part of a container group.
+The tab will be enabled for all devices with a childAddition with serviceType=container or serviceType=container-group. Lists all containers in a grid or list.The search can be used for the image name and the project id. The list can include/exclude the containers that are part of a container group.
 
 ### Container Group Management Tab
 
-The tab will be enabled for all devices with a childAddtion with serviceType=container. Lists all containers that are part of a project. The filter/search can be used to search for project names or container images.
+The tab will be enabled for all devices with a childAddition with serviceType=container or serviceType=container-group. Lists all containers that are part of a project. The filter/search can be used to search for project names or container images.
