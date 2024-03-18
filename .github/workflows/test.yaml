@@ -32,16 +32,10 @@ jobs:
       COMPOSE_PROJECT_NAME: ci_${{github.run_id}}_${{github.run_attempt || '1'}}
       DEVICE_ID: ci_${{github.run_id}}_${{github.run_attempt || '1'}}
     steps:
-      # Checkout either the PR or the branch
-      - name: Checkout PR
-        if: ${{ github.event_name == 'pull_request_target' }}
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }} # Check out the code of the PR. Only after the manual approval process
-
       - name: Checkout
         uses: actions/checkout@v4
-        if: ${{ github.event_name != 'pull_request_target' }}
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || '' }}
 
       - name: create .env file
         run: |
