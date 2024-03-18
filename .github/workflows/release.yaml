@@ -19,6 +19,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '>=1.17.0'
+          cache: false
       - run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
         name: Install dependencies      
       - name: Install node.js dependencies
@@ -35,9 +36,10 @@ jobs:
       - name: Build and zip UI-Plugin
         run : |
               cd ./ui
+              UI_VERSION=$(jq -r .version package.json)
               npm run build-ci
               cd dist/apps/tedge-container-plugin-ui
-              zip -r -q ../../../../dist/tedge-container-plugin-ui.zip *
+              zip -r -q "../../../../dist/tedge-container-plugin-ui_${UI_VERSION}.zip" *
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -45,7 +47,7 @@ jobs:
           path: dist/*
 
       - name: Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
