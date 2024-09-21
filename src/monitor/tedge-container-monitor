@@ -312,7 +312,7 @@ startup(){
     info "Started background health-check listener. pid=$SUB_PID"
 
     register_service "$SERVICE_NAME" "service"
-    MESSAGE=$(printf '{"status":"up","pid":"%s"}' "$SUB_PID")
+    MESSAGE=$(printf '{"status":"up"}')
     publish_health "$SERVICE_NAME" "$MESSAGE"
 }
 
@@ -415,7 +415,7 @@ check_health() {
                 ;;
         esac
         register_service "$NAME" "$SERVICE_TYPE"
-        MESSAGE=$(printf '{"pid":"%s","status":"%s"}' "$NAME" "$STATUS")
+        MESSAGE=$(printf '{"status":"%s"}' "$STATUS")
         publish_health "$NAME" "$MESSAGE"
     done
 
@@ -441,7 +441,7 @@ check_health() {
             esac
 
             register_service "$CLOUD_SERVICE_NAME" "$GROUP_SERVICE_TYPE"
-            MESSAGE=$(printf '{"pid":"%s","status":"%s"}' "$CLOUD_SERVICE_NAME" "$STATUS")
+            MESSAGE=$(printf '{"status":"%s"}' "$STATUS")
             publish_health "$CLOUD_SERVICE_NAME" "$MESSAGE"
         done
     fi
