@@ -324,13 +324,15 @@ listen() {
     info "Subscribing to health-check messages"
     # Subscribe to the health-check topic, and just pass the topic to
     # this same script (to do a single on-demand health check for the given service)
+    # Note: https://github.com/thin-edge/tedge-container-plugin/issues/37
+    # Don't publish a service down message as if mosquitto is restarted, then the
+    # service down message (via the LWT) will be published, the mosquitto_sub will reconnect
+    # but then no new service up message will be published.
+    # 
     mosquitto_sub \
         --id "mosquitto_sub_${SERVICE_NAME}" \
         -h "$MQTT_HOST" \
         -p "$MQTT_PORT" \
-        --will-topic "$TOPIC_PREFIX/service/${SERVICE_NAME}/status/health" \
-        --will-payload "{\"status\":\"down\"}" \
-        --will-retain \
         -t "$TOPIC_PREFIX/service/+/cmd/health/check" \
         -F '%t' | while read -r topic; do
             name=$(echo "$topic" | cut -d/ -f 5)
