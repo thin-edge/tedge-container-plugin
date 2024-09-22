@@ -41,6 +41,7 @@ VALIDATE_TAR_CONTENTS=0
 CONTAINER_CLI=
 CONTAINER_CLI_OPTIONS="docker podman nerdctl"
 CONTAINER_RUN_OPTIONS=
+ALWAYS_PULL_IMAGE=0
 
 # Only read the file if it has the correct permissions, to prevent people from editing it
 # and side-loading functions
@@ -143,8 +144,17 @@ case "$COMMAND" in
     install)
         # Import container image
         if [ -z "$FILE" ]; then
-            log "Pulling image: ${MODULE_VERSION}"
-            "$CONTAINER_CLI" pull "${MODULE_VERSION}"
+            EXISTING_IMAGE_ID=$("$CONTAINER_CLI" images -q "${MODULE_VERSION}")
+
+            if [ "$ALWAYS_PULL_IMAGE" = 1 ] || [ -z "$EXISTING_IMAGE_ID" ]; then
+                log "Pulling image (ALWAYS_PULL_IMAGE=$ALWAYS_PULL_IMAGE): ${MODULE_VERSION}"
+                "$CONTAINER_CLI" pull "${MODULE_VERSION}"
+            else
+                # log info about why the image wasn't pulled
+                if [ "$ALWAYS_PULL_IMAGE" = 0 ]; then
+                    log "Skipping image pull as the image is already present. IMAGE_PRESENT=$EXISTING_IMAGE_ID"
+                fi
+            fi
         elif [ -f "$FILE" ]; then
             log "Loading image from file: $FILE"
             CMD_OUTPUT=$("$CONTAINER_CLI" load --input "$FILE" 2>&1)

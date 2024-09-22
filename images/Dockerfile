@@ -17,4 +17,4 @@ RUN apt-get update \
 COPY ./images/container-env /etc/tedge-container-plugin/env
 
 COPY dist/tedge-container-plugin*.deb /tmp/
-RUN dpkg -i /tmp/*.deb
+RUN apt-get install -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" --allow-downgrades -y /tmp/*.deb
