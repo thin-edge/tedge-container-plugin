@@ -92,6 +92,7 @@ The container software management plugin can be configured with the following pr
 |`PRUNE_IMAGES`|`0` or `1`|Prune any unused images after creating/deleting the containers. This is turned off by default|
 |`VALIDATE_TAR_CONTENTS`|`0` or `1`|If the image is in a tarball format, then this setting controls whether the contains of the tarball should be validated against the image name and tag provided in the `version` field of the software package. This is useful to protect against accidentally uploading the wrong binary images to the wrong software packages.|
 |`CONTAINER_RUN_OPTIONS`|String. Example `"--cpus 1 --memory 64m"`|Additional command options to be used when creating/starting the containers. The options will be used by all containers|
+|`ALWAYS_PULL_IMAGE`|`0` or `1`. Always try pulling the image without checking if a local image already exists or not|
 
 The configuration is managed from the following file, and an example of the contents are shown below.
 
@@ -107,6 +108,7 @@ The configuration is managed from the following file, and an example of the cont
 PRUNE_IMAGES=0
 VALIDATE_TAR_CONTENTS=0
 CONTAINER_RUN_OPTIONS="--cpus 1 --memory 64m"
+ALWAYS_PULL_IMAGE=0
 ```
 
 ### Monitoring
