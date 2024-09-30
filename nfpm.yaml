@@ -49,7 +49,7 @@ contents:
   - src: ./src/monitor/services/systemd/tedge-container-monitor.service
     dst: /usr/lib/systemd/system/tedge-container-monitor.service
     file_info:
-      mode: 0755
+      mode: 0644
       owner: tedge
       group: tedge
 
