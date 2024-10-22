@@ -1,6 +1,6 @@
 {
   "name": "tedge-container-plugin-ui",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "UI for the tedge-container-plugin to monitor installed containers and container groups.",
   "scripts": {
     "start": "c8ycli server -u $C8Y_URL --shell devicemanagement",
