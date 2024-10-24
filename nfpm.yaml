@@ -38,6 +38,13 @@ contents:
       owner: tedge
       group: tedge
 
+  - src: ./src/container-cli
+    dst: /usr/bin/container-cli
+    file_info:
+      mode: 0755
+      owner: root
+      group: root
+
   - src: ./src/monitor/env
     dst: /etc/tedge-container-plugin/env
     type: config|noreplace
