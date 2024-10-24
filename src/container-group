@@ -334,11 +334,6 @@ case "$COMMAND" in
                     fi
                 done
             fi
-
-            # Trigger status update
-            if [ "$CONTAINER_LEGACY_STATUS_UPDATE" = 0 ]; then
-                publish_health_check_request tedge-container-monitor
-            fi
         fi
 
         MANUAL_CLEANUP=1
@@ -379,6 +374,13 @@ case "$COMMAND" in
             for item in $(docker volume ls --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.Name}}"); do
                 docker volume rm --force "$item"
             done
+        fi
+
+        # Trigger status update
+        if [ "$CONTAINER_LEGACY_STATUS_UPDATE" = 0 ]; then
+            if command -V tedge >/dev/null 2>&1; then
+                publish_health_check_request tedge-container-monitor
+            fi
         fi
         ;;
 
