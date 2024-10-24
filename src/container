@@ -42,6 +42,8 @@ CONTAINER_CLI=
 CONTAINER_CLI_OPTIONS="docker podman nerdctl"
 CONTAINER_RUN_OPTIONS=
 ALWAYS_PULL_IMAGE=0
+# use a dedicate network to make it easier to reach all the application
+CONTAINER_DEFAULT_NETWORK=tedge
 
 # Only read the file if it has the correct permissions, to prevent people from editing it
 # and side-loading functions
@@ -192,6 +194,17 @@ case "$COMMAND" in
             log "Adding custom run options: $CONTAINER_RUN_OPTIONS"
         fi
 
+        NETWORK_OPTIONS=
+        if [ -n "$CONTAINER_DEFAULT_NETWORK" ]; then
+            if ! "$CONTAINER_CLI" network inspect "$CONTAINER_DEFAULT_NETWORK"; then
+                if ! "$CONTAINER_CLI" network create "$CONTAINER_DEFAULT_NETWORK"; then
+                    log "Failed to create container network. name=$CONTAINER_DEFAULT_NETWORK"
+                    exit "$EXIT_FAILURE"
+                fi
+            fi
+            NETWORK_OPTIONS="--network $CONTAINER_DEFAULT_NETWORK"
+        fi
+
         # Note: $CONTAINER_RUN_OPTIONS CAN NOT be surrouded with quotes as we are in 
         # sh not bash, and we need to expand the arguments to . In bash this would be done in any array
         # using "${CONTAINER_RUN_OPTIONS[@]}", but in a posix shell we have limited options.
@@ -200,6 +213,7 @@ case "$COMMAND" in
             -d \
             --publish-all \
             --name "${MODULE_NAME}" \
+            $NETWORK_OPTIONS \
             $CONTAINER_RUN_OPTIONS \
             "${MODULE_VERSION}"
 
