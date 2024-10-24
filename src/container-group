@@ -39,6 +39,12 @@ FILE=
 COMPOSE_CLI=
 # COMPOSE_CLI_OPTIONS="docker compose,docker-compose,podman-compose"
 
+CONTAINER_CLI=
+CONTAINER_CLI_OPTIONS="docker podman nerdctl"
+
+# use a dedicate network to make it easier to reach all the application
+CONTAINER_DEFAULT_NETWORK=tedge
+
 # Only read the file if it has the correct permissions, to prevent people from editing it
 # and side-loading functions
 SETTINGS_FILE=/etc/tedge-container-plugin/env
@@ -70,6 +76,17 @@ if [ -z "$COMPOSE_CLI" ]; then
         log "No docker-compose compatible binary found. container-group software types will not be supported"
         exit "$EXIT_USAGE"
     fi
+fi
+
+# Detect which container cli is available (used to create a common network)
+if [ -z "$CONTAINER_CLI" ]; then
+    for cli in $CONTAINER_CLI_OPTIONS; do
+        if command -v "$cli" >/dev/null 2>&1; then
+            log "Using $cli as the container cli"
+            CONTAINER_CLI="$cli"
+            break
+        fi
+    done
 fi
 
 # argument parsing
@@ -238,6 +255,16 @@ case "$COMMAND" in
                 cp "$FILE" "$LOCAL_MODULE_PATH/docker-compose.yaml"
                 ;;
         esac
+
+        # Create common docker network
+        if [ -n "$CONTAINER_DEFAULT_NETWORK" ]; then
+            if ! "$CONTAINER_CLI" network inspect "$CONTAINER_DEFAULT_NETWORK"; then
+                if ! "$CONTAINER_CLI" network create "$CONTAINER_DEFAULT_NETWORK"; then
+                    log "Failed to create container network. name=$CONTAINER_DEFAULT_NETWORK"
+                    exit "$EXIT_FAILURE"
+                fi
+            fi
+        fi
 
         log "Storing module version: $VERSION_FILE"
         echo "${MODULE_VERSION}" > "$VERSION_FILE"
