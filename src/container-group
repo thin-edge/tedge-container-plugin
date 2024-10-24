@@ -45,6 +45,9 @@ CONTAINER_CLI_OPTIONS="docker podman nerdctl"
 # use a dedicate network to make it easier to reach all the application
 CONTAINER_DEFAULT_NETWORK=tedge
 
+# (soon to be) Legacy status update
+CONTAINER_LEGACY_STATUS_UPDATE=1
+
 # Only read the file if it has the correct permissions, to prevent people from editing it
 # and side-loading functions
 SETTINGS_FILE=/etc/tedge-container-plugin/env
@@ -145,6 +148,24 @@ publish_health() {
 
     if [ -n "$SERVICE_TOPIC" ]; then
         tedge mqtt pub -r "$TOPIC_ROOT/$SERVICE_TOPIC/status/health" "$2" ||:
+    fi
+}
+
+publish_health_check_request() {
+    TOPIC_ROOT=$(tedge config get mqtt.topic_root)
+    TOPIC_ID=$(tedge config get mqtt.device_topic_id)
+    SERVICE_NAME="$1"
+    
+    SERVICE_TOPIC=""
+    case "$TOPIC_ID" in
+        */*//)
+            parent="$(echo "$TOPIC_ID" | sed 's/\/*$//')"
+            SERVICE_TOPIC="$parent/service/$SERVICE_NAME"
+            ;;
+    esac
+
+    if [ -n "$SERVICE_TOPIC" ]; then
+        tedge mqtt pub -q 0 "$TOPIC_ROOT/$SERVICE_TOPIC/cmd/health/check" "{}" ||:
     fi
 }
 
@@ -280,11 +301,18 @@ case "$COMMAND" in
             log "Succesfully deployed project"
         fi
 
-        if command -v tedge-container-monitor >/dev/null 2>&1; then
-            # Wait before checking the first status
-            sleep 1
-            log "Trying to update container health status for $MODULE_NAME"
-            tedge-container-monitor "$MODULE_NAME" ||:
+        if [ "$CONTAINER_LEGACY_STATUS_UPDATE" = 1 ]; then
+            if command -v tedge-container-monitor >/dev/null 2>&1; then
+                # Wait before checking the first status
+                sleep 1
+                log "Trying to update container health status for $MODULE_NAME"
+                tedge-container-monitor "$MODULE_NAME" ||:
+            fi
+        fi
+
+        # Trigger status update
+        if [ "$CONTAINER_LEGACY_STATUS_UPDATE" = 0 ]; then
+            publish_health_check_request tedge-container-monitor
         fi
 
         exit "$EXIT_CODE"
@@ -297,13 +325,20 @@ case "$COMMAND" in
         # TODO: service monitoring does not support deleting a service
         # so at least mark it as uninstalled
         if command -V tedge >/dev/null 2>&1; then
-            for item in $(docker ps -a --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.Label \"com.docker.compose.project\" }}@{{.Label \"com.docker.compose.service\" }}"); do
-                if [ "$item" != "@" ]; then
-                    log "Updating health endpoint status to uninstalled. service=$item"
-                    MESSAGE="$(printf '{"status":"uninstalled","type":"%s"}' "${GROUP_SERVICE_TYPE:-"container-group"}" )"
-                    publish_health "$item" "$MESSAGE" ||:
-                fi
-            done
+            if [ "$CONTAINER_LEGACY_STATUS_UPDATE" = 1 ]; then
+                for item in $(docker ps -a --filter "label=com.docker.compose.project=$MODULE_NAME" --format "{{.Label \"com.docker.compose.project\" }}@{{.Label \"com.docker.compose.service\" }}"); do
+                    if [ "$item" != "@" ]; then
+                        log "Updating health endpoint status to uninstalled. service=$item"
+                        MESSAGE="$(printf '{"status":"uninstalled","type":"%s"}' "${GROUP_SERVICE_TYPE:-"container-group"}" )"
+                        publish_health "$item" "$MESSAGE" ||:
+                    fi
+                done
+            fi
+
+            # Trigger status update
+            if [ "$CONTAINER_LEGACY_STATUS_UPDATE" = 0 ]; then
+                publish_health_check_request tedge-container-monitor
+            fi
         fi
 
         MANUAL_CLEANUP=1
