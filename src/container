@@ -217,11 +217,11 @@ case "$COMMAND" in
             $CONTAINER_RUN_OPTIONS \
             "${MODULE_VERSION}"
 
-        if command -v /usr/bin/tedge-container-monitor >/dev/null 2>&1; then
+        if command -v tedge-container-monitor >/dev/null 2>&1; then
             # Wait before checking the first status
             sleep 1
             log "Trying to update container health status for $MODULE_NAME"
-            /usr/bin/tedge-container-monitor "$MODULE_NAME" ||:
+            tedge-container-monitor "$MODULE_NAME" ||:
         fi
 
         ;;
