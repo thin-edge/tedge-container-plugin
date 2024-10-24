@@ -53,8 +53,12 @@ fi
 
 if [ -n "$FOUND_FILE" ]; then
     log "Loading setting file: $SETTINGS_FILE"
+    # Note: automatically export sourced variables to the environment
+    # as cli commands need to react to variables such as: DOCKER_HOST
+    set -a
     # shellcheck disable=SC1091,SC1090
     . "$SETTINGS_FILE"
+    set +a
 fi
 
 # Detect which container cli is available

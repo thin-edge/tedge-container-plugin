@@ -106,8 +106,10 @@ load_settings() {
 
     if [ -n "$FOUND_FILE" ]; then
         debug "Reloading setting file: $SETTINGS_FILE"
+        set -a
         # shellcheck disable=SC1091,SC1090
         . "$SETTINGS_FILE"
+        set +a
 
         # Convert log level before using any of the log helpers!
         LOG_LEVEL=$(convert_loglevel "$LOG_LEVEL")
