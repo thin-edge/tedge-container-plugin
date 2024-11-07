@@ -93,77 +93,30 @@ Checkout the [TELEMETRY](./docs/TELEMETRY.md) docs for details on what is includ
 
 The tedge-container-plugin can be configured with the following properties.
 
-|Property|Value|Description|
-|--|--|--|
-|`PRUNE_IMAGES`|`0` or `1`|Prune any unused images after creating/deleting the containers. This is turned off by default|
-|`VALIDATE_TAR_CONTENTS`|`0` or `1`|If the image is in a tarball format, then this setting controls whether the contains of the tarball should be validated against the image name and tag provided in the `version` field of the software package. This is useful to protect against accidentally uploading the wrong binary images to the wrong software packages.|
-|`CONTAINER_RUN_OPTIONS`|String. Example `"--cpus 1 --memory 64m"`|Additional command options to be used when creating/starting the containers. The options will be used by all containers|
-|`ALWAYS_PULL_IMAGE`|`0` or `1`|Always try pulling the image without checking if a local image already exists or not|
-|`CONTAINER_DEFAULT_NETWORK`|String. Example `tedge`|Default network to add when creating a new container|
-|`CONTAINER_CLI_OPTIONS`|`docker podman nerdctl`|List of container cli tools to auto detect. This has no effect if `CONTAINER_CLI` has a non-empty value. The first command which is found will be used. It assumes that the device is only running one container engine at a time.|
-|`CONTAINER_CLI`|`podman`|Explicitly control which container cli tool will be used. Set this if you know which cli is available on the device|
-|`INTERVAL`|`60`|Interval in seconds on how often the container status/telemetry should be collected. The interval will be the minimal interval as it is the time to sleep between collections|
-|`TELEMETRY`|`1` or `0`|Enable/disable the container telemetry metrics such as memory etc. Regardless of this value, the containers status will still be sent, but the measurements will not|
-|`META_INFO`|`1` or `0`|Enable/disable the container meta information collection (e.g. container id, image, ports, network etc.|
-|`MONITOR_COMPOSE_PROJECTS`|`1` or `0`|Enable/disable the monitoring of docker compose deployments. It is turned on by default, however it will be automatically disabled if docker compose is not available.|
-|`LOG_LEVEL`|`debug`, `info`, `warn`, `error`|Service log level|
-|`SERVICE_TYPE`|`container`|Service type to be used in the service monitoring for single container deployments|
-|`GROUP_SERVICE_TYPE`|`container-group`|Service type used in the service monitoring for docker compose deployments|
+A default configuration is provided in the package, [tedge-container-plugin/config.toml](./packaging/config.toml) and it include a description of each property.
 
 
-#### Troubleshooting
-
-##### Systemd
-
-**Start**
+**Default Configuration file location**
 
 ```sh
-sudo systemctl start tedge-container-monitor
+/etc/tedge-container-plugin/config.toml
 ```
 
-**Stop**
+**Note**
 
-```sh
-sudo systemctl stop tedge-container-monitor
-```
+The configuration can be controlled by setting environment variables. The configuration property name to environment variable name can be translated using the following rules:
 
-**Reload (configuration)**
+* Use the `CONTAINER_` prefix
+* Upper case the 
+* Replace the `.` character with an underscore `_`
 
-```sh
-sudo systemctl reload tedge-container-monitor
-```
+Below are some examples showing the mapping between the configuration values and environment variables:
 
-**Get Logs**
-
-```sh
-sudo journalctl -u tedge-container-monitor -f
-```
-
-##### init.d/open-rc
-
-**Start**
-
-```sh
-sudo service tedge-container-monitor start
-```
-
-**Stop**
-
-```sh
-sudo service tedge-container-monitor stop
-```
-
-**Reload (configuration)**
-
-```sh
-sudo service tedge-container-monitor reload
-```
-
-**Get Logs**
-
-```sh
-tail -f /var/log/tedge-container-monitor.err
-```
+|Configuration|EnvironmentVariable|
+|-------------|-------------------|
+|`filter.exclude.name = ["type1", "type2"]`| `CONTAINER_FILTER_EXCLUDE_NAME=type1,type2` |
+|`container.alwayspull= true`| `CONTAINER_CONTAINER_ALWAYSPULL=true` |
+|`container.network= true`| `CONTAINER_CONTAINER_NETWORK=tedge` |
 
 ### UI Plugin
 
