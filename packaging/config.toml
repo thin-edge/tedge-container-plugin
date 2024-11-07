@@ -1,40 +1,62 @@
+# Log level. values=debug, info, warn, error
 log_level = "info"
+
+# Service name used to show the status of the service
 service_name = "tedge-container-plugin"
 
 [filter.include]
+# Only include containers matching the given names (as regex)
 names = [ ]
-ids = [ ]
+
+# Only include containers with any of the given labels
 labels = [ ]
-types = [ ]
 
 [filter.exclude]
+# Exclude containers where the name matches the given regex patterns
 names = [ "^buildx.*" ]
+
+# Exclude containers which have any of the given labels
 labels = [ "tedge.ignore" ]
 
 [client]
+# Certificate key used to connect to local thin-edge.io services (only used if the file exists)
 key = "/etc/tedge/device-certs/local-tedge.key"
+# Certificate file used to connect to local thin-edge.io services (only used if the file exists)
 cert_file = "/etc/tedge/device-certs/local-tedge.crt"
 
   [client.mqtt]
+  # thin-edge.io MQTT host
   host = "127.0.0.1"
   # 0 = auto-detection, either 8883 when using certificates, or 1883 (no certificates)
   port = 0
 
   [client.c8y]
+  # thin-edge.io c8y local proxy host
   host = "127.0.0.1"
-  port = 8_001
+  # thin-edge.io c8y local proxy port
+  port = 8001
 
 [container]
+# Always try pulling the image without checking if a local image already exists or not
 alwayspull = false
+
+# Shared network which each container will be joined to
 network = "tedge"
+
+# Prune any unused images after creating/deleting the containers
 pruneimages = false
 
 [metrics]
+# Enable/disable the container telemetry metrics such as memory etc. Regardless of this value, the containers status will still be sent, but the measurements will not
 enabled = true
+
+# How often the container status/telemetry should be collected. The interval will be the minimal interval as it is the time to sleep between collections
 interval = "300s"
 
 [events]
+# Enable/disable publishing of container engine events
 enabled = true
 
 [delete_from_cloud]
+# Enable/Disable the deletion of services from the cloud (using REST API) when a container is removed
 enabled = true
