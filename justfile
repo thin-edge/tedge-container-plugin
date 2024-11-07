@@ -1,52 +1,49 @@
 set dotenv-load
+set export
 
-build *ARGS:
-    ./ci/build.sh {{ARGS}}
+DEVICE_ID := env_var_or_default("DEVICE_ID", "CI_" + file_name(home_directory()) + "_tedge-container-plugin" )
+IMAGE := env_var_or_default("IMAGE", "debian-systemd-docker-cli")
+IMAGE_SRC := env_var_or_default("IMAGE_SRC", "debian-systemd-docker-cli")
 
-publish *ARGS:
-    ./ci/publish.sh {{ARGS}}
+# Initialize a dotenv file for usage with a local debugger
+# WARNING: It will override any previously generated dotenv file
+init-dotenv:
+  @echo "Recreating .env file..."
+  @echo "DEVICE_ID=$DEVICE_ID" > .env
+  @echo "IMAGE=$IMAGE" >> .env
+  @echo "IMAGE_SRC=$IMAGE_SRC" >> .env
+  @echo "C8Y_BASEURL=$C8Y_BASEURL" >> .env
+  @echo "C8Y_USER=$C8Y_USER" >> .env
+  @echo "C8Y_PASSWORD=$C8Y_PASSWORD" >> .env
 
-#
-# Testing
-#
+# Run linting
+lint:
+    golangci-lint run
 
-# Start the demo
-up *args="":
-    docker compose up -d --build {{args}}
+# Release all artifacts
+release *ARGS='':
+    mkdir -p output
+    go run main.go completion bash > output/completions.bash
+    go run main.go completion zsh > output/completions.zsh
+    go run main.go completion fish > output/completions.fish
 
-# Stop the demo
-down *args="":
-    docker compose down {{args}}
+    docker context use default
+    goreleaser release --clean --auto-snapshot {{ARGS}}
 
-# Stop the demo and destroy the data
-down-all:
-    docker compose down -v
-
-# Configure and register the device to the cloud
-bootstrap *args="":
-    docker compose exec --env "DEVICE_ID=${DEVICE_ID:-}" --env "C8Y_BASEURL=${C8Y_BASEURL:-}" --env "C8Y_USER=${C8Y_USER:-}" --env "C8Y_PASSWORD=${C8Y_PASSWORD:-}" tedge bootstrap.sh {{args}}
-
-# Start a shell
-shell *args='bash':
-    docker compose exec tedge {{args}}
-
-# Show logs of the main device
-logs *args='':
-    docker compose exec tedge journalctl -f -u "c8y-*" -u "tedge-*" {{args}}
-
+# Build a release locally (for testing the release artifacts)
+release-local:
+    just -f "{{justfile()}}" release --snapshot
 
 # Install python virtual environment
 venv:
   [ -d .venv ] || python3 -m venv .venv
   ./.venv/bin/pip3 install -r tests/requirements.txt
 
+# Build test images and test artifacts
+build-test:
+  docker build -t {{IMAGE}} -f ./test-images/{{IMAGE_SRC}}/Dockerfile .
+  ./tests/data/apps/build.sh
+
 # Run tests
 test *args='':
   ./.venv/bin/python3 -m robot.run --outputdir output {{args}} tests
-
-# Cleanup device and all it's dependencies
-cleanup DEVICE_ID $CI="true":
-    echo "Removing device and child devices (including certificates)"
-    c8y devicemanagement certificates list -n --tenant "$(c8y currenttenant get --select name --output csv)" --filter "name eq {{DEVICE_ID}}" --pageSize 2000 | c8y devicemanagement certificates delete --tenant "$(c8y currenttenant get --select name --output csv)"
-    c8y inventory find -n --owner "device_{{DEVICE_ID}}" -p 100 | c8y inventory delete
-    c8y users delete -n --id "device_{{DEVICE_ID}}" --tenant "$(c8y currenttenant get --select name --output csv)" --silentStatusCodes 404 --silentExit

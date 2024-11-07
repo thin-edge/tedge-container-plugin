@@ -1,0 +1,40 @@
+log_level = "info"
+service_name = "tedge-container-plugin"
+
+[filter.include]
+names = [ ]
+ids = [ ]
+labels = [ ]
+types = [ ]
+
+[filter.exclude]
+names = [ "^buildx.*" ]
+labels = [ "tedge.ignore" ]
+
+[client]
+key = "/etc/tedge/device-certs/local-tedge.key"
+cert_file = "/etc/tedge/device-certs/local-tedge.crt"
+
+  [client.mqtt]
+  host = "127.0.0.1"
+  # 0 = auto-detection, either 8883 when using certificates, or 1883 (no certificates)
+  port = 0
+
+  [client.c8y]
+  host = "127.0.0.1"
+  port = 8_001
+
+[container]
+alwayspull = false
+network = "tedge"
+pruneimages = false
+
+[metrics]
+enabled = true
+interval = "300s"
+
+[events]
+enabled = true
+
+[delete_from_cloud]
+enabled = true

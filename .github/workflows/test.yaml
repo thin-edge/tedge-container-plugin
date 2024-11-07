@@ -25,12 +25,23 @@ jobs:
   test:
     name: Test
     needs: [approve]
+    permissions:
+      pull-requests: write
     environment:
       name: Test Auto
     runs-on: ubuntu-latest
     env:
       COMPOSE_PROJECT_NAME: ci_${{github.run_id}}_${{github.run_attempt || '1'}}
-      DEVICE_ID: ci_${{github.run_id}}_${{github.run_attempt || '1'}}
+      IMAGE: ${{ matrix.job.image }}_ci_${{github.run_id}}_${{github.run_attempt || '1'}}
+      IMAGE_SRC: ${{ matrix.job.image }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - { image: debian-systemd-docker-cli }
+          - { image: debian-systemd-podman-cli }
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,15 +51,13 @@ jobs:
       - name: create .env file
         run: |
           touch .env
-          echo "DEVICE_ID=$DEVICE_ID" >> .env
           echo 'C8Y_BASEURL="${{ secrets.C8Y_BASEURL }}"' >> .env
           echo 'C8Y_USER="${{ secrets.C8Y_USER }}"' >> .env
           echo 'C8Y_PASSWORD="${{ secrets.C8Y_PASSWORD }}"' >> .env
-          cat .env
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.12'
           cache: 'pip'
           cache-dependency-path: |
             tests/requirements.txt
@@ -60,12 +69,14 @@ jobs:
       #
       - uses: actions/setup-go@v5
         with:
-          go-version: '>=1.17.0'
+          go-version: stable
           cache: false
       - name: Install dependencies
-        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+          go install github.com/goreleaser/goreleaser/v2@latest
       - name: Build package (for testing)
-        run: just build
+        run: just release-local
 
       #
       # Test
@@ -73,11 +84,7 @@ jobs:
       - name: Install dependencies
         run: |
           just venv
-
-      - name: Start demo
-        run: |
-          just up
-          just bootstrap --no-prompt
+          just build-test
 
       - name: Run tests
         run: just test
@@ -86,35 +93,12 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: reports
+          name: reports-${{ matrix.job.image }}
           path: output
 
-      - name: Stop demo
-        if: always()
-        run: just down-all
-
-      - uses: reubenmiller/setup-go-c8y-cli@main
-      - name: Cleanup Devices
-        if: always()
-        run: |
-          just cleanup "$DEVICE_ID"
-
-  generate_report:
-    name: Publish report
-    if: ${{ always() && github.event_name == 'pull_request_target' }}
-    continue-on-error: true
-    needs: [test]
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-    steps:
-    - uses: actions/checkout@v4
-    - name: Download reports
-      uses: actions/download-artifact@v4
-      with:
-        name: reports
-        path: reports
-    - name: Send report to commit
-      uses: joonvena/robotframework-reporter-action@v2.3
-      with:
-        gh_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Send report to commit
+        if: ${{ always() && github.event_name == 'pull_request_target' }}
+        uses: "joonvena/robotframework-reporter-action@v2.5"
+        with:
+          report_path: output
+          gh_access_token: ${{ secrets.GITHUB_TOKEN }}

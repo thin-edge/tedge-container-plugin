@@ -1,20 +1,31 @@
-FROM ghcr.io/thin-edge/tedge-demo-main-systemd:latest
+FROM gcr.io/distroless/static-debian12
+WORKDIR /app
+COPY bin/tedge-container /usr/bin
+ENTRYPOINT [ "/usr/bin/tedge-container" ]
 
-RUN install -m 0755 -d /etc/apt/keyrings \
-    && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
-    && sudo chmod a+r /etc/apt/keyrings/docker.asc \
-    # Add the repository to Apt sources:
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
-        $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-        sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+ENV CONTAINER_LOG_LEVEL=info
 
-RUN apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        docker-ce-cli \
-        docker-compose-plugin \
-        unzip
+ENV CONTAINER_FILTER_INCLUDE_IDS=
+ENV CONTAINER_FILTER_INCLUDE_LABELS=
+ENV CONTAINER_FILTER_INCLUDE_NAMES=
+ENV CONTAINER_FILTER_INCLUDE_TYPES=
+ENV CONTAINER_FILTER_EXCLUDE_LABELS=
+ENV CONTAINER_FILTER_EXCLUDE_NAMES=
 
-COPY ./images/container-env /etc/tedge-container-plugin/env
+ENV CONTAINER_DELETE_FROM_CLOUD_ENABLED=
+ENV CONTAINER_EVENTS_ENABLED=
+ENV CONTAINER_METRICS_ENABLED=
+ENV CONTAINER_METRICS_INTERVAL=
 
-COPY dist/tedge-container-plugin*.deb /tmp/
-RUN apt-get install -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" --allow-downgrades -y /tmp/*.deb
+ENV CONTAINER_TOPIC_ID=
+ENV CONTAINER_TOPIC_ROOT=
+ENV CONTAINER_SERVICE_NAME=
+
+ENV CONTAINER_DEVICE_ID=
+
+# TLS
+ENV CONTAINER_CLIENT_KEY=
+ENV CONTAINER_CLIENT_CERT_FILE=
+ENV CONTAINER_CLIENT_CA_FILE=
+
+CMD ["run"]

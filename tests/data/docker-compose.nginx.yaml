@@ -2,8 +2,11 @@ version: "3"
 services:
   nginx:
     image: nginx
+    hostname: nginx
     networks:
       - tedge
+    ports:
+      - 8080:80
 
 networks:
   tedge:

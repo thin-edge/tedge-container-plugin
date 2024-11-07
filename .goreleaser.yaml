@@ -1,0 +1,203 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+project_name: tedge-container
+version: 2
+
+release:
+  prerelease: auto
+  draft: true
+  name_template: "tedge-container-plugin {{.Version}}"
+
+builds:
+  - <<: &build_defaults
+      binary: 'bin/{{ if index .Env "BINARY_INCLUDE_VERSION" }}{{ .ProjectName }}_{{ .RawVersion }}_{{ if eq .Os "darwin" }}macOS{{ else }}{{ .Os }}{{ end }}_{{ .Arch }}{{ else }}{{ .ProjectName }}{{ end }}'
+      main: ./main.go
+      flags:
+        - -trimpath
+      ldflags:
+        - -s -w -X github.com/thin-edge/tedge-container-plugin/cmd.buildVersion={{.Version}} -X github.com/thin-edge/tedge-container-plugin/cmd.buildBranch={{.Branch}}
+
+    id: macOS
+    goos: [darwin]
+    goarch: [amd64, arm64]
+
+  - <<: *build_defaults
+    id: linux
+    goos: [linux]
+    goarch: ["386", arm, amd64, arm64]
+    goarm:
+    - "5"
+    - "6"
+    - "7"
+    env:
+      - CGO_ENABLED=0
+
+  - <<: *build_defaults
+    id: windows
+    goos: [windows]
+    goarch: ["386", amd64, arm64]
+
+archives:
+  - id: nix
+    builds: [linux]
+    <<: &archive_defaults
+      name_template: '{{ .ProjectName }}_{{ .Version }}_{{- if eq .Os "darwin" }}macOS{{- else }}{{ .Os }}{{ end }}_{{ .Arch }}{{- if ne .Arm "" }}_v{{ .Arm }}{{ end }}'
+    wrap_in_directory: "true"
+    format: tar.gz
+    files:
+      - LICENSE
+
+  - id: homebrew
+    builds: [macOS]
+    <<: *archive_defaults
+    wrap_in_directory: "true"
+    format: tar.gz
+    files:
+      - LICENSE
+
+  - id: windows
+    builds: [windows]
+    <<: *archive_defaults
+    wrap_in_directory: "false"
+    format: zip
+    files:
+      - LICENSE
+  
+  - id: plainBinaries
+    builds: [macOS, linux, windows]
+    # Don't include the binary version in the filename so it is easier to download the latest
+    <<: &archive_defaults
+      name_template: '{{ .ProjectName }}_{{- if eq .Os "darwin" }}macOS{{- else }}{{ .Os }}{{ end }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+    format: binary
+
+nfpms:
+  - 
+    package_name: tedge-container-plugin-ng
+    license: Apache 2.0
+    maintainer: thin-edge.io <thinedge@thin-edge.io>
+    homepage: https://github.com/thin-edge/tedge-container-plugin
+    bindir: /usr
+    description: thin-edge.io container monitor
+    section: utils
+    priority: optional
+    file_name_template: "{{ .PackageName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if .Mips }}_{{ .Mips }}{{ end }}"
+    formats:
+      - deb
+      - rpm
+      - apk
+
+    # FIXME: Remove for official release, as the package can be called "tedge-container-plugin" instead of "tedge-container-plugin-ng"
+    replaces:
+      - tedge-container-plugin
+    provides:
+      - tedge-container-plugin
+
+    scripts:
+      preremove: ./packaging/scripts/pre-remove
+      postinstall: ./packaging/scripts/post-install
+      postremove: ./packaging/scripts/post-remove
+
+    contents:
+      - src: /usr/bin/tedge-container
+        dst: /etc/tedge/sm-plugins/container
+        type: symlink
+
+      - src: /usr/bin/tedge-container
+        dst: /etc/tedge/sm-plugins/container-group
+        type: symlink
+
+      # Config
+      - src: ./packaging/config.*
+        dst: /etc/tedge-container-plugin/
+        file_info:
+          mode: 0644
+          owner: tedge
+          group: tedge
+
+      # Services
+      - src: ./packaging/services/systemd/tedge-container-plugin.service
+        dst: /usr/lib/systemd/system/tedge-container-plugin.service
+        file_info:
+          mode: 0644
+          owner: tedge
+          group: tedge
+
+      - src: ./packaging/services/init.d/service.init
+        dst: /etc/init.d/tedge-container-plugin
+        file_info:
+          mode: 0644
+          owner: tedge
+          group: tedge
+
+      # Completions
+      - src: ./output/completions.bash
+        dst: /etc/bash_completion.d/tedge-container
+      
+      - src: ./output/completions.zsh
+        dst: /usr/local/share/zsh/site-functions/_tedge-container
+      
+      - src: ./output/completions.fish
+        dst: /usr/share/fish/vendor_completions.d/tedge-container.fish
+
+dockers:
+  - 
+    image_templates:
+      - "ghcr.io/reubenmiller/{{.ProjectName}}:{{ .Version }}-amd64"
+      - "ghcr.io/reubenmiller/{{.ProjectName}}:latest-amd64"
+    goos: linux
+    goarch: amd64
+    goamd64: 'v1'
+    dockerfile: images/Dockerfile
+    use: buildx
+    build_flag_templates:
+    - "--pull"
+    - "--label=org.opencontainers.image.created={{.Date}}"
+    - "--label=org.opencontainers.image.title={{.ProjectName}}"
+    - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+    - "--label=org.opencontainers.image.version={{.Version}}"
+    - "--platform=linux/amd64"
+
+  - 
+    image_templates:
+      - "ghcr.io/reubenmiller/{{.ProjectName}}:{{ .Version }}-arm64v8"
+      - "ghcr.io/reubenmiller/{{.ProjectName}}:latest-arm64v8"
+    goos: linux
+    goarch: arm64
+    dockerfile: images/Dockerfile
+    use: buildx
+    build_flag_templates:
+    - "--pull"
+    - "--label=org.opencontainers.image.created={{.Date}}"
+    - "--label=org.opencontainers.image.title={{.ProjectName}}"
+    - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+    - "--label=org.opencontainers.image.version={{.Version}}"
+    - "--platform=linux/arm64/v8"
+
+  - 
+    image_templates:
+      - "ghcr.io/reubenmiller/{{.ProjectName}}:{{ .Version }}-armv7"
+      - "ghcr.io/reubenmiller/{{.ProjectName}}:latest-armv7"
+    goos: linux
+    goarch: arm
+    goarm: '7'
+    dockerfile: images/Dockerfile
+    use: buildx
+    build_flag_templates:
+    - "--pull"
+    - "--label=org.opencontainers.image.created={{.Date}}"
+    - "--label=org.opencontainers.image.title={{.ProjectName}}"
+    - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+    - "--label=org.opencontainers.image.version={{.Version}}"
+    - "--platform=linux/arm/7"
+
+docker_manifests:
+- name_template: "ghcr.io/reubenmiller/{{.ProjectName}}:{{ .Version }}"
+  image_templates:
+  - "ghcr.io/reubenmiller/{{.ProjectName}}:{{ .Version }}-amd64"
+  - "ghcr.io/reubenmiller/{{.ProjectName}}:{{ .Version }}-arm64v8"
+  - "ghcr.io/reubenmiller/{{.ProjectName}}:{{ .Version }}-armv7"
+
+- name_template: "ghcr.io/reubenmiller/{{.ProjectName}}:latest"
+  image_templates:
+  - "ghcr.io/reubenmiller/{{.ProjectName}}:latest-amd64"
+  - "ghcr.io/reubenmiller/{{.ProjectName}}:latest-arm64v8"
+  - "ghcr.io/reubenmiller/{{.ProjectName}}:latest-armv7"

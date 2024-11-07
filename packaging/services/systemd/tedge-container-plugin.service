@@ -1,0 +1,14 @@
+[Unit]
+Description=thin-edge.io container monitor
+After=mosquitto.service
+
+[Service]
+EnvironmentFile=-/etc/tedge-container-plugin/env
+ExecStart=/usr/bin/tedge-container run --config /etc/tedge-container-plugin/config.toml
+User=root
+Restart=always
+RestartSec=5
+ExecReload=/usr/bin/kill -HUP $MAINPID
+
+[Install]
+WantedBy=multi-user.target
