@@ -141,8 +141,8 @@ nfpms:
 dockers:
   - 
     image_templates:
-      - "ghcr.io/reubenmiller/{{.ProjectName}}:{{ .Version }}-amd64"
-      - "ghcr.io/reubenmiller/{{.ProjectName}}:latest-amd64"
+      - "ghcr.io/thin-edge/{{.ProjectName}}:{{ .Version }}-amd64"
+      - "ghcr.io/thin-edge/{{.ProjectName}}:latest-amd64"
     goos: linux
     goarch: amd64
     goamd64: 'v1'
@@ -158,8 +158,8 @@ dockers:
 
   - 
     image_templates:
-      - "ghcr.io/reubenmiller/{{.ProjectName}}:{{ .Version }}-arm64v8"
-      - "ghcr.io/reubenmiller/{{.ProjectName}}:latest-arm64v8"
+      - "ghcr.io/thin-edge/{{.ProjectName}}:{{ .Version }}-arm64v8"
+      - "ghcr.io/thin-edge/{{.ProjectName}}:latest-arm64v8"
     goos: linux
     goarch: arm64
     dockerfile: images/Dockerfile
@@ -174,8 +174,8 @@ dockers:
 
   - 
     image_templates:
-      - "ghcr.io/reubenmiller/{{.ProjectName}}:{{ .Version }}-armv7"
-      - "ghcr.io/reubenmiller/{{.ProjectName}}:latest-armv7"
+      - "ghcr.io/thin-edge/{{.ProjectName}}:{{ .Version }}-armv7"
+      - "ghcr.io/thin-edge/{{.ProjectName}}:latest-armv7"
     goos: linux
     goarch: arm
     goarm: '7'
@@ -190,14 +190,14 @@ dockers:
     - "--platform=linux/arm/7"
 
 docker_manifests:
-- name_template: "ghcr.io/reubenmiller/{{.ProjectName}}:{{ .Version }}"
+- name_template: "ghcr.io/thin-edge/{{.ProjectName}}:{{ .Version }}"
   image_templates:
-  - "ghcr.io/reubenmiller/{{.ProjectName}}:{{ .Version }}-amd64"
-  - "ghcr.io/reubenmiller/{{.ProjectName}}:{{ .Version }}-arm64v8"
-  - "ghcr.io/reubenmiller/{{.ProjectName}}:{{ .Version }}-armv7"
+  - "ghcr.io/thin-edge/{{.ProjectName}}:{{ .Version }}-amd64"
+  - "ghcr.io/thin-edge/{{.ProjectName}}:{{ .Version }}-arm64v8"
+  - "ghcr.io/thin-edge/{{.ProjectName}}:{{ .Version }}-armv7"
 
-- name_template: "ghcr.io/reubenmiller/{{.ProjectName}}:latest"
+- name_template: "ghcr.io/thin-edge/{{.ProjectName}}:latest"
   image_templates:
-  - "ghcr.io/reubenmiller/{{.ProjectName}}:latest-amd64"
-  - "ghcr.io/reubenmiller/{{.ProjectName}}:latest-arm64v8"
-  - "ghcr.io/reubenmiller/{{.ProjectName}}:latest-armv7"
+  - "ghcr.io/thin-edge/{{.ProjectName}}:latest-amd64"
+  - "ghcr.io/thin-edge/{{.ProjectName}}:latest-arm64v8"
+  - "ghcr.io/thin-edge/{{.ProjectName}}:latest-armv7"
