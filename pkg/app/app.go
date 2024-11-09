@@ -216,15 +216,17 @@ func (a *App) UpdateMetrics(filterOptions container.FilterOptions) error {
 }
 
 var ContainerEventText = map[events.Action]string{
-	events.ActionCreate:  "created",
-	events.ActionStart:   "started",
-	events.ActionStop:    "stopped",
-	events.ActionDestroy: "destroyed",
-	events.ActionRemove:  "removed",
-	events.ActionDie:     "died",
-	events.ActionPause:   "paused",
-	events.ActionUnPause: "unpaused",
-	events.ActionExecDie: "process died",
+	events.ActionCreate:                "created",
+	events.ActionStart:                 "started",
+	events.ActionStop:                  "stopped",
+	events.ActionDestroy:               "destroyed",
+	events.ActionRemove:                "removed",
+	events.ActionDie:                   "died",
+	events.ActionPause:                 "paused",
+	events.ActionUnPause:               "unpaused",
+	events.ActionExecDie:               "process died",
+	events.ActionHealthStatusHealthy:   "healthy",
+	events.ActionHealthStatusUnhealthy: "unhealthy",
 }
 
 func mustMarshalJSON(v any) []byte {
@@ -261,6 +263,7 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 			switch evt.Type {
 			case events.ContainerEventType:
 				payload := make(map[string]any)
+				skipPublish := false
 				if action, ok := ContainerEventText[evt.Action]; ok {
 					props := getEventAttributes(evt.Actor.Attributes, "name", "image", "com.docker.compose.project")
 					name := props[0]
@@ -280,7 +283,13 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 				}
 
 				switch evt.Action {
-				case events.ActionCreate, events.ActionStart, events.ActionStop, events.ActionPause, events.ActionUnPause, events.ActionExecDie:
+				case events.ActionExecDie:
+					// Check if the exec dying was related to the container's main exec or not
+					if _, hasExecID := evt.Actor.Attributes["execID"]; !hasExecID {
+						skipPublish = true
+					}
+					fallthrough
+				case events.ActionCreate, events.ActionStart, events.ActionStop, events.ActionPause, events.ActionUnPause, events.ActionHealthStatusHealthy, events.ActionHealthStatusUnhealthy:
 					go func() {
 						// Delay before trigger update to allow the service status to be updated
 						time.Sleep(500 * time.Millisecond)
@@ -304,7 +313,7 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 				}
 
 				if a.config.EnableEngineEvents {
-					if len(payload) > 0 {
+					if len(payload) > 0 && !skipPublish {
 						if err := a.client.Publish(tedge.GetTopic(a.client.Target, "e", string(evt.Action)), 1, false, mustMarshalJSON(payload)); err != nil {
 							slog.Warn("Failed to publish container event.", "err", err)
 						}
