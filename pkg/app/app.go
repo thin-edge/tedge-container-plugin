@@ -141,7 +141,9 @@ func (a *App) DeleteLegacyService(deleteFromCloud bool) {
 		slog.Warn("Failed to clear health status.", "topic", tedge.GetHealthTopic(*target))
 	}
 	time.Sleep(500 * time.Millisecond)
-	a.client.Publish(tedge.GetTopic(*target), 1, true, "")
+	if err := a.client.Publish(tedge.GetTopic(*target), 1, true, ""); err != nil {
+		slog.Warn("Failed to clear registration message.", "topic", tedge.GetHealthTopic(*target))
+	}
 	time.Sleep(500 * time.Millisecond)
 
 	if target.CloudIdentity != "" && deleteFromCloud {
