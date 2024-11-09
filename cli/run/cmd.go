@@ -75,6 +75,11 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 				return application.Update(cliContext.GetFilterOptions())
 			}
 
+			// Remove the legacy service
+			if cliContext.DeleteLegacyService() {
+				go application.DeleteLegacyService(cliContext.DeleteFromCloud())
+			}
+
 			stop := make(chan os.Signal, 1)
 			signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 

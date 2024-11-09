@@ -31,4 +31,6 @@ RUN case ${TARGETPLATFORM} in \
     # FIXME: Replace once project is merged back with tedge-container-plugin
     # && apt-get install -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" --allow-downgrades -y /tmp/*${PKG_ARCH}*.deb \
     && dpkg -i --force-overwrite /tmp/*${PKG_ARCH}*.deb \
+    && mkdir -p /opt/packages \
+    && cp /tmp/*${PKG_ARCH}*.deb /opt/packages/ \
     && rm -f /tmp/*.deb

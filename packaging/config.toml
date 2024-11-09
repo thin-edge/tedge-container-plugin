@@ -4,6 +4,9 @@ log_level = "info"
 # Service name used to show the status of the service
 service_name = "tedge-container-plugin"
 
+# Remove the legacy tedge-container-monitor service
+delete_legacy = true
+
 [filter.include]
 # Only include containers matching the given names (as regex)
 names = [ ]

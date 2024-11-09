@@ -133,6 +133,26 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 	return application, nil
 }
 
+func (a *App) DeleteLegacyService(deleteFromCloud bool) {
+	target := a.client.Target.Service("tedge-container-monitor")
+	slog.Info("Removing legacy service from the cloud", "topic", target.Topic())
+
+	if err := a.client.Publish(tedge.GetHealthTopic(*target), 1, true, ""); err != nil {
+		slog.Warn("Failed to clear health status.", "topic", tedge.GetHealthTopic(*target))
+	}
+	time.Sleep(500 * time.Millisecond)
+	if err := a.client.Publish(tedge.GetTopic(*target), 1, true, ""); err != nil {
+		slog.Warn("Failed to clear registration message.", "topic", tedge.GetHealthTopic(*target))
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	if target.CloudIdentity != "" && deleteFromCloud {
+		if _, err := a.client.DeleteCumulocityManagedObject(*target); err != nil {
+			slog.Warn("Failed to delete managed object.", "err", err)
+		}
+	}
+}
+
 func (a *App) Subscribe() error {
 	topic := tedge.GetTopic(*a.Device.Service("+"), "cmd", "health", "check")
 	slog.Info("Listening to commands on topic.", "topic", topic)
