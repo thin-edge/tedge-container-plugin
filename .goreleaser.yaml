@@ -90,6 +90,8 @@ nfpms:
       - tedge-container-plugin
     provides:
       - tedge-container-plugin
+    conflicts:
+      - tedge-container-plugin
 
     scripts:
       preremove: ./packaging/scripts/pre-remove
