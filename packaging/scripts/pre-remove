@@ -4,12 +4,13 @@ set -e
 SERVICE_NAME="tedge-container-plugin"
 
 stop_services() {
-    if [ -x "/usr/bin/deb-systemd-helper" ]; then
-        deb-systemd-helper mask "${SERVICE_NAME}.service" >/dev/null ||:
-    elif [ -x systemd ]; then
-        systemctl stop "${SERVICE_NAME}.service" || :
-        systemctl disable "${SERVICE_NAME}.service" || :
-    elif [ -x "/etc/init.d/${SERVICE_NAME}" ]; then
+    if [ -d /run/systemd/system ] && command -V deb-systemd-invoke >/dev/null 2>&1; then
+        deb-systemd-invoke stop "${SERVICE_NAME}.service" >/dev/null ||:
+    elif [ -d /run/systemd/system ] && command -V deb-systemd-invoke >/dev/null 2>&1; then
+        systemctl stop "${SERVICE_NAME}.service" >/dev/null ||:
+    fi
+
+    if [ -x "/etc/init.d/${SERVICE_NAME}" ] || [ -e "/etc/init/${SERVICE_NAME}.conf" ]; then
         "/etc/init.d/${SERVICE_NAME}" stop || :
     fi
 }
@@ -29,14 +30,14 @@ echo "Running pre-remove: $*"
 action="$1"
 
 case "$action" in
-  "0" | "remove")
-    remove
-    ;;
-  "1" | "upgrade")
-    upgrade
-    ;;
-  *)
-    printf "\033[32m Alpine\033[0m"
-    remove
-    ;;
+    "0" | "remove")
+        remove
+        ;;
+    "1" | "upgrade")
+        upgrade
+        ;;
+    *)
+        printf "\033[32m Alpine\033[0m"
+        remove
+        ;;
 esac
