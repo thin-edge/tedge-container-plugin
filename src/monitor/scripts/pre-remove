@@ -30,14 +30,14 @@ echo "Running pre-remove: $*"
 action="$1"
 
 case "$action" in
-  "0" | "remove")
-    remove
-    ;;
-  "1" | "upgrade")
-    upgrade
-    ;;
-  *)
-    printf "\033[32m Alpine\033[0m"
-    remove
-    ;;
+    "0" | "remove")
+        remove
+        ;;
+    "1" | "upgrade")
+        upgrade
+        ;;
+    *)
+        printf "\033[32m Alpine\033[0m"
+        remove
+        ;;
 esac
