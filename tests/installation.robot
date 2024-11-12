@@ -9,7 +9,7 @@ Test Teardown    Collect Logs
 *** Test Cases ***
 
 Update to tedge-container-plugin-ng
-    DeviceLibrary.Execute Command   cmd=apt-get install -y -o Dpkg::Options::="--force-confdef" /opt/packages/*.deb
+    DeviceLibrary.Execute Command   cmd=apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" /opt/packages/*.deb
     Cumulocity.Should Have Services    name=tedge-container-plugin    service_type=service    min_count=1    max_count=1    timeout=30
     Cumulocity.Should Have Services    name=tedge-container-monitor    service_type=service    min_count=0    max_count=0    timeout=30
 
