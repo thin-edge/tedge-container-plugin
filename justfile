@@ -47,3 +47,9 @@ build-test:
 # Run tests
 test *args='':
   ./.venv/bin/python3 -m robot.run --outputdir output {{args}} tests
+
+# Print yocto licensing string
+print-yocto-licenses:
+  @echo 'LIC_FILES_CHKSUM = " \'
+  @find vendor -name "LICENSE*" -exec bash -c 'echo -n "    file://src/github.com/thin-edge/tedge-container-plugin/{};md5=" && md5 -q {}' \; 2>/dev/null | sed 's|$| \\|g'
+  @echo '"'
