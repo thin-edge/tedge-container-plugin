@@ -26,10 +26,11 @@ Test Setup
     Set Suite Variable    $DEVICE_SN
     Cumulocity.External Identity Should Exist    ${DEVICE_SN}
 
-    # Install older version
+    # Remove an previously installed versions (for a clean install)
     DeviceLibrary.Execute Command    apt-get remove -y tedge-container-plugin-ng && apt-get purge -y tedge-container-plugin-ng
-    DeviceLibrary.Execute Command    apt-get remove -y tedge-container-plugin && apt-get purge -y tedge-container-plugin     ignore_exit_code=${True}
+    DeviceLibrary.Execute Command    apt-get remove -y tedge-container-plugin && apt-get purge -y tedge-container-plugin && rm -rf /etc/tedge-container-plugin     ignore_exit_code=${True}
 
+    # Install older version
     DeviceLibrary.Execute Command   apt-get update && apt-get install -y tedge-container-plugin
     Cumulocity.Should Have Services    name=tedge-container-monitor    service_type=service    min_count=1    max_count=1    timeout=60
 
