@@ -4,8 +4,14 @@ ARG TARGETPLATFORM
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         # Install with all recommended packages as this is simplier to maintain
-        podman \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" -y --no-install-recommends \
+        && install -m 0755 -d /etc/apt/keyrings \
+        && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+        && chmod a+r /etc/apt/keyrings/docker.asc \    
+        && echo \
+            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
+            $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+        && apt-get update -y \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -o Dpkg::Options::="--force-confnew" -y --no-install-recommends \
         # Installing docker-ce at build time fails.
         # See https://github.com/docker/cli/issues/4807 for details
         # docker-ce \
@@ -28,9 +34,7 @@ RUN case ${TARGETPLATFORM} in \
         "linux/arm/v7")  PKG_ARCH=linux_armv7  ;; \
         *) echo "Unsupported target platform: TARGETPLATFORM=$TARGETPLATFORM"; exit 1 ;; \
     esac \
-    # FIXME: Replace once project is merged back with tedge-container-plugin
-    # && apt-get install -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" --allow-downgrades -y /tmp/*${PKG_ARCH}*.deb \
-    && dpkg -i --force-overwrite /tmp/*${PKG_ARCH}*.deb \
+    && apt-get install -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" --allow-downgrades -y /tmp/*${PKG_ARCH}*.deb \
     && mkdir -p /opt/packages \
     && cp /tmp/*${PKG_ARCH}*.deb /opt/packages/ \
     && rm -f /tmp/*.deb

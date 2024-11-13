@@ -1,13 +1,7 @@
 FROM ghcr.io/thin-edge/tedge-demo-main-systemd:latest
 ARG TARGETPLATFORM
 
-RUN apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        # Install with all recommended packages as this is simplier to maintain
-        podman \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" -y --no-install-recommends \
-        podman-compose \
-    && tedge config unset c8y.proxy.client.host \
+RUN tedge config unset c8y.proxy.client.host \
     && tedge config unset mqtt.client.host \
     && tedge config unset http.client.host
 
@@ -23,9 +17,7 @@ RUN case ${TARGETPLATFORM} in \
         "linux/arm/v7")  PKG_ARCH=linux_armv7  ;; \
         *) echo "Unsupported target platform: TARGETPLATFORM=$TARGETPLATFORM"; exit 1 ;; \
     esac \
-    # FIXME: Replace once project is merged back with tedge-container-plugin
-    # && apt-get install -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" --allow-downgrades -y /tmp/*${PKG_ARCH}*.deb \
-    && dpkg -i --force-overwrite /tmp/*${PKG_ARCH}*.deb \
+    && apt-get install -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" --allow-downgrades -y /tmp/*${PKG_ARCH}*.deb \
     && mkdir -p /opt/packages \
     && cp /tmp/*${PKG_ARCH}*.deb /opt/packages/ \
     && rm -f /tmp/*.deb

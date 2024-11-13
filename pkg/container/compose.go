@@ -34,6 +34,24 @@ func prepareComposeCommand(commandArgs ...string) (command string, args []string
 	if err != nil {
 		return
 	}
+
+	// Normalized differences between the commands
+	if command == "podman-compose" && len(commandArgs) > 0 && commandArgs[0] == "down" {
+		// Note: podman-compose down does not support "--remove-orphans" argument, so strip it out
+		commandArgs = filter(commandArgs, func(s string) bool {
+			return s != "--remove-orphans"
+		})
+	}
+
 	args = append(args, commandArgs...)
 	return command, args, nil
+}
+
+func filter(ss []string, test func(string) bool) (ret []string) {
+	for _, s := range ss {
+		if test(s) {
+			ret = append(ret, s)
+		}
+	}
+	return
 }
