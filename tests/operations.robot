@@ -32,10 +32,11 @@ Install/uninstall container-group package
     Device Should Not Have Installed Software    nginx
     Cumulocity.Should Have Services    name=nginx@nginx    service_type=container-group    min_count=0    max_count=0
 
-Install container-group with multiple files
-    [Template]    Install container-group file
-    app1    1.0.1    app1    ${CURDIR}/data/apps/app1.tar.gz
-    app2    1.2.3    app2    ${CURDIR}/data/apps/app2.zip
+Install container-group with multiple files - app1
+    Install container-group file    app1    1.0.1    app1    ${CURDIR}/data/apps/app1.tar.gz
+
+Install container-group with multiple files - app2
+    Install container-group file    app2    1.2.3    app2    ${CURDIR}/data/apps/app2.zip
 
 Install/uninstall container package
     ${operation}=    Cumulocity.Install Software    {"name": "webserver", "version": "httpd:2.4", "softwareType": "container"}
