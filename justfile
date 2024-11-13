@@ -48,6 +48,10 @@ build-test:
 test *args='':
   ./.venv/bin/python3 -m robot.run --outputdir output {{args}} tests
 
+# Download/update vendor packages
+update-vendor:
+  go mod vendor
+
 # Print yocto licensing string
 print-yocto-licenses:
   @echo 'LIC_FILES_CHKSUM = " \'
