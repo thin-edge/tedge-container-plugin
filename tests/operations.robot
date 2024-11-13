@@ -42,7 +42,7 @@ Install/uninstall container package
     ${operation}=    Cumulocity.Install Software    {"name": "webserver", "version": "httpd:2.4", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
     Device Should Have Installed Software    {"name": "webserver", "version": "httpd:2.4", "softwareType": "container"}
-    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge busybox wget -O- webserver:80;
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge docker.io/busybox wget -O- webserver:80;
     Operation Should Be SUCCESSFUL    ${operation}
     Should Contain    ${operation.to_json()["c8y_Command"]["result"]}    It works!
     Cumulocity.Should Have Services    name=webserver    service_type=container    status=up
@@ -73,7 +73,7 @@ Manual container creation/deletion
     ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker network create tedge ||:; sudo tedge-container engine docker run -d --network tedge --name manualapp1 httpd:2.4
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
 
-    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge busybox wget -O- manualapp1:80;
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge docker.io/busybox wget -O- manualapp1:80;
     Operation Should Be SUCCESSFUL    ${operation}
 
     Should Contain    ${operation.to_json()["c8y_Command"]["result"]}    It works!
@@ -138,7 +138,7 @@ Install container-group file
     ${operation}=    Cumulocity.Install Software    {"name": "${package_name}", "version": "${package_version}", "softwareType": "container-group", "url": "${binary_url}"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=300
     Device Should Have Installed Software    {"name": "${package_name}", "version": "${package_version}", "softwareType": "container-group"}
-    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge busybox wget -O- ${service_name}:80
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge docker.io/busybox wget -O- ${service_name}:80
     Operation Should Be SUCCESSFUL    ${operation}
     Should Contain    ${operation.to_json()["c8y_Command"]["result"]}    My Custom Web Application
     Cumulocity.Should Have Services    name=${package_name}@${service_name}    service_type=container-group    status=up
