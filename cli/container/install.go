@@ -110,6 +110,10 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	if imageRef != c.ModuleVersion {
+		slog.Warn("Detected image reference does not match the module-version.", "imageRef", imageRef, "version", c.ModuleVersion)
+	}
+
 	// Create shared network
 	if err := cli.CreateSharedNetwork(ctx, commonNetwork); err != nil {
 		return err
