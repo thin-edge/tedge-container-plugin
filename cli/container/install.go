@@ -71,6 +71,7 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
+		defer file.Close()
 
 		imageResp, err := cli.Client.ImageLoad(ctx, file, true)
 		if err != nil {
