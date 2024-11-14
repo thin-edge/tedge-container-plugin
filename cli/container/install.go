@@ -42,8 +42,21 @@ func NewInstallCommand(ctx cli.Cli) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install <MODULE_NAME>",
 		Short: "Install/run a container",
-		Args:  cobra.ExactArgs(1),
-		RunE:  command.RunE,
+		Example: `
+Example 1: Install a container and pull in the image from any available registries
+
+  $ tedge-container container install myapp1 --module-version docker.io/nginx:latest
+
+
+Example 2: Save an image (using an explicit platform) and install/create a container with the saved image file
+
+  $ docker pull --platform linux/arm64 docker.io/nginx:latest
+  $ docker save docker.io/nginx:latest > nginx:latest.tar
+  $ gzip nginx:latest.tar
+  $ tedge-container container install myapp1 --module-version nginx:latest --file ./nginx:latest.tar.gz
+		`,
+		Args: cobra.ExactArgs(1),
+		RunE: command.RunE,
 	}
 
 	cmd.Flags().StringVar(&command.ModuleVersion, "module-version", "", "Software version to install")

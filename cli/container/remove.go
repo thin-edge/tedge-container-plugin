@@ -24,7 +24,12 @@ func NewRemoveCommand(ctx cli.Cli) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "remove",
 		Short: "Remove a container",
-		Args:  cobra.ExactArgs(1),
+		Example: `
+Example 1: Remove a container
+
+	$ tedge-container container remove myapp1
+				`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			slog.Info("Executing", "cmd", cmd.CalledAs(), "args", args)
 			ctx := context.Background()
