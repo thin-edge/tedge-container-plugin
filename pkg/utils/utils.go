@@ -2,6 +2,7 @@ package utils
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 )
@@ -25,4 +26,21 @@ func CopyFile(src string, dst string) error {
 func CommandExists(cmd string) bool {
 	_, err := exec.LookPath(cmd)
 	return err == nil
+}
+
+// Check if a directory is writable.
+// It tries to create a dummy file in the directory to verify
+func IsDirWritable(d string, perm fs.FileMode) (bool, error) {
+	dirErr := os.MkdirAll(d, 0755)
+	if dirErr != nil {
+		return false, dirErr
+	}
+
+	file, err := os.CreateTemp(d, ".write-test")
+	if err != nil {
+		return false, err
+	}
+	defer os.Remove(file.Name())
+	defer file.Close()
+	return true, nil
 }

@@ -61,8 +61,7 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 	// Run docker compose down before up
 	// TODO: Move to settings file
 	downFirst := false
-	baseDir := "/var/tedge-container-plugin/compose"
-	workingDir := filepath.Join(baseDir, projectName)
+	workingDir := filepath.Join(c.CommandContext.PersistentDir(true), "compose", projectName)
 
 	// Stop project
 	if downFirst && utils.PathExists(workingDir) {
