@@ -55,5 +55,5 @@ update-vendor:
 # Print yocto licensing string
 print-yocto-licenses:
   @echo 'LIC_FILES_CHKSUM = " \'
-  @find vendor -name "LICENSE*" -exec bash -c 'echo -n "    file://src/github.com/thin-edge/tedge-container-plugin/{};md5=" && md5 -q {}' \; 2>/dev/null | sed 's|$| \\|g'
+  @find . -name "LICENSE*" -exec bash -c 'echo -n "    file://src/\${GO_IMPORT}/{};md5=" && md5 -q {}' \; 2>/dev/null | grep -v "/\.venv/" | sed 's|$| \\|g' | sed 's|/\./|/|g'
   @echo '"'
