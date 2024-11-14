@@ -4,6 +4,10 @@ log_level = "info"
 # Service name used to show the status of the service
 service_name = "tedge-container-plugin"
 
+# Data directory used to store state such as docker compose project files
+# The first writable directory will be used
+data_dir = ["/var/tedge-container-plugin", "/data/tedge-container-plugin"]
+
 # Remove the legacy tedge-container-monitor service
 delete_legacy = true
 

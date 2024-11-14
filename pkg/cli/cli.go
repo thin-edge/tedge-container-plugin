@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -27,6 +28,7 @@ func (c *Cli) OnInit() {
 	// Set shared config
 	viper.SetDefault("container.network", "tedge")
 	viper.SetDefault("delete_legacy", true)
+	viper.SetDefault("data_dir", []string{"/var/tedge-container-plugin", "/data/tedge-container-plugin"})
 
 	if c.ConfigFile != "" && utils.PathExists(c.ConfigFile) {
 		// Use config file from the flag.
@@ -163,6 +165,25 @@ func (c *Cli) GetDeviceTarget() tedge.Target {
 		TopicID:       c.GetTopicID(),
 		CloudIdentity: c.GetDeviceID(),
 	}
+}
+
+func (c *Cli) PersistentDir(check_writable bool) string {
+	paths := viper.GetStringSlice("data_dir")
+	defaultDir := filepath.Join(os.TempDir(), c.GetServiceName())
+
+	if !check_writable {
+		if len(paths) > 0 {
+			return paths[0]
+		}
+		return defaultDir
+	}
+
+	for _, p := range paths {
+		if ok, _ := utils.IsDirWritable(p, 0755); ok {
+			return p
+		}
+	}
+	return defaultDir
 }
 
 func getExpandedStringSlice(key string) []string {
