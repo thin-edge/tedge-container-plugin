@@ -87,11 +87,26 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 				return err
 			}
 
-			if strings.HasPrefix(imageDetails.Stream, "Loaded image: ") {
-				imageRef = strings.TrimPrefix(imageDetails.Stream, "Loaded image: ")
-				slog.Info("Using imageRef from loaded image.", "name", imageRef)
-			}
 			slog.Info("Loaded image.", "stream", imageDetails.Stream)
+			images := make([]string, 0)
+			for _, line := range strings.Split(imageDetails.Stream, "\n") {
+				if strings.HasPrefix(line, "Loaded image: ") {
+					imageName := strings.TrimPrefix(line, "Loaded image: ")
+					slog.Info("Found image reference in file.", "file", c.File, "image", imageName)
+					images = append(images, imageName)
+				}
+			}
+
+			switch count := len(images); count {
+			case 0:
+				slog.Warn("No images detected in stream output. Using the module version as the image name.", "file", c.File, "images", images)
+			default:
+				if count > 1 {
+					slog.Warn("More than 1 image detected in file. Only using the first image.", "file", c.File, "images", images, "image_count", count)
+				}
+				imageRef = images[0]
+				slog.Info("Using first imageRef from loaded image.", "name", imageRef)
+			}
 		}
 	}
 
