@@ -6,6 +6,7 @@ package container
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -58,6 +59,9 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 	containerName := args[0]
 	imageRef := c.ModuleVersion
 
+	// Only enable pulling if the user is providing a file
+	disablePull := c.File != ""
+
 	cli, err := container.NewContainerClient()
 	if err != nil {
 		return err
@@ -90,29 +94,35 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 
 			slog.Info("Loaded image.", "stream", imageDetails.Stream)
 			images := make([]string, 0)
+			moduleVersionFound := false
 			for _, line := range strings.Split(imageDetails.Stream, "\n") {
 				if strings.HasPrefix(line, "Loaded image: ") {
 					imageName := strings.TrimPrefix(line, "Loaded image: ")
 					slog.Info("Found image reference in file.", "file", c.File, "image", imageName)
 					images = append(images, imageName)
+					if imageName == c.ModuleVersion {
+						moduleVersionFound = true
+					}
 				}
 			}
 
-			switch count := len(images); count {
-			case 0:
-				slog.Warn("No images detected in stream output. Using the module version as the image name.", "file", c.File, "images", images)
-			default:
-				if count > 1 {
-					slog.Warn("More than 1 image detected in file. Only using the first image.", "file", c.File, "images", images, "image_count", count)
+			// Check if the user has given correct image to use from the
+			if !moduleVersionFound {
+				switch count := len(images); count {
+				case 0:
+					slog.Warn("No images detected in stream output. Aborting to prevent accidentally load image from network.", "file", c.File, "images", images)
+					// Fail hard to prevent potentially trying to pull in the image (as the user has opted into file based images)
+					return fmt.Errorf("no image detected in file. name=%s, version=%s, file=%s", containerName, c.ModuleVersion, c.File)
+				default:
+					if count > 1 {
+						slog.Warn("More than 1 image detected in file. Only using the first image.", "file", c.File, "images", images, "image_count", count)
+					}
+
+					imageRef = images[0]
+					slog.Info("Detected image reference does not match the module-version. Using first imageRef from loaded image.", "imageRef", imageRef, "version", c.ModuleVersion)
 				}
-				imageRef = images[0]
-				slog.Info("Using first imageRef from loaded image.", "name", imageRef)
 			}
 		}
-	}
-
-	if imageRef != c.ModuleVersion {
-		slog.Warn("Detected image reference does not match the module-version.", "imageRef", imageRef, "version", c.ModuleVersion)
 	}
 
 	// Create shared network
@@ -122,25 +132,27 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 
 	//
 	// Check and pull image if it is not present
-	images, err := cli.Client.ImageList(ctx, image.ListOptions{
-		Filters: filters.NewArgs(filters.Arg("reference", imageRef)),
-	})
-	if err != nil {
-		return err
-	}
-
-	if len(images) == 0 || c.CommandContext.GetBool("container.alwaysPull") {
-		slog.Info("Pulling image.", "ref", imageRef)
-		out, err := cli.Client.ImagePull(ctx, imageRef, image.PullOptions{})
+	if !disablePull {
+		images, err := cli.Client.ImageList(ctx, image.ListOptions{
+			Filters: filters.NewArgs(filters.Arg("reference", imageRef)),
+		})
 		if err != nil {
 			return err
 		}
-		defer out.Close()
-		if _, ioErr := io.Copy(os.Stderr, out); ioErr != nil {
-			slog.Warn("Could not write to stderr.", "err", ioErr)
+
+		if len(images) == 0 || c.CommandContext.GetBool("container.alwaysPull") {
+			slog.Info("Pulling image.", "ref", imageRef)
+			out, err := cli.Client.ImagePull(ctx, imageRef, image.PullOptions{})
+			if err != nil {
+				return err
+			}
+			defer out.Close()
+			if _, ioErr := io.Copy(os.Stderr, out); ioErr != nil {
+				slog.Warn("Could not write to stderr.", "err", ioErr)
+			}
+		} else {
+			slog.Info("Image already exists.", "ref", imageRef, "id", images[0].ID, "tags", images[0].RepoTags)
 		}
-	} else {
-		slog.Info("Image already exists.", "ref", imageRef, "id", images[0].ID, "tags", images[0].RepoTags)
 	}
 
 	//
