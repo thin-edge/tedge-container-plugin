@@ -282,8 +282,19 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 		case evt := <-evtCh:
 			switch evt.Type {
 			case events.ContainerEventType:
+				// Note: health checks will run command inside the containers periodically, and this results
+				// in periodic exec_die events, however these events are interesting (as we're already listening to the health status transitions)
+				// Check if the exec dying was related to the container's main exec or not.
+				// Log event on debug level so it does not spam the logs
+				if _, isRelatedToExec := evt.Actor.Attributes["execID"]; isRelatedToExec {
+					// Just check for the prefix, as some events will have additional context appended to the status
+					if strings.HasPrefix(string(evt.Action), "exec_") {
+						slog.Debug("Ignoring event.", "value", evt)
+						continue
+					}
+				}
+
 				payload := make(map[string]any)
-				skipPublish := false
 				if action, ok := ContainerEventText[evt.Action]; ok {
 					props := getEventAttributes(evt.Actor.Attributes, "name", "image", "com.docker.compose.project")
 					name := props[0]
@@ -303,13 +314,7 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 				}
 
 				switch evt.Action {
-				case events.ActionExecDie:
-					// Check if the exec dying was related to the container's main exec or not
-					if _, hasExecID := evt.Actor.Attributes["execID"]; !hasExecID {
-						skipPublish = true
-					}
-					fallthrough
-				case events.ActionCreate, events.ActionStart, events.ActionStop, events.ActionPause, events.ActionUnPause, events.ActionHealthStatusHealthy, events.ActionHealthStatusUnhealthy:
+				case events.ActionExecDie, events.ActionCreate, events.ActionStart, events.ActionStop, events.ActionPause, events.ActionUnPause, events.ActionHealthStatusHealthy, events.ActionHealthStatusUnhealthy:
 					go func() {
 						// Delay before trigger update to allow the service status to be updated
 						time.Sleep(500 * time.Millisecond)
@@ -333,7 +338,7 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 				}
 
 				if a.config.EnableEngineEvents {
-					if len(payload) > 0 && !skipPublish {
+					if len(payload) > 0 {
 						if err := a.client.Publish(tedge.GetTopic(a.client.Target, "e", string(evt.Action)), 1, false, mustMarshalJSON(payload)); err != nil {
 							slog.Warn("Failed to publish container event.", "err", err)
 						}
