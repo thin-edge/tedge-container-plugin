@@ -176,23 +176,33 @@ func (c *Cli) GetDeviceTarget() tedge.Target {
 	}
 }
 
-func (c *Cli) PersistentDir(check_writable bool) string {
-	paths := viper.GetStringSlice("data_dir")
-	defaultDir := filepath.Join(os.TempDir(), c.GetServiceName())
+func (c *Cli) PersistentDir(check_writable bool) (string, error) {
+	paths := append(viper.GetStringSlice("data_dir"), filepath.Join(os.TempDir(), c.GetServiceName()))
+
+	// Filter paths by only selecting the the root directories which exist
+	validPaths := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if utils.PathExists(utils.RootDir(p)) {
+			validPaths = append(validPaths, p)
+		}
+	}
+
+	if len(validPaths) == 0 {
+		return "", fmt.Errorf("could not find working directory from an existing root dir")
+	}
 
 	if !check_writable {
-		if len(paths) > 0 {
-			return paths[0]
-		}
-		return defaultDir
+		return validPaths[0], nil
 	}
 
-	for _, p := range paths {
+	// Check that this folder is writable in case if the user is on a read-only filesystem
+	for _, p := range validPaths {
 		if ok, _ := utils.IsDirWritable(p, 0755); ok {
-			return p
+			return p, nil
 		}
+		slog.Info("Skipping dir as it is not writable.", "dir", p)
 	}
-	return defaultDir
+	return "", fmt.Errorf("no writable working directory detected")
 }
 
 func getExpandedStringSlice(key string) []string {

@@ -132,11 +132,17 @@ Suite Setup
     # Create common network for all containers
     ${operation}=    Cumulocity.Execute Shell Command    set -a; . /etc/tedge-container-plugin/env; docker network create tedge ||:
 
+    # Create data directory
+    DeviceLibrary.Execute Command    mkdir /data
+
 Install container-group file
     [Arguments]    ${package_name}    ${package_version}    ${service_name}    ${file}
     ${binary_url}=    Cumulocity.Create Inventory Binary    ${package_name}    container-group    file=${file}
     ${operation}=    Cumulocity.Install Software    {"name": "${package_name}", "version": "${package_version}", "softwareType": "container-group", "url": "${binary_url}"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=300
+
+    DeviceLibrary.Directory Should Not Be Empty    /data/tedge-container-plugin/compose/${package_name}
+
     Device Should Have Installed Software    {"name": "${package_name}", "version": "${package_version}", "softwareType": "container-group"}
     ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge docker.io/busybox wget -O- ${service_name}:80
     Operation Should Be SUCCESSFUL    ${operation}
