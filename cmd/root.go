@@ -88,6 +88,7 @@ func init() {
 
 	rootCmd.PersistentFlags().String("log-level", "info", "Log level")
 	rootCmd.PersistentFlags().StringVarP(&cliConfig.ConfigFile, "config", "c", "", "Configuration file")
+	rootCmd.SilenceUsage = true
 
 	// viper.Bind
 	_ = viper.BindPFlag("log_level", rootCmd.PersistentFlags().Lookup("log-level"))
