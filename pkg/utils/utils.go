@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 )
 
 func PathExists(p string) bool {
@@ -43,4 +44,15 @@ func IsDirWritable(d string, perm fs.FileMode) (bool, error) {
 	defer os.Remove(file.Name())
 	defer file.Close()
 	return true, nil
+}
+
+func RootDir(p string) string {
+	for {
+		v1 := filepath.Dir(p)
+		v2 := filepath.Dir(v1)
+		if v1 == v2 {
+			return p
+		}
+		p = v1
+	}
 }

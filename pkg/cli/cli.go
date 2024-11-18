@@ -28,7 +28,16 @@ func (c *Cli) OnInit() {
 	// Set shared config
 	viper.SetDefault("container.network", "tedge")
 	viper.SetDefault("delete_legacy", true)
-	viper.SetDefault("data_dir", []string{"/var/tedge-container-plugin", "/data/tedge-container-plugin"})
+	viper.SetDefault("data_dir", []string{"/data/tedge-container-plugin", "/var/tedge-container-plugin"})
+
+	// Default to the tedge plugins folder
+	if c.ConfigFile == "" {
+		configDir := os.Getenv("TEDGE_CONFIG_DIR")
+		if configDir == "" {
+			configDir = "/etc/tedge"
+		}
+		filepath.Join(configDir, "plugins", "tedge-container-plugin.toml")
+	}
 
 	if c.ConfigFile != "" && utils.PathExists(c.ConfigFile) {
 		// Use config file from the flag.
@@ -167,23 +176,33 @@ func (c *Cli) GetDeviceTarget() tedge.Target {
 	}
 }
 
-func (c *Cli) PersistentDir(check_writable bool) string {
-	paths := viper.GetStringSlice("data_dir")
-	defaultDir := filepath.Join(os.TempDir(), c.GetServiceName())
+func (c *Cli) PersistentDir(check_writable bool) (string, error) {
+	paths := append(viper.GetStringSlice("data_dir"), filepath.Join(os.TempDir(), c.GetServiceName()))
+
+	// Filter paths by only selecting the the root directories which exist
+	validPaths := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if utils.PathExists(utils.RootDir(p)) {
+			validPaths = append(validPaths, p)
+		}
+	}
+
+	if len(validPaths) == 0 {
+		return "", fmt.Errorf("could not find working directory from an existing root dir")
+	}
 
 	if !check_writable {
-		if len(paths) > 0 {
-			return paths[0]
-		}
-		return defaultDir
+		return validPaths[0], nil
 	}
 
-	for _, p := range paths {
+	// Check that this folder is writable in case if the user is on a read-only filesystem
+	for _, p := range validPaths {
 		if ok, _ := utils.IsDirWritable(p, 0755); ok {
-			return p
+			return p, nil
 		}
+		slog.Info("Skipping dir as it is not writable.", "dir", p)
 	}
-	return defaultDir
+	return "", fmt.Errorf("no writable working directory detected")
 }
 
 func getExpandedStringSlice(key string) []string {

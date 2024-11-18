@@ -5,8 +5,8 @@ log_level = "info"
 service_name = "tedge-container-plugin"
 
 # Data directory used to store state such as docker compose project files
-# The first writable directory will be used
-data_dir = ["/var/tedge-container-plugin", "/data/tedge-container-plugin"]
+# The first writable directory will be used where the root directory exists
+data_dir = ["/data/tedge-container-plugin", "/var/tedge-container-plugin"]
 
 # Remove the legacy tedge-container-monitor service
 delete_legacy = true

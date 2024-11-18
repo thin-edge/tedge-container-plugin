@@ -61,10 +61,14 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 	// Run docker compose down before up
 	// TODO: Move to settings file
 	downFirst := false
-	workingDir := filepath.Join(c.CommandContext.PersistentDir(true), "compose", projectName)
+	persistentDir, err := c.CommandContext.PersistentDir(true)
+	if err != nil {
+		return err
+	}
+	workingDir := filepath.Join(persistentDir, "compose", projectName)
 
 	// Stop project
-	if downFirst && utils.PathExists(workingDir) {
+	if downFirst {
 		if err := cli.ComposeDown(ctx, stderr, projectName); err != nil {
 			slog.Warn("Compose down failed, but continuing anyway.", "err", err)
 		}
