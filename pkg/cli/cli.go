@@ -28,7 +28,16 @@ func (c *Cli) OnInit() {
 	// Set shared config
 	viper.SetDefault("container.network", "tedge")
 	viper.SetDefault("delete_legacy", true)
-	viper.SetDefault("data_dir", []string{"/var/tedge-container-plugin", "/data/tedge-container-plugin"})
+	viper.SetDefault("data_dir", []string{"/data/tedge-container-plugin", "/var/tedge-container-plugin"})
+
+	// Default to the tedge plugins folder
+	if c.ConfigFile == "" {
+		configDir := os.Getenv("TEDGE_CONFIG_DIR")
+		if configDir == "" {
+			configDir = "/etc/tedge"
+		}
+		filepath.Join(configDir, "plugins", "tedge-container-plugin.toml")
+	}
 
 	if c.ConfigFile != "" && utils.PathExists(c.ConfigFile) {
 		// Use config file from the flag.
