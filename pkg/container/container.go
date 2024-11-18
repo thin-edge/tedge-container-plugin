@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -564,11 +565,32 @@ func (c *ContainerClient) ComposeUp(ctx context.Context, w io.Writer, projectNam
 	args = append(args, extraArgs...)
 	prog := exec.Command(command, args...)
 	prog.Dir = workingDir
-	out, err := prog.Output()
+	out, err := prog.CombinedOutput()
 	fmt.Fprintf(w, "%s", out)
 
 	if err != nil {
 		return err
+	}
+
+	// Check if podman returned an error
+	if strings.EqualFold(command, "podman-compose") {
+		return CheckPodmanComposeError(string(out))
+	}
+
+	return nil
+}
+
+func CheckPodmanComposeError(b string) error {
+	// TODO: https://github.com/thin-edge/tedge-container-plugin/issues/70
+	for _, line := range strings.Split(b, "\n") {
+		_, value, ok := strings.Cut(line, "exit code: ")
+		if ok {
+			if i, err := strconv.ParseInt(strings.TrimSpace(value), 10, 32); err == nil {
+				if i != 0 {
+					return fmt.Errorf("command failed. exit_code=%v", i)
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -605,7 +627,7 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 		slog.Info("Stopping compose project.", "name", projectName, "dir", workingDir, "command", command, "args", strings.Join(args, " "))
 		prog := exec.Command(command, args...)
 		prog.Dir = workingDir
-		out, err := prog.Output()
+		out, err := prog.CombinedOutput()
 		fmt.Fprintf(w, "%s", out)
 
 		if err == nil {
