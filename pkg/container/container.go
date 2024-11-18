@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -569,6 +570,25 @@ func (c *ContainerClient) ComposeUp(ctx context.Context, w io.Writer, projectNam
 
 	if err != nil {
 		return err
+	}
+
+	// Check if podman returned an error
+	if strings.EqualFold(command, "podman-compose") {
+		return CheckPodmanComposeError(string(out))
+	}
+
+	return nil
+}
+
+func CheckPodmanComposeError(b string) error {
+	// TODO: https://github.com/thin-edge/tedge-container-plugin/issues/70
+	for _, line := range strings.Split(b, "\n") {
+		_, value, ok := strings.Cut(line, "exit code: ")
+		if ok {
+			if i, err := strconv.ParseInt(strings.TrimSpace(value), 10, 32); err == nil {
+				return fmt.Errorf("command failed. exit_code=%v", i)
+			}
+		}
 	}
 	return nil
 }

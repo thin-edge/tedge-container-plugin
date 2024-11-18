@@ -1,0 +1,9 @@
+version: "3"
+services:
+  nginx:
+    image: docker.io/nginx
+    hostname: nginx
+    networks:
+      - tedge-invalid
+    ports:
+      - 8080:80
