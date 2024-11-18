@@ -11,6 +11,7 @@ func detectDocker() (command string, args []string, err error) {
 	composeBackends := [][]string{
 		{"docker"},
 		{"podman"},
+		{"podman-remote"},
 	}
 
 	for _, backend := range composeBackends {
