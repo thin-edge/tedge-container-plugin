@@ -565,7 +565,7 @@ func (c *ContainerClient) ComposeUp(ctx context.Context, w io.Writer, projectNam
 	args = append(args, extraArgs...)
 	prog := exec.Command(command, args...)
 	prog.Dir = workingDir
-	out, err := prog.Output()
+	out, err := prog.CombinedOutput()
 	fmt.Fprintf(w, "%s", out)
 
 	if err != nil {
@@ -586,7 +586,9 @@ func CheckPodmanComposeError(b string) error {
 		_, value, ok := strings.Cut(line, "exit code: ")
 		if ok {
 			if i, err := strconv.ParseInt(strings.TrimSpace(value), 10, 32); err == nil {
-				return fmt.Errorf("command failed. exit_code=%v", i)
+				if i != 0 {
+					return fmt.Errorf("command failed. exit_code=%v", i)
+				}
 			}
 		}
 	}
@@ -625,7 +627,7 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 		slog.Info("Stopping compose project.", "name", projectName, "dir", workingDir, "command", command, "args", strings.Join(args, " "))
 		prog := exec.Command(command, args...)
 		prog.Dir = workingDir
-		out, err := prog.Output()
+		out, err := prog.CombinedOutput()
 		fmt.Fprintf(w, "%s", out)
 
 		if err == nil {
