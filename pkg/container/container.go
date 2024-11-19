@@ -581,18 +581,24 @@ func (c *ContainerClient) ComposeUp(ctx context.Context, w io.Writer, projectNam
 }
 
 func CheckPodmanComposeError(b string) error {
-	// TODO: https://github.com/thin-edge/tedge-container-plugin/issues/70
+	// Due to a podman bug, the exit code is not propagated back to the user
+	// which means it is hard to determine if the command was successful or not
+	// Link: https://github.com/thin-edge/tedge-container-plugin/issues/70
+	// Only use the last message
+	var lastErr error
 	for _, line := range strings.Split(b, "\n") {
 		_, value, ok := strings.Cut(line, "exit code: ")
 		if ok {
 			if i, err := strconv.ParseInt(strings.TrimSpace(value), 10, 32); err == nil {
-				if i != 0 {
-					return fmt.Errorf("command failed. exit_code=%v", i)
+				if i == 0 {
+					lastErr = nil
+				} else {
+					lastErr = fmt.Errorf("command failed. exit_code=%v", i)
 				}
 			}
 		}
 	}
-	return nil
+	return lastErr
 }
 
 func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectName string) error {
