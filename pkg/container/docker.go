@@ -27,7 +27,7 @@ func detectDocker() (command string, args []string, err error) {
 		slog.Info("command failed.", "command", strings.Join(backend, " "), "output", output)
 	}
 
-	return "", nil, fmt.Errorf("compose cli not found")
+	return "", nil, fmt.Errorf("docker cli not found")
 }
 
 func prepareDockerCommand(commandArgs ...string) (command string, args []string, err error) {
