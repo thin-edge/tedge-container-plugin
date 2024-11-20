@@ -122,6 +122,15 @@ nfpms:
           mode: 0644
           owner: tedge
           group: tedge
+        packager: deb
+
+      - src: ./packaging/services/systemd/tedge-container-plugin.service
+        dst: /usr/lib/systemd/system/tedge-container-plugin.service
+        file_info:
+          mode: 0644
+          owner: tedge
+          group: tedge
+        packager: rpm
 
       - src: ./packaging/services/init.d/service.init
         dst: /etc/init.d/tedge-container-plugin
@@ -129,6 +138,26 @@ nfpms:
           mode: 0644
           owner: tedge
           group: tedge
+        packager: deb
+
+      - src: ./packaging/services/init.d/service.init
+        dst: /etc/init.d/tedge-container-plugin
+        file_info:
+          mode: 0644
+          owner: tedge
+          group: tedge
+        packager: rpm
+
+      # s6-overlay services
+      - src: ./packaging/services/s6-overlay/tedge-container-plugin
+        dst: /etc/s6-overlay/s6-rc.d/tedge-container-plugin
+        packager: apk
+        type: tree
+
+      - src: ./packaging/services/s6-overlay/tedge-container-plugin-log
+        dst: /etc/s6-overlay/s6-rc.d/tedge-container-plugin-log
+        packager: apk
+        type: tree
 
       # Completions
       - src: ./output/completions.bash
