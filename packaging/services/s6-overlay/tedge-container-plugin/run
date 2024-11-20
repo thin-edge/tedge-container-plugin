@@ -5,7 +5,6 @@ if [ "${SERVICE_TEDGE_CONTAINER_PLUGIN:-1}" -eq 0 ]; then
     s6-svc -O .
     exit 0
 fi
-tedge init ||:
 
 exec 2>&1
-exec $COMMAND $COMMAND_ARGS
+exec /usr/bin/tedge-container run --config /etc/tedge-container-plugin/config.toml
