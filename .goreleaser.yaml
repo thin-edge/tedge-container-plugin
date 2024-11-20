@@ -149,15 +149,13 @@ nfpms:
         packager: rpm
 
       # s6-overlay services
-      - src: ./packaging/services/s6-overlay/tedge-container-plugin
-        dst: /etc/s6-overlay/s6-rc.d/tedge-container-plugin
+      - src: ./packaging/services/s6-overlay
+        dst: /etc/s6-overlay/s6-rc.d
         packager: apk
-        type: tree
 
-      - src: ./packaging/services/s6-overlay/tedge-container-plugin-log
-        dst: /etc/s6-overlay/s6-rc.d/tedge-container-plugin-log
+      - src: ./packaging/services/s6-overlay/tedge-container-plugin-pipeline
+        dst: /etc/s6-overlay/s6-rc.d/user/contents.d/tedge-container-plugin-pipeline
         packager: apk
-        type: tree
 
       # Completions
       - src: ./output/completions.bash
