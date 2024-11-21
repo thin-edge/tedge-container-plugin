@@ -153,10 +153,6 @@ nfpms:
         dst: /etc/s6-overlay/s6-rc.d
         packager: apk
 
-      - src: ./packaging/services/s6-overlay/tedge-container-plugin-pipeline
-        dst: /etc/s6-overlay/s6-rc.d/user/contents.d/tedge-container-plugin-pipeline
-        packager: apk
-
       # Completions
       - src: ./output/completions.bash
         dst: /etc/bash_completion.d/tedge-container
