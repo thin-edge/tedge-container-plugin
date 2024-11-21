@@ -13,6 +13,7 @@ func NewCliCommand(cmdCli cli.Cli) *cobra.Command {
 	}
 	cmd.AddCommand(
 		NewRunCommand(cmdCli),
+		NewContainerCloneCommand(cmdCli),
 	)
 	return cmd
 }

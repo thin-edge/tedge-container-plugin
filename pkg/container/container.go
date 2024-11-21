@@ -23,6 +23,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/strslice"
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/errdefs"
@@ -789,4 +790,373 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 	}
 
 	return errors.Join(errs...)
+}
+
+var ContainerStatusHealthy = "healthy"
+
+func (c *ContainerClient) WaitForHealthy(ctx context.Context, containerID string) error {
+
+	runningCount := 0
+	for {
+		// Check if the
+		con, err := c.Client.ContainerInspect(ctx, containerID)
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
+			// Just log error
+			slog.Info("Could not get container status.", "err", err)
+
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		// Check if container has a healthcheck command
+		if con.Config.Healthcheck == nil {
+			slog.Info("Container does not have a healthy script, using state.", "state", con.State.Status, "ok_count", runningCount)
+			if con.State.Running && runningCount > 1 {
+				return nil
+			}
+			runningCount += 1
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		// container has a health check
+		if con.State != nil && con.State.Health != nil {
+			if strings.HasPrefix(strings.ToLower(con.State.Health.Status), ContainerStatusHealthy) {
+				slog.Info("Container is healthy.", "status", con.State.Health.Status, "failing_streak", con.State.Health.FailingStreak)
+				return nil
+			}
+			slog.Info("Container is not healthy yet.", "status", con.State.Health.Status, "failing_streak", con.State.Health.FailingStreak)
+		} else {
+			slog.Info("Container is not healthy yet.", "id", containerID, "state", con.State)
+		}
+
+		time.Sleep(5 * time.Second)
+	}
+}
+
+// Wait for a container to be stopped by polling it's status
+// Avoid using ContainerWait is it is not compatible with older docker versions
+// and probably less compatible with podman
+func (c *ContainerClient) WaitForStop(ctx context.Context, containerID string) error {
+	for {
+		con, err := c.Client.ContainerInspect(ctx, containerID)
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
+			// Just log error
+			slog.Info("Could not get container status.", "err", err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		if !con.State.Running {
+			slog.Info("Container is not running.", "id", containerID, "state", con.State)
+			return nil
+		}
+		slog.Info("Container is still running.", "id", containerID, "state", con.State)
+		time.Sleep(5 * time.Second)
+	}
+}
+
+func (c *ContainerClient) UpdateRequired(ctx context.Context, containerID string, newImage string) (bool, types.ContainerJSON, error) {
+	prevContainer, err := c.Client.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return false, prevContainer, err
+	}
+
+	if newImage == "" {
+		newImage = prevContainer.Config.Image
+	}
+
+	images, err := c.Client.ImageList(ctx, image.ListOptions{
+		Filters: filters.NewArgs(filters.Arg("reference", newImage)),
+	})
+	if err != nil {
+		return false, prevContainer, err
+	}
+
+	if len(images) == 0 {
+		slog.Info("Image does not exist locally, assuming update is required.", "reference", newImage)
+		return true, prevContainer, err
+	}
+
+	nextImage := images[0]
+
+	// Check if new image matches existing image
+	// nextImage, _, err := c.Client.ImageInspectWithRaw(ctx, newImage)
+	// if err != nil {
+	// 	return false, prevContainer, err
+	// }
+
+	slog.Info("Current container image.", "name", prevContainer.Config.Image, "id", prevContainer.Image)
+	slog.Info("Next container image.", "name", strings.Join(nextImage.RepoTags, ","), "id", nextImage.ID)
+	if prevContainer.Image == nextImage.ID {
+		slog.Info("Container image is already up to date.", "image", prevContainer.Config.Image, "image_hash", prevContainer.Image)
+		return false, prevContainer, nil
+	}
+	return true, prevContainer, nil
+}
+
+type CloneOptions struct {
+	Image        string
+	HealthyAfter time.Duration
+	StopTimeout  time.Duration
+	WaitForExit  bool
+	AutoRemove   bool
+	Env          []string
+	ExtraHosts   []string
+}
+
+func FormatContainerName(v string) string {
+	return strings.TrimPrefix(v, "/")
+}
+
+// Clone an existing container by spawning a new container with the same configuration
+// but using a new image
+func (c *ContainerClient) CloneContainer(ctx context.Context, containerID string, opts CloneOptions) error {
+	prevContainer, err := c.Client.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return err
+	}
+
+	if opts.Image == "" {
+		opts.Image = prevContainer.Config.Image
+	}
+
+	prevImage := prevContainer.Image
+	backupContainerName := FormatContainerName(fmt.Sprintf("%s-%s-%d", prevContainer.Name, "bak", time.Now().Unix()))
+	containerName := FormatContainerName(prevContainer.Name)
+
+	slog.Info("Removing previous backup container if it exists")
+	if err := c.StopRemoveContainer(ctx, backupContainerName); err != nil {
+		return err
+	}
+
+	if opts.WaitForExit {
+		slog.Info("Disabling restart policy of previous container.", "id", prevContainer.ID)
+		updateResp, updateErr := c.Client.ContainerUpdate(ctx, prevContainer.ID, container.UpdateConfig{
+			RestartPolicy: container.RestartPolicy{
+				Name: container.RestartPolicyDisabled,
+			},
+		})
+		if updateErr != nil {
+			if !errdefs.IsNotFound(updateErr) {
+				return updateErr
+			}
+			slog.Warn("Failed to change restart policy.", "id", prevContainer.ID, "response", updateResp)
+		} else {
+			slog.Info("Changed restart policy.", "id", prevContainer.ID, "response", updateResp)
+		}
+		slog.Info("Waiting for previous container to stop.", "id", prevContainer.ID, "name", prevContainer.Name)
+		timeoutCtx, cancel := context.WithTimeout(ctx, opts.StopTimeout)
+		defer cancel()
+		if err := c.WaitForStop(timeoutCtx, prevContainer.ID); err != nil {
+			return err
+		}
+		slog.Info("Container stopped.", "id", prevContainer.ID)
+	} else {
+		slog.Info("Stopping previous container.", "id", prevContainer.ID, "name", prevContainer.Name)
+		stopErr := c.Client.ContainerStop(ctx, prevContainer.ID, container.StopOptions{})
+		if stopErr != nil {
+			return stopErr
+		}
+	}
+
+	slog.Info("Renaming container.", "id", prevContainer.ID, "old", prevContainer.Name, "new", backupContainerName)
+	if err := c.Client.ContainerRename(ctx, containerID, backupContainerName); err != nil {
+		return err
+	}
+
+	prevContainer.Config.Image = opts.Image
+	slog.Info("Creating new container.", "name", prevContainer.Name, "newImage", opts.Image, "prevImage", prevImage, "config", prevContainer.Config, "host_config", prevContainer.HostConfig)
+
+	// TODO: Move container config copy to new function
+	// Clone network settings, but only clone the network ids that the container is part of (don't clone everything as it leads to incompatibilities between engine versions)
+	networkConfig := &network.NetworkingConfig{
+		EndpointsConfig: map[string]*network.EndpointSettings{},
+	}
+	for networkName, value := range prevContainer.NetworkSettings.Networks {
+		if value.NetworkID != "" {
+			networkConfig.EndpointsConfig[networkName] = &network.EndpointSettings{
+				NetworkID: value.NetworkID,
+			}
+		}
+	}
+
+	// Copy host config
+	hostConfig := &container.HostConfig{
+		Binds:       prevContainer.HostConfig.Binds,
+		AutoRemove:  opts.AutoRemove,
+		NetworkMode: prevContainer.HostConfig.NetworkMode,
+		Annotations: prevContainer.HostConfig.Annotations,
+		CapAdd:      prevContainer.HostConfig.CapAdd,
+		CapDrop:     prevContainer.HostConfig.CapDrop,
+		RestartPolicy: container.RestartPolicy{
+			Name: container.RestartPolicyAlways,
+		},
+		DNS:             prevContainer.HostConfig.DNS,
+		DNSOptions:      prevContainer.HostConfig.DNSOptions,
+		Links:           prevContainer.HostConfig.Links,
+		Privileged:      prevContainer.HostConfig.Privileged,
+		Mounts:          prevContainer.HostConfig.Mounts,
+		Tmpfs:           prevContainer.HostConfig.Tmpfs,
+		PortBindings:    prevContainer.HostConfig.PortBindings,
+		PublishAllPorts: prevContainer.HostConfig.PublishAllPorts,
+		ShmSize:         prevContainer.HostConfig.ShmSize,
+		ExtraHosts:      append(prevContainer.HostConfig.ExtraHosts, opts.ExtraHosts...),
+		OomScoreAdj:     prevContainer.HostConfig.OomScoreAdj,
+		ReadonlyRootfs:  prevContainer.HostConfig.ReadonlyRootfs,
+		VolumeDriver:    prevContainer.HostConfig.VolumeDriver,
+		VolumesFrom:     prevContainer.HostConfig.VolumesFrom,
+		Init:            prevContainer.HostConfig.Init,
+		LogConfig:       prevContainer.HostConfig.LogConfig,
+		DNSSearch:       prevContainer.HostConfig.DNSSearch,
+		StorageOpt:      prevContainer.HostConfig.StorageOpt,
+		ReadonlyPaths:   prevContainer.HostConfig.ReadonlyPaths,
+		SecurityOpt:     prevContainer.HostConfig.SecurityOpt,
+		GroupAdd:        prevContainer.HostConfig.GroupAdd,
+		Runtime:         prevContainer.HostConfig.Runtime,
+	}
+
+	clonedConfig := prevContainer.Config
+	clonedConfig.Env = append(clonedConfig.Env, opts.Env...)
+
+	nextContainer, createErr := c.Client.ContainerCreate(ctx, clonedConfig, hostConfig, networkConfig, nil, containerName)
+
+	if createErr != nil {
+		return createErr
+	}
+	slog.Info("Created new container.", "id", nextContainer.ID, "name", containerName)
+
+	// start container
+	if err := c.Client.ContainerStart(ctx, nextContainer.ID, container.StartOptions{}); err != nil {
+		slog.Warn("Container failed to start.", "id", nextContainer.ID, "err", err)
+	}
+
+	// Check if the container is healthy
+	slog.Info("Waiting for container to be healthy.", "id", nextContainer.ID, "name", containerName)
+	healthCtx, cancel := context.WithTimeout(ctx, opts.HealthyAfter)
+	defer cancel()
+	if err := c.WaitForHealthy(healthCtx, nextContainer.ID); err != nil {
+		slog.Info("New container is not healthy, reverting to the previous container.", "prevContainerID", prevContainer.ID, "name", containerName)
+
+		// Collect logs from it
+		reader, logErr := c.Client.ContainerLogs(ctx, nextContainer.ID, container.LogsOptions{
+			ShowStdout: true,
+			ShowStderr: true,
+			Timestamps: false,
+			Details:    false,
+			Tail:       "100",
+		})
+		if logErr != nil {
+			slog.Warn("Could not get logs from new container.", "id", nextContainer.ID, "err", logErr)
+		} else {
+			defer reader.Close()
+
+			_, err := StdCopy(os.Stderr, os.Stderr, reader)
+			if err != nil {
+				return err
+			}
+		}
+
+		// Revert
+		stopErr := c.Client.ContainerStop(ctx, prevContainer.ID, container.StopOptions{})
+		if stopErr != nil {
+			slog.Warn("Could not stop new container but restoring old container anyway.", "id", prevContainer.ID)
+		}
+
+		// Delete the new container
+		if err := c.StopRemoveContainer(ctx, nextContainer.ID); err != nil {
+			// Just log, don't fail as the previous container needs to be restored
+			slog.Warn("Could not stop and remove newly spawned container.", "err", err)
+		}
+
+		slog.Info("Restoring previous container instance.", "id", prevContainer.ID, "old", backupContainerName, "new", containerName)
+		if err := c.Client.ContainerRename(ctx, prevContainer.ID, containerName); err != nil {
+			return err
+		}
+
+		if err := c.Client.ContainerStart(ctx, prevContainer.ID, container.StartOptions{}); err != nil {
+			return err
+		}
+		slog.Info("Restored previous container instance.", "id", prevContainer.ID, "name", containerName)
+		return nil
+	}
+
+	slog.Info("Removing previous container")
+	if err := c.StopRemoveContainer(ctx, prevContainer.ID); err != nil {
+		slog.Warn("Failed to remove previous container.", "err", err)
+	}
+
+	// TODO: Should the previous container now be destroyed?
+	slog.Info("Successfully created new container.", "id", nextContainer.ID, "name", containerName, "image", opts.Image)
+	return nil
+}
+
+func (c *ContainerClient) Fork(ctx context.Context, entrypoint []string, cmd []string) error {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return err
+	}
+	currentContainer, err := c.Client.ContainerInspect(ctx, hostname)
+	if err != nil {
+		return fmt.Errorf("could not find current container. %s", err)
+	}
+
+	containerEntrypoint := make(strslice.StrSlice, 0)
+	containerEntrypoint = append(containerEntrypoint, entrypoint...)
+
+	containerCommand := make(strslice.StrSlice, 0)
+	containerCommand = append(containerCommand, cmd...)
+
+	currentContainer.Config.Entrypoint = containerEntrypoint
+	labels := make(map[string]string)
+	labels["io.tedge.fork"] = "1"
+	labels["io.tedge.forked.name"] = currentContainer.Name
+	currentContainer.Config.Labels = labels
+	currentContainer.Config.Cmd = containerCommand
+	// Don't remove it until it has been acknowledged
+	currentContainer.HostConfig.AutoRemove = false
+	// TODO: Protect against the
+	currentContainer.HostConfig.RestartPolicy = container.RestartPolicy{
+		Name: container.RestartPolicyDisabled,
+		// Name: container.RestartPolicyAlways,
+	}
+
+	networkConfig := &network.NetworkingConfig{
+		EndpointsConfig: currentContainer.NetworkSettings.Networks,
+	}
+	resp, respErr := c.Client.ContainerCreate(ctx, currentContainer.Config, currentContainer.HostConfig, networkConfig, nil, "")
+	if respErr != nil {
+		return respErr
+	}
+
+	startErr := c.Client.ContainerStart(ctx, resp.ID, container.StartOptions{})
+	if startErr != nil {
+		slog.Error("Failed to start container.", "id", resp.ID, "err", err)
+		return startErr
+	}
+	slog.Info("Successfully created forked container.", "id", resp.ID)
+
+	// Wait for the new container to be stable?
+	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	return c.WaitForHealthy(timeoutCtx, resp.ID)
+}
+
+func IsInsideContainer() bool {
+	paths := []string{
+		"/.dockerenv",
+		"/run/.containerenv",
+	}
+	for _, p := range paths {
+		if utils.PathExists(p) {
+			return true
+		}
+	}
+	return false
 }
