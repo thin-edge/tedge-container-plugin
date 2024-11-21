@@ -1,0 +1,11 @@
+#!/command/with-contenv sh
+if [ "${SERVICE_TEDGE_CONTAINER_PLUGIN:-1}" -eq 0 ]; then
+    # Disable service and don't start again
+    # https://github.com/just-containers/s6-overlay/issues/394
+    s6-svc -O .
+    exit 0
+fi
+
+# Dummy service which is used to only send the "finish" signal to the tedge-container-plugin process using sudo
+exec 2>&1
+exec sleep infinity
