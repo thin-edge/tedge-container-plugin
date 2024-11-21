@@ -44,6 +44,7 @@ func NewContainerCloneCommand(ctx cli.Cli) *cobra.Command {
 		Short:        "Clone an existing container and replace the container image",
 		RunE:         command.RunE,
 		SilenceUsage: true,
+		Hidden:       true,
 	}
 	cmd.Flags().StringVar(&command.ContainerID, "container", "", "Container to clone. Either container id or name")
 	cmd.Flags().StringVar(&command.Image, "image", "", "Container image")
