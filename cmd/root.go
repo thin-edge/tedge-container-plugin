@@ -49,13 +49,17 @@ func Execute() {
 
 	err := rootCmd.Execute()
 	if err != nil {
-		switch err.(type) {
-		case cli.SilentError:
-			// Don't log error
+		exitCode := 1
+		switch vErr := err.(type) {
+		case cli.ExitCodeError:
+			exitCode = vErr.ExitCode()
+			if !vErr.Silent {
+				slog.Error("Command error", "err", err)
+			}
 		default:
 			slog.Error("Command error", "err", err)
 		}
-		os.Exit(1)
+		os.Exit(exitCode)
 	}
 }
 

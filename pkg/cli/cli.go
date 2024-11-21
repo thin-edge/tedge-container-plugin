@@ -22,7 +22,32 @@ import (
 
 var LinuxConfigFilePath = "/etc/tedge-container-plugin/config.toml"
 
-type SilentError error
+func NewExitCodeError(err error) *ExitCodeError {
+	return &ExitCodeError{
+		Code: 1,
+		Err:  err,
+	}
+}
+
+type ExitCodeError struct {
+	Err    error
+	Code   int
+	Silent bool
+}
+
+func (e ExitCodeError) Error() string {
+	if e.Err != nil {
+		return e.Err.Error()
+	}
+	return ""
+}
+
+func (e ExitCodeError) ExitCode() int {
+	if e.Code == 0 {
+		return 1
+	}
+	return e.Code
+}
 
 type Cli struct {
 	ConfigFile string
