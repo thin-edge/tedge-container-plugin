@@ -7,4 +7,10 @@ if [ "${SERVICE_TEDGE_CONTAINER_PLUGIN:-1}" -eq 0 ]; then
 fi
 
 exec 2>&1
-exec /usr/bin/tedge-container run --config /etc/tedge-container-plugin/config.toml
+
+SUDO=
+if command -V sudo >/dev/null 2>&1; then
+    SUDO="sudo"
+fi
+
+exec $SUDO /usr/bin/tedge-container run --config /etc/tedge-container-plugin/config.toml
