@@ -133,7 +133,7 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 	return application, nil
 }
 
-func (a *App) DeleteLegacyService(deleteFromCloud bool) {
+func (a *App) DeleteLegacyService(ctx context.Context, deleteFromCloud bool) {
 	target := a.client.Target.Service("tedge-container-monitor")
 	slog.Info("Removing legacy service from the cloud", "topic", target.Topic())
 
@@ -147,7 +147,7 @@ func (a *App) DeleteLegacyService(deleteFromCloud bool) {
 	time.Sleep(500 * time.Millisecond)
 
 	if target.CloudIdentity != "" && deleteFromCloud {
-		if _, err := a.client.DeleteCumulocityManagedObject(*target); err != nil {
+		if _, err := a.client.DeleteCumulocityManagedObject(ctx, *target); err != nil {
 			slog.Warn("Failed to delete managed object.", "err", err)
 		}
 	}
@@ -200,9 +200,9 @@ func (a *App) worker() {
 			switch opts.Action {
 			case ActionUpdateAll:
 				slog.Info("Processing update request")
-				err := a.doUpdate(opts.Options.(container.FilterOptions))
 				// Don't block when publishing results
 				go func() {
+					err := a.doUpdate(context.Background(), opts.Options.(container.FilterOptions))
 					a.updateResults <- err
 				}()
 			case ActionUpdateMetrics:
@@ -402,7 +402,7 @@ func (a *App) updateMetrics(items []container.TedgeContainer) error {
 	return errors.Join(jobErrors...)
 }
 
-func (a *App) doUpdate(filterOptions container.FilterOptions) error {
+func (a *App) doUpdate(ctx context.Context, filterOptions container.FilterOptions) error {
 	tedgeClient := a.client
 	entities, err := tedgeClient.GetEntities()
 	if err != nil {
@@ -534,7 +534,7 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 				target.CloudIdentity = tedgeClient.Target.CloudIdentity
 				if target.CloudIdentity != "" {
 					// Delay deleting the value
-					if _, err := tedgeClient.DeleteCumulocityManagedObject(target); err != nil {
+					if _, err := tedgeClient.DeleteCumulocityManagedObject(ctx, target); err != nil {
 						slog.Warn("Failed to delete managed object.", "err", err)
 					}
 				}

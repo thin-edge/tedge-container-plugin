@@ -243,9 +243,9 @@ func (c *Client) Connect() error {
 }
 
 // Delete a Cumulocity Managed object by External ID
-func (c *Client) DeleteCumulocityManagedObject(target Target) (bool, error) {
+func (c *Client) DeleteCumulocityManagedObject(ctx context.Context, target Target) (bool, error) {
 	slog.Info("Deleting service by external ID.", "name", target.ExternalID())
-	extID, resp, err := c.CumulocityClient.Identity.GetExternalID(context.Background(), "c8y_Serial", target.ExternalID())
+	extID, resp, err := c.CumulocityClient.Identity.GetExternalID(ctx, "c8y_Serial", target.ExternalID())
 
 	if err != nil {
 		if resp != nil && resp.StatusCode() == http.StatusNotFound {
@@ -254,7 +254,7 @@ func (c *Client) DeleteCumulocityManagedObject(target Target) (bool, error) {
 		return false, err
 	}
 
-	if _, err := c.CumulocityClient.Inventory.Delete(context.Background(), extID.ManagedObject.ID); err != nil {
+	if _, err := c.CumulocityClient.Inventory.Delete(ctx, extID.ManagedObject.ID); err != nil {
 		slog.Warn("Failed to delete service", "id", extID.ManagedObject.ID, "err", err)
 		return false, err
 	}

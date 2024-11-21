@@ -75,16 +75,17 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 				return application.Update(cliContext.GetFilterOptions())
 			}
 
-			// Remove the legacy service
-			if cliContext.DeleteLegacyService() {
-				go application.DeleteLegacyService(cliContext.DeleteFromCloud())
-			}
-
 			stop := make(chan os.Signal, 1)
 			signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 			// Start background monitor
 			ctx, cancel := context.WithCancel(context.Background())
+
+			// Remove the legacy service
+			if cliContext.DeleteLegacyService() {
+				go application.DeleteLegacyService(ctx, cliContext.DeleteFromCloud())
+			}
+
 			go func() {
 				for {
 					slog.Info("Monitor container engine events")
