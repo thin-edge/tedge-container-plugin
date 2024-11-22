@@ -1,8 +1,0 @@
-#!/command/with-contenv sh
-echo "Shutting down tedge-container-plugin"
-PROC_PID=$(pgrep -f "/usr/bin/tedge-container run" ||:)
-if [ -n "$PROC_PID" ]; then
-    echo "sending SIGTERM to pid=$PROC_PID"
-    sudo kill -15 "$PROC_PID" || echo "Failed to stop tedge-container service"
-fi
-exit 0
