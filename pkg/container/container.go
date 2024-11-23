@@ -211,17 +211,45 @@ func socketExists(p string) bool {
 }
 
 func findContainerEngineSocket() (socketAddr string) {
-	containerSockets := []string{
-		"unix:///var/run/docker.sock",
-		"unix:///run/podman/podman.sock",
+	// Check env variables to normalize differences
+	// between docker and podman
+	containerSockets := make([]string, 0)
+
+	envVariables := []string{
+		// docker
+		"DOCKER_HOST",
+		// podman
+		"CONTAINER_HOST",
 	}
+	for _, name := range envVariables {
+		if v := os.Getenv(name); v != "" {
+			containerSockets = append(containerSockets, v)
+		}
+	}
+
+	// docker
+	containerSockets = append(
+		containerSockets,
+		"unix:///var/run/docker.sock",
+	)
+	// podman
+	containerSockets = append(
+		containerSockets,
+		"unix:///run/podman/podman.sock",
+		"unix:///run/user/0/podman/podman.sock",
+	)
 
 	for _, addr := range containerSockets {
 		if strings.HasPrefix(addr, "unix://") {
+			// Check if socket exists
 			if socketExists(addr) {
 				socketAddr = addr
 				break
 			}
+		} else {
+			// Assume the user has configured a valid non-socket based endpoint
+			socketAddr = addr
+			break
 		}
 	}
 	return socketAddr
@@ -229,13 +257,16 @@ func findContainerEngineSocket() (socketAddr string) {
 
 func NewContainerClient() (*ContainerClient, error) {
 	// Find container socket
-	if v := os.Getenv("DOCKER_HOST"); v == "" {
-		if addr := findContainerEngineSocket(); addr != "" {
-			if err := os.Setenv("DOCKER_HOST", addr); err != nil {
-				return nil, err
-			}
-			slog.Info("Using container engine socket.", "value", addr)
+	addr := findContainerEngineSocket()
+	if addr != "" {
+		if err := os.Setenv("DOCKER_HOST", addr); err != nil {
+			return nil, err
 		}
+		// Used by podman and podman-remote
+		if err := os.Setenv("CONTAINER_HOST", addr); err != nil {
+			return nil, err
+		}
+		slog.Info("Using container engine socket.", "value", addr)
 	}
 
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
