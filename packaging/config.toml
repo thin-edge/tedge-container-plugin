@@ -67,3 +67,7 @@ enabled = true
 [delete_from_cloud]
 # Enable/Disable the deletion of services from the cloud (using REST API) when a container is removed
 enabled = true
+
+[registry]
+# Path to the file containing container registry credentials
+credentials_path = "/data/tedge-container-plugin/credentials.toml"

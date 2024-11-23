@@ -5,21 +5,25 @@ package container
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	containerSDK "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/registry"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/thin-edge/tedge-container-plugin/pkg/cli"
 	"github.com/thin-edge/tedge-container-plugin/pkg/container"
+	"github.com/thin-edge/tedge-container-plugin/pkg/utils"
 )
 
 type InstallCommand struct {
@@ -154,8 +158,36 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 		}
 
 		if len(images) == 0 || c.CommandContext.GetBool("container.alwaysPull") {
-			slog.Info("Pulling image.", "ref", imageRef)
-			out, err := cli.Client.ImagePull(ctx, imageRef, image.PullOptions{})
+			pullOptions := image.PullOptions{}
+
+			// Check credentials config
+			creds := c.CommandContext.GetRegistryCredentials(imageRef)
+
+			// Check credentials helper script
+			credentialsScript := "registry-credentials"
+			if utils.CommandExists(credentialsScript) {
+				slog.Info("Executing registry credentials script.", "script", credentialsScript)
+				scriptCtx, cancelScript := context.WithTimeout(ctx, 60*time.Second)
+				defer cancelScript()
+				if customCreds, err := c.CommandContext.GetCredentialsFromScript(scriptCtx, credentialsScript, imageRef); err != nil {
+					slog.Warn("Failed to get registry credentials.", "script", credentialsScript, "err", err)
+				} else {
+					if customCreds.Username != "" && customCreds.Password != "" {
+						slog.Info("Using registry credentials returned by a helper.", "script", credentialsScript, "username", customCreds.Username)
+						creds.Username = customCreds.Username
+						creds.Password = customCreds.Password
+					}
+				}
+			}
+
+			if creds.IsSet() {
+				pullOptions.RegistryAuth = GetRegistryAuth(creds.Username, creds.Password)
+				slog.Info("Pulling image from private registry.", "ref", imageRef, "username", creds.Username)
+			} else {
+				slog.Info("Pulling image.", "ref", imageRef)
+			}
+
+			out, err := cli.Client.ImagePull(ctx, imageRef, pullOptions)
 			if err != nil {
 				return err
 			}
@@ -211,4 +243,17 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 
 	slog.Info("created container.", "id", resp.ID, "name", containerName)
 	return nil
+}
+
+func GetRegistryAuth(username, password string) string {
+	authConfig := registry.AuthConfig{
+		Username: username,
+		Password: password,
+	}
+	encodedJSON, err := json.Marshal(authConfig)
+	if err != nil {
+		panic(err)
+	}
+	authStr := base64.URLEncoding.EncodeToString(encodedJSON)
+	return authStr
 }

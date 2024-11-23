@@ -1,9 +1,13 @@
 package cli
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -29,6 +33,7 @@ func (c *Cli) OnInit() {
 	viper.SetDefault("container.network", "tedge")
 	viper.SetDefault("delete_legacy", true)
 	viper.SetDefault("data_dir", []string{"/data/tedge-container-plugin", "/var/tedge-container-plugin"})
+	viper.SetDefault("registry.credentials_path", "/data/tedge-container-plugin/credentials.toml")
 
 	// Default to the tedge plugins folder
 	if c.ConfigFile == "" {
@@ -203,6 +208,83 @@ func (c *Cli) PersistentDir(check_writable bool) (string, error) {
 		slog.Info("Skipping dir as it is not writable.", "dir", p)
 	}
 	return "", fmt.Errorf("no writable working directory detected")
+}
+
+func (c *Cli) GetRegistryCredentialsPath() string {
+	return viper.GetString("registry.credentials_path")
+}
+
+type RepositoryAuth struct {
+	URL      string
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+func (a *RepositoryAuth) IsSet() bool {
+	return a.Username != "" && a.Password != ""
+}
+
+func GetImageSource(v string) string {
+	items := strings.Split(v, "/")
+	switch len(items) {
+	case 3:
+		return items[0]
+	default:
+		return v
+	}
+}
+
+func (c *Cli) GetRegistryCredentials(url string) RepositoryAuth {
+	config := viper.New()
+	config.SetEnvPrefix("CONTAINER")
+	config.AutomaticEnv()
+	config.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	credentialsFile := c.GetRegistryCredentialsPath()
+	if utils.PathExists(credentialsFile) {
+		config.SetConfigFile(credentialsFile)
+	}
+
+	if err := config.ReadInConfig(); err == nil {
+		slog.Info("Using config file", "path", viper.ConfigFileUsed())
+	} else {
+		slog.Warn("Could not read credentials files. Continuing anyway.", "path", credentialsFile, "err", err)
+	}
+
+	url = GetImageSource(url)
+	slog.Info("Looking for credentials matching repository.", "url", url)
+
+	creds := RepositoryAuth{}
+	for i := 1; i <= 4; i++ {
+		key := fmt.Sprintf("registry%d", i)
+		repoURL := config.GetString(fmt.Sprintf("%s.repo", key))
+		username := config.GetString(fmt.Sprintf("%s.username", key))
+
+		if strings.EqualFold(url, repoURL) && username != "" {
+			slog.Info("Found container registry credentials.", "url", repoURL, "username", username)
+			creds.URL = repoURL
+			creds.Username = username
+			creds.Password = config.GetString(fmt.Sprintf("%s.password", key))
+			return creds
+		}
+	}
+	return creds
+}
+
+func (c *Cli) GetCredentialsFromScript(ctx context.Context, script string, args ...string) (RepositoryAuth, error) {
+	cmd := exec.CommandContext(ctx, script, args...)
+	var outb, errb bytes.Buffer
+	cmd.Stdout = &outb
+	cmd.Stderr = &errb
+
+	creds := RepositoryAuth{}
+
+	if err := cmd.Run(); err != nil {
+		return creds, err
+	}
+	slog.Info("Script output.", "stderr", errb.String())
+	err := json.Unmarshal(outb.Bytes(), &creds)
+	return creds, err
 }
 
 func getExpandedStringSlice(key string) []string {
