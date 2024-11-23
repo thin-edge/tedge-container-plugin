@@ -37,7 +37,7 @@ Install/uninstall container package from private repository - credentials script
 
 Install/uninstall container package from private repository - engine credentials
     [Documentation]    login to registry from host
-    [Tags]    docker    podman
+    [Tags]    podman
     DeviceLibrary.Execute Command    tedge-container engine docker login docker.io -u '${REGISTRY1_USERNAME}' --password '${REGISTRY1_PASSWORD}'
     ${operation}=    Cumulocity.Install Software    {"name": "testapp3", "version": "${PRIVATE_IMAGE}", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60

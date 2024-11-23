@@ -5,6 +5,7 @@ Library    DeviceLibrary    bootstrap_script=bootstrap.sh
 
 Test Setup    Test Setup
 Test Teardown    Collect Logs
+Test Tags    podman    docker
 
 *** Test Cases ***
 

@@ -10,8 +10,6 @@ on:
   pull_request_target:
     branches: [ next ]
   merge_group:
-  push:
-    branches: [ feat-support-private-registries ]
 jobs:
   approve:
     name: Approve
@@ -41,8 +39,8 @@ jobs:
       fail-fast: false
       matrix:
         job:
-          - { image: debian-systemd-docker-cli }
-          - { image: debian-systemd-podman-cli }
+          - { image: debian-systemd-docker-cli, test_options: "--include docker" }
+          - { image: debian-systemd-podman-cli, test_options: "--include podman" }
 
     steps:
       - name: Checkout
@@ -94,7 +92,7 @@ jobs:
           just build-test
 
       - name: Run tests
-        run: just test
+        run: just test ${{ matrix.job.test_options }}
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
