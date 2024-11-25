@@ -31,7 +31,7 @@ jobs:
       name: Test Auto
     runs-on: ubuntu-latest
     env:
-      TEST_IMAGE: ${{ matrix.job.image }}_ci_${{github.run_id}}_${{github.run_attempt || '1'}}
+      TEST_IMAGE: ${{ matrix.job.image }}
 
     strategy:
       fail-fast: false
