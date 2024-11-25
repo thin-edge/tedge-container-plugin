@@ -169,7 +169,7 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 				slog.Info("Executing registry credentials script.", "script", credentialsScript)
 				scriptCtx, cancelScript := context.WithTimeout(ctx, 60*time.Second)
 				defer cancelScript()
-				if customCreds, err := c.CommandContext.GetCredentialsFromScript(scriptCtx, credentialsScript, imageRef); err != nil {
+				if customCreds, err := c.CommandContext.GetCredentialsFromScript(scriptCtx, credentialsScript, "get", imageRef); err != nil {
 					slog.Warn("Failed to get registry credentials.", "script", credentialsScript, "err", err)
 				} else {
 					if customCreds.Username != "" && customCreds.Password != "" {

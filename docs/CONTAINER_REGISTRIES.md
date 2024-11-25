@@ -9,10 +9,10 @@ Container images can be pulled from private repositories, however you must provi
 Container registry credentials can be provided dynamically to plugin by creating an executable file called `registry-credentials` which then returns the credentials to use for the api call.
 
 
-The `registry-credentials` is executed by tedge-container-plugin when it attempts to pull an image, and the image/tag is passed as the first argument to the executable.
+The `registry-credentials` is executed by tedge-container-plugin when it attempts to pull an image, and the image/tag is passed as an argument to the executable.
 
 ```sh
-registry-credentials IMAGE_TAG
+registry-credentials get IMAGE_TAG
 ```
 
 The script should return with an exit-code 0 and the credentials
@@ -28,20 +28,37 @@ The script should return with an exit-code 0 and the credentials
 
 ```sh
 #!/bin/sh
-IMAGE="$1"
+set -e
+ACTION="$1"
+shift
 
-# Write log messages to stderr
-echo "Retrieving private repository credentials for $IMAGE" >&2
+get_credentials() {
+    IMAGE="$1"
+    # Write log messages to stderr
+    echo "Retrieving private repository credentials for $IMAGE" >&2
 
-# Fetch some credentials from anywhere, e.g. api, local file storage, keychain etc.
+    # Fetch some credentials from anywhere, e.g. api, local file storage, keychain etc.
 
-# Then return credentials
-cat <<EOT
+    # Then return credentials
+    cat <<EOT
 {
     "username": "myuser",
     "password": "..."
 }
 EOT
+}
+
+case "$ACTION" in
+    get)
+        get_credentials "$@"
+        ;;
+    *)
+        echo "Unknown command" >&2
+        exit 1
+        ;;
+esac
+
+exit 0
 ```
 
 ### Using static settings
