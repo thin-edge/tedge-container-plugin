@@ -31,9 +31,7 @@ jobs:
       name: Test Auto
     runs-on: ubuntu-latest
     env:
-      COMPOSE_PROJECT_NAME: ci_${{github.run_id}}_${{github.run_attempt || '1'}}
-      IMAGE: ${{ matrix.job.image }}_ci_${{github.run_id}}_${{github.run_attempt || '1'}}
-      IMAGE_SRC: ${{ matrix.job.image }}
+      TEST_IMAGE: ${{ matrix.job.image }}_ci_${{github.run_id}}_${{github.run_attempt || '1'}}
 
     strategy:
       fail-fast: false
