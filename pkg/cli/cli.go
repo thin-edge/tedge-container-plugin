@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/distribution/reference"
 	"github.com/spf13/viper"
 	"github.com/thin-edge/tedge-container-plugin/pkg/container"
 	"github.com/thin-edge/tedge-container-plugin/pkg/tedge"
@@ -225,13 +226,11 @@ func (a *RepositoryAuth) IsSet() bool {
 }
 
 func GetImageSource(v string) string {
-	items := strings.Split(v, "/")
-	switch len(items) {
-	case 3:
-		return items[0]
-	default:
+	named, err := reference.ParseDockerRef(v)
+	if err != nil {
 		return v
 	}
+	return reference.Domain(named)
 }
 
 func (c *Cli) GetRegistryCredentials(url string) RepositoryAuth {
@@ -251,8 +250,8 @@ func (c *Cli) GetRegistryCredentials(url string) RepositoryAuth {
 		slog.Warn("Could not read credentials files. Continuing anyway.", "path", credentialsFile, "err", err)
 	}
 
-	url = GetImageSource(url)
-	slog.Info("Looking for credentials matching repository.", "url", url)
+	urlFromImage := GetImageSource(url)
+	slog.Info("Looking for credentials matching repository.", "url", urlFromImage, "image", url)
 
 	creds := RepositoryAuth{}
 	for i := 1; i <= 4; i++ {
@@ -260,7 +259,7 @@ func (c *Cli) GetRegistryCredentials(url string) RepositoryAuth {
 		repoURL := config.GetString(fmt.Sprintf("%s.repo", key))
 		username := config.GetString(fmt.Sprintf("%s.username", key))
 
-		if strings.EqualFold(url, repoURL) && username != "" {
+		if strings.EqualFold(urlFromImage, repoURL) && username != "" {
 			slog.Info("Found container registry credentials.", "url", repoURL, "username", username)
 			creds.URL = repoURL
 			creds.Username = username
