@@ -247,7 +247,9 @@ func (c *Cli) GetRegistryCredentials(url string) RepositoryAuth {
 	if err := config.ReadInConfig(); err == nil {
 		slog.Info("Using config file", "path", viper.ConfigFileUsed())
 	} else {
-		slog.Warn("Could not read credentials files. Continuing anyway.", "path", credentialsFile, "err", err)
+		if config.ConfigFileUsed() != "" {
+			slog.Warn("Could not read credentials files. Continuing anyway.", "path", credentialsFile, "err", err)
+		}
 	}
 
 	urlFromImage := GetImageSource(url)
