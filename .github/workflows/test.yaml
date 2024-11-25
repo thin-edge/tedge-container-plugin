@@ -23,7 +23,7 @@ jobs:
         run: echo "Approved"
 
   test:
-    name: Test
+    name: Test ${{ matrix.job.image }}
     needs: [approve]
     permissions:
       pull-requests: write
@@ -31,9 +31,7 @@ jobs:
       name: Test Auto
     runs-on: ubuntu-latest
     env:
-      COMPOSE_PROJECT_NAME: ci_${{github.run_id}}_${{github.run_attempt || '1'}}
-      IMAGE: ${{ matrix.job.image }}_ci_${{github.run_id}}_${{github.run_attempt || '1'}}
-      IMAGE_SRC: ${{ matrix.job.image }}
+      TEST_IMAGE: ${{ matrix.job.image }}_ci_${{github.run_id}}_${{github.run_attempt || '1'}}
 
     strategy:
       fail-fast: false
@@ -47,6 +45,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || '' }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          install: true
 
       - name: create .env file
         run: |

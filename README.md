@@ -186,13 +186,10 @@ If you're using VS Code, then you can also install the following extensions to e
 
 To run the tests you will need to have python3 &gt;> 3.9 installed on your system, then run the following
 
-1. Create a `.env` file, and set you Cumulocity IoT credentials
+1. Create an initial `.env` file and fill in your Cumulocity credentials to be used for the tests
 
    ```sh
-   DEVICE_ID=ci_mydevice
-   C8Y_BASEURL=mytenant.eu-latest.cumulocity.com
-   C8Y_USER=admin
-   C8Y_PASSWORD="mypassword"
+   just init-dotenv
    ```
 
 2. Build the software management plugin
@@ -216,7 +213,8 @@ To run the tests you will need to have python3 &gt;> 3.9 installed on your syste
 5. Run the RobotFramework tests
 
    ```sh
-   just test
+   just test --include podman
+   just test --include docker
    ```
 
 ### Building UI
