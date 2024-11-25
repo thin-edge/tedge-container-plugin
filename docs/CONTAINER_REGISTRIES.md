@@ -12,10 +12,21 @@ Container registry credentials can be provided dynamically to plugin by creating
 The `registry-credentials` is executed by tedge-container-plugin when it attempts to pull an image, and the image/tag is passed as an argument to the executable.
 
 ```sh
-registry-credentials get IMAGE_TAG
+registry-credentials get IMAGE_TAG [--refresh]
 ```
 
-The script should return with an exit-code 0 and the credentials
+For example:
+
+```sh
+# Get credentials for the registry related to an image
+registry-credentials get ghcr.io/thin-edge/tedge:1.3.1
+
+# Get credentials but the tedge-container-plugin has indicated that a new token
+# should be issued as the last token failed
+registry-credentials get ghcr.io/thin-edge/tedge:1.3.1 --refresh
+```
+
+The script should return with an exit-code 0 and the credentials in the following json format:
 
 ```json
 {
@@ -34,11 +45,16 @@ shift
 
 get_credentials() {
     IMAGE="$1"
+
     # Write log messages to stderr
-    echo "Retrieving private repository credentials for $IMAGE" >&2
 
-    # Fetch some credentials from anywhere, e.g. api, local file storage, keychain etc.
-
+    if [ "$2" = "--refresh" ]; then
+        # Fetch some credentials from anywhere, e.g. api, local file storage, keychain etc.
+        echo "Retrieving private repository credentials for $IMAGE" >&2
+    else
+        echo "Using credentials from cache (assuming they have already been cached)" >&2
+    fi
+    
     # Then return credentials
     cat <<EOT
 {

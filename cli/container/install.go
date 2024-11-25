@@ -158,42 +158,51 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 		}
 
 		if len(images) == 0 || c.CommandContext.GetBool("container.alwaysPull") {
-			pullOptions := image.PullOptions{}
+			credentialsFunc := func(ctx context.Context, attempt int) (string, error) {
+				// Check credentials config
+				creds := c.CommandContext.GetRegistryCredentials(imageRef)
 
-			// Check credentials config
-			creds := c.CommandContext.GetRegistryCredentials(imageRef)
-
-			// Check credentials helper script
-			credentialsScript := "registry-credentials"
-			if utils.CommandExists(credentialsScript) {
-				slog.Info("Executing registry credentials script.", "script", credentialsScript)
-				scriptCtx, cancelScript := context.WithTimeout(ctx, 60*time.Second)
-				defer cancelScript()
-				if customCreds, err := c.CommandContext.GetCredentialsFromScript(scriptCtx, credentialsScript, "get", imageRef); err != nil {
-					slog.Warn("Failed to get registry credentials.", "script", credentialsScript, "err", err)
-				} else {
-					if customCreds.Username != "" && customCreds.Password != "" {
-						slog.Info("Using registry credentials returned by a helper.", "script", credentialsScript, "username", customCreds.Username)
-						creds.Username = customCreds.Username
-						creds.Password = customCreds.Password
+				// Check credentials helper script
+				credentialsScript := "registry-credentials"
+				if utils.CommandExists(credentialsScript) {
+					scriptCtx, cancelScript := context.WithTimeout(ctx, 60*time.Second)
+					defer cancelScript()
+					scriptArgs := make([]string, 0)
+					scriptArgs = append(scriptArgs, "get", imageRef)
+					if attempt > 1 {
+						// signal to the credential helper that it should refresh the credentials
+						// in case it is cache them
+						scriptArgs = append(scriptArgs, "--refresh")
+					}
+					if customCreds, err := c.CommandContext.GetCredentialsFromScript(scriptCtx, credentialsScript, scriptArgs...); err != nil {
+						slog.Warn("Failed to get registry credentials.", "script", credentialsScript, "err", err)
+						return "", err
+					} else {
+						if customCreds.Username != "" && customCreds.Password != "" {
+							slog.Info("Using registry credentials returned by a helper.", "script", credentialsScript, "username", customCreds.Username)
+							creds.Username = customCreds.Username
+							creds.Password = customCreds.Password
+						}
 					}
 				}
+
+				if creds.IsSet() {
+					slog.Info("Pulling image from private registry.", "ref", imageRef, "username", creds.Username)
+					return GetRegistryAuth(creds.Username, creds.Password), nil
+				} else {
+					slog.Info("Pulling image.", "ref", imageRef)
+				}
+				// no explicit auth, but don't fail
+				return "", nil
 			}
 
-			if creds.IsSet() {
-				pullOptions.RegistryAuth = GetRegistryAuth(creds.Username, creds.Password)
-				slog.Info("Pulling image from private registry.", "ref", imageRef, "username", creds.Username)
-			} else {
-				slog.Info("Pulling image.", "ref", imageRef)
-			}
-
-			out, err := cli.Client.ImagePull(ctx, imageRef, pullOptions)
-			if err != nil {
+			pullErr := cli.ImagePullWithRetries(ctx, imageRef, container.ImagePullOptions{
+				AuthFunc:    credentialsFunc,
+				MaxAttempts: 2,
+				Wait:        5 * time.Second,
+			})
+			if pullErr != nil {
 				return err
-			}
-			defer out.Close()
-			if _, ioErr := io.Copy(os.Stderr, out); ioErr != nil {
-				slog.Warn("Could not write to stderr.", "err", ioErr)
 			}
 		} else {
 			slog.Info("Image already exists.", "ref", imageRef, "id", images[0].ID, "tags", images[0].RepoTags)

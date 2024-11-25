@@ -279,6 +279,7 @@ func (c *Cli) GetCredentialsFromScript(ctx context.Context, script string, args 
 	cmd.Stderr = &errb
 
 	creds := RepositoryAuth{}
+	slog.Info("Executing credentials plugin.", "cmd", script, "args", args)
 
 	if err := cmd.Run(); err != nil {
 		return creds, err

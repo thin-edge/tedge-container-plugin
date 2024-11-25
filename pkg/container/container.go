@@ -487,6 +487,56 @@ func (c *ContainerClient) MonitorEvents(ctx context.Context) (<-chan events.Mess
 	return c.Client.Events(context.Background(), events.ListOptions{})
 }
 
+type ImagePullOptions struct {
+	AuthFunc    func(context.Context, int) (string, error)
+	MaxAttempts int
+	Wait        time.Duration
+}
+
+// Pull a container image. The image will be verified if it exists afterwards
+//
+// Use credentials function to generate initial credentials
+// and call again if the credentials fail which gives the credentials
+// helper to invalid its own cache
+func (c *ContainerClient) ImagePullWithRetries(ctx context.Context, imageRef string, opts ImagePullOptions) error {
+	return utils.Retry(opts.MaxAttempts, opts.Wait, func(attempt int) error {
+		slog.Info("Pulling image.", "attempt", attempt)
+		pullOptions := image.PullOptions{}
+
+		// Get authentication header
+		if opts.AuthFunc != nil {
+			if auth, err := opts.AuthFunc(ctx, attempt); auth != "" && err == nil {
+				pullOptions.RegistryAuth = auth
+			}
+		}
+
+		// Note: ImagePull does not seem to return an error if the private registries authentication fails
+		// so after pulling the image, check if it is loaded to confirm everything worked as expected
+		out, err := c.Client.ImagePull(ctx, imageRef, pullOptions)
+		if err != nil {
+			return err
+		}
+		defer out.Close()
+		if _, ioErr := io.Copy(os.Stderr, out); ioErr != nil {
+			slog.Warn("Could not write to stderr.", "err", ioErr)
+		}
+
+		//
+		// Check if image is not present
+		imageList, imageErr := c.Client.ImageList(ctx, image.ListOptions{
+			Filters: filters.NewArgs(filters.Arg("reference", imageRef)),
+		})
+		if imageErr != nil {
+			return imageErr
+		}
+		if len(imageList) == 0 {
+			return fmt.Errorf("image pull failed")
+		}
+		slog.Info("Image found after pull.", "count", len(imageList))
+		return nil
+	})
+}
+
 //nolint:all
 func (c *ContainerClient) runComposeInContainer(ctx context.Context, projectName string, workingDir string) (output []byte, err error) {
 	imageRef := "docker.io/library/docker:27.3.1-cli"
