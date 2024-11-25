@@ -23,7 +23,7 @@ jobs:
         run: echo "Approved"
 
   test:
-    name: Test
+    name: Test ${{ matrix.job.image }}
     needs: [approve]
     permissions:
       pull-requests: write
