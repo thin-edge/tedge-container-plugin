@@ -39,8 +39,8 @@ jobs:
       fail-fast: false
       matrix:
         job:
-          - { image: debian-systemd-docker-cli }
-          - { image: debian-systemd-podman-cli }
+          - { image: debian-systemd-docker-cli, test_options: "--include docker" }
+          - { image: debian-systemd-podman-cli, test_options: "--include podman" }
 
     steps:
       - name: Checkout
@@ -54,6 +54,11 @@ jobs:
           echo 'C8Y_BASEURL="${{ secrets.C8Y_BASEURL }}"' >> .env
           echo 'C8Y_USER="${{ secrets.C8Y_USER }}"' >> .env
           echo 'C8Y_PASSWORD="${{ secrets.C8Y_PASSWORD }}"' >> .env
+          echo 'PRIVATE_IMAGE="${{ secrets.PRIVATE_IMAGE }}"' >> .env
+          echo 'PRIVATE_IMAGE_VERSION="${{ secrets.PRIVATE_IMAGE_VERSION }}"' >> .env
+          echo 'REGISTRY1_REPO="${{ secrets.REGISTRY1_REPO }}"' >> .env
+          echo 'REGISTRY1_USERNAME="${{ secrets.REGISTRY1_USERNAME }}"' >> .env
+          echo 'REGISTRY1_PASSWORD="${{ secrets.REGISTRY1_PASSWORD }}"' >> .env
 
       - uses: actions/setup-python@v5
         with:
@@ -87,7 +92,7 @@ jobs:
           just build-test
 
       - name: Run tests
-        run: just test
+        run: just test ${{ matrix.job.test_options }}
 
       - name: Upload test results
         uses: actions/upload-artifact@v4

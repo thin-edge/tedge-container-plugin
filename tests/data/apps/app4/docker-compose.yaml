@@ -1,0 +1,12 @@
+services:
+  main:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - /run/podman/podman.sock:/run/podman/podman.sock
+      # Allow calling "podman-remote login" from inside the container and persist credentials on the host
+      - /run/containers/0:/run/containers/0
+    command:
+      - sleep
+      - infinity

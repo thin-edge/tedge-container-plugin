@@ -66,6 +66,10 @@ The software package properties are also describe below:
 |`softwareType`|`container`. This indicates that the package should be managed by the `container` software management plugin|
 |`url`|Optional url pointing to the container image in a tarball format. The file is downloaded and loaded into the container engine, prior to starting the container. The image inside the gzip **MUST** match the one given by the `version` property!|
 
+#### Private container registries
+
+Pulling image from private container registries is supported. Check out the [container registries](./docs/CONTAINER_REGISTRIES.md) documentation for the available options.
+
 ### Install/remove a `container-group`
 
 A `container-group` is the name given to deploy a `docker-compose.yaml` file or an archive (zip or gzip file) with the `docker-compose.yaml` file at the root level of the archive. A docker compose file allows use to deploy multiple containers/networks/volumes and allows you maximum control over how the container is started. This means you can create a complex setup of persisted volumes, isolated networks, and also facilitate communication between containers. Check out the [docker compose documentation](https://docs.docker.com/compose/compose-file/) for more details on how to write your own service definition.

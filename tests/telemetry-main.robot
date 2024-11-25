@@ -4,6 +4,7 @@ Library    Cumulocity
 Library    DeviceLibrary    bootstrap_script=bootstrap.sh
 
 Test Setup    Test Setup
+Test Tags    podman    docker
 
 *** Test Cases ***
 

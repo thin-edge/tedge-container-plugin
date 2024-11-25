@@ -15,6 +15,11 @@ init-dotenv:
   @echo "C8Y_BASEURL=$C8Y_BASEURL" >> .env
   @echo "C8Y_USER=$C8Y_USER" >> .env
   @echo "C8Y_PASSWORD=$C8Y_PASSWORD" >> .env
+  @echo "PRIVATE_IMAGE=docker.io/example/app" >> .env
+  @echo "PRIVATE_IMAGE_VERSION=app:latest" >> .env
+  @echo "REGISTRY1_REPO=docker.io" >> .env
+  @echo "REGISTRY1_USERNAME=" >> .env
+  @echo "REGISTRY1_PASSWORD=" >> .env
 
 # Run linting
 lint:
@@ -41,7 +46,7 @@ venv:
 
 # Build test images and test artifacts
 build-test:
-  docker build -t {{IMAGE}} -f ./test-images/{{IMAGE_SRC}}/Dockerfile .
+  docker build --load -t {{IMAGE}} -f ./test-images/{{IMAGE_SRC}}/Dockerfile .
   ./tests/data/apps/build.sh
 
 # Run tests
