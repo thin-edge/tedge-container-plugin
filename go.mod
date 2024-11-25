@@ -4,6 +4,7 @@ go 1.22.0
 
 require (
 	github.com/codeclysm/extract/v4 v4.0.0
+	github.com/distribution/reference v0.6.0
 	github.com/docker/docker v27.3.1+incompatible
 	github.com/docker/go-units v0.5.0
 	github.com/eclipse/paho.mqtt.golang v1.5.0
@@ -19,7 +20,6 @@ require (
 	github.com/cihub/seelog v0.0.0-20170130134532-f561c5e57575 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect

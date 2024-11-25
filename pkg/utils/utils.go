@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 )
 
 func PathExists(p string) bool {
@@ -55,4 +56,21 @@ func RootDir(p string) string {
 		}
 		p = v1
 	}
+}
+
+func Retry(maxAttempts int, wait time.Duration, action func(int) error) error {
+	var err error
+	attempt := 1
+	for {
+		err = action(attempt)
+		if err == nil {
+			break
+		}
+		attempt += 1
+		if attempt > maxAttempts {
+			break
+		}
+		time.Sleep(wait)
+	}
+	return err
 }

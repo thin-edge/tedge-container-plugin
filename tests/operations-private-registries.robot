@@ -35,6 +35,16 @@ Install/uninstall container package from private repository - credentials script
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
     Device Should Have Installed Software    {"name": "testapp2", "version": "${PRIVATE_IMAGE_VERSION}", "softwareType": "container"}
 
+Install/uninstall container package from private repository - credentials script with cache
+    [Tags]    docker    podman
+    Transfer To Device    ${CURDIR}/data/registry-credentials-with-cache    /usr/bin/registry-credentials
+    DeviceLibrary.Execute Command    cmd=sed -i 's|@@USERNAME@@|${REGISTRY1_USERNAME}|g' /usr/bin/registry-credentials
+    DeviceLibrary.Execute Command    cmd=sed -i 's|@@PASSWORD@@|${REGISTRY1_PASSWORD}|g' /usr/bin/registry-credentials
+
+    ${operation}=    Cumulocity.Install Software    {"name": "testapp2", "version": "${PRIVATE_IMAGE}", "softwareType": "container"}
+    Operation Should Be SUCCESSFUL    ${operation}    timeout=60
+    Device Should Have Installed Software    {"name": "testapp2", "version": "${PRIVATE_IMAGE_VERSION}", "softwareType": "container"}
+
 Install/uninstall container package from private repository - engine credentials
     [Documentation]    login to registry from host
     [Tags]    docker    podman
