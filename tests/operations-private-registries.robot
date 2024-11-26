@@ -47,8 +47,7 @@ Install/uninstall container package from private repository - credentials script
 
 Install/uninstall container package from private repository - engine credentials
     [Documentation]    login to registry from host
-    [Tags]    docker    podman
-    Skip    Test fails on CI but passes locally
+    [Tags]    podman
     DeviceLibrary.Execute Command    tedge-container engine docker login ${REGISTRY1_REPO} -u '${REGISTRY1_USERNAME}' --password '${REGISTRY1_PASSWORD}'
     ${operation}=    Cumulocity.Install Software    {"name": "testapp3", "version": "${PRIVATE_IMAGE}", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
@@ -57,7 +56,6 @@ Install/uninstall container package from private repository - engine credentials
 Install/uninstall container package from private repository - docker from docker
     [Documentation]    login inside a container with the auth file mounted from the host
     [Tags]    podman
-    Skip    Test fails on CI but passes locally
 
     # Start a container
     DeviceLibrary.Execute Command    mkdir -p /run/containers/0/
