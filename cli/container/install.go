@@ -5,7 +5,6 @@ package container
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,15 +14,11 @@ import (
 	"time"
 
 	containerSDK "github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/api/types/registry"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/thin-edge/tedge-container-plugin/pkg/cli"
 	"github.com/thin-edge/tedge-container-plugin/pkg/container"
-	"github.com/thin-edge/tedge-container-plugin/pkg/utils"
 )
 
 type InstallCommand struct {
@@ -150,62 +145,12 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 	//
 	// Check and pull image if it is not present
 	if !disablePull {
-		images, err := cli.Client.ImageList(ctx, image.ListOptions{
-			Filters: filters.NewArgs(filters.Arg("reference", imageRef)),
-		})
-		if err != nil {
+		if _, err := cli.ImagePullWithRetries(ctx, imageRef, c.CommandContext.ImageAlwaysPull(), container.ImagePullOptions{
+			AuthFunc:    c.CommandContext.GetContainerRepositoryCredentialsFunc(imageRef),
+			MaxAttempts: 2,
+			Wait:        5 * time.Second,
+		}); err != nil {
 			return err
-		}
-
-		if len(images) == 0 || c.CommandContext.GetBool("container.alwaysPull") {
-			credentialsFunc := func(ctx context.Context, attempt int) (string, error) {
-				// Check credentials config
-				creds := c.CommandContext.GetRegistryCredentials(imageRef)
-
-				// Check credentials helper script
-				credentialsScript := "registry-credentials"
-				if utils.CommandExists(credentialsScript) {
-					scriptCtx, cancelScript := context.WithTimeout(ctx, 60*time.Second)
-					defer cancelScript()
-					scriptArgs := make([]string, 0)
-					scriptArgs = append(scriptArgs, "get", imageRef)
-					if attempt > 1 {
-						// signal to the credential helper that it should refresh the credentials
-						// in case it is cache them
-						scriptArgs = append(scriptArgs, "--refresh")
-					}
-					if customCreds, err := c.CommandContext.GetCredentialsFromScript(scriptCtx, credentialsScript, scriptArgs...); err != nil {
-						slog.Warn("Failed to get registry credentials.", "script", credentialsScript, "err", err)
-						return "", err
-					} else {
-						if customCreds.Username != "" && customCreds.Password != "" {
-							slog.Info("Using registry credentials returned by a helper.", "script", credentialsScript, "username", customCreds.Username)
-							creds.Username = customCreds.Username
-							creds.Password = customCreds.Password
-						}
-					}
-				}
-
-				if creds.IsSet() {
-					slog.Info("Pulling image from private registry.", "ref", imageRef, "username", creds.Username)
-					return GetRegistryAuth(creds.Username, creds.Password), nil
-				} else {
-					slog.Info("Pulling image.", "ref", imageRef)
-				}
-				// no explicit auth, but don't fail
-				return "", nil
-			}
-
-			pullErr := cli.ImagePullWithRetries(ctx, imageRef, container.ImagePullOptions{
-				AuthFunc:    credentialsFunc,
-				MaxAttempts: 2,
-				Wait:        5 * time.Second,
-			})
-			if pullErr != nil {
-				return err
-			}
-		} else {
-			slog.Info("Image already exists.", "ref", imageRef, "id", images[0].ID, "tags", images[0].RepoTags)
 		}
 	}
 
@@ -252,17 +197,4 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 
 	slog.Info("created container.", "id", resp.ID, "name", containerName)
 	return nil
-}
-
-func GetRegistryAuth(username, password string) string {
-	authConfig := registry.AuthConfig{
-		Username: username,
-		Password: password,
-	}
-	encodedJSON, err := json.Marshal(authConfig)
-	if err != nil {
-		panic(err)
-	}
-	authStr := base64.URLEncoding.EncodeToString(encodedJSON)
-	return authStr
 }

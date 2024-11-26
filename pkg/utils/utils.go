@@ -58,11 +58,12 @@ func RootDir(p string) string {
 	}
 }
 
-func Retry(maxAttempts int, wait time.Duration, action func(int) error) error {
+func Retry(maxAttempts int, wait time.Duration, action func(int) (any, error)) (any, error) {
 	var err error
+	var result any
 	attempt := 1
 	for {
-		err = action(attempt)
+		result, err = action(attempt)
 		if err == nil {
 			break
 		}
@@ -72,5 +73,5 @@ func Retry(maxAttempts int, wait time.Duration, action func(int) error) error {
 		}
 		time.Sleep(wait)
 	}
-	return err
+	return result, err
 }

@@ -297,6 +297,46 @@ func (c *Cli) GetRegistryCredentials(url string) RepositoryAuth {
 	return creds
 }
 
+func (c *Cli) GetContainerRepositoryCredentialsFunc(imageRef string) func(ctx context.Context, attempt int) (string, error) {
+	return func(ctx context.Context, attempt int) (string, error) {
+		// Check credentials config
+		creds := c.GetRegistryCredentials(imageRef)
+
+		// Check credentials helper script
+		credentialsScript := "registry-credentials"
+		if utils.CommandExists(credentialsScript) {
+			scriptCtx, cancelScript := context.WithTimeout(ctx, 60*time.Second)
+			defer cancelScript()
+			scriptArgs := make([]string, 0)
+			scriptArgs = append(scriptArgs, "get", imageRef)
+			if attempt > 1 {
+				// signal to the credential helper that it should refresh the credentials
+				// in case it is cache them
+				scriptArgs = append(scriptArgs, "--refresh")
+			}
+			if customCreds, err := c.GetCredentialsFromScript(scriptCtx, credentialsScript, scriptArgs...); err != nil {
+				slog.Warn("Failed to get registry credentials.", "script", credentialsScript, "err", err)
+				return "", err
+			} else {
+				if customCreds.Username != "" && customCreds.Password != "" {
+					slog.Info("Using registry credentials returned by a helper.", "script", credentialsScript, "username", customCreds.Username)
+					creds.Username = customCreds.Username
+					creds.Password = customCreds.Password
+				}
+			}
+		}
+
+		if creds.IsSet() {
+			slog.Info("Pulling image from private registry.", "ref", imageRef, "username", creds.Username)
+			return container.GetRegistryAuth(creds.Username, creds.Password), nil
+		} else {
+			slog.Info("Pulling image.", "ref", imageRef)
+		}
+		// no explicit auth, but don't fail
+		return "", nil
+	}
+}
+
 func (c *Cli) GetCredentialsFromScript(ctx context.Context, script string, args ...string) (RepositoryAuth, error) {
 	cmd := exec.CommandContext(ctx, script, args...)
 	var outb, errb bytes.Buffer

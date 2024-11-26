@@ -31,6 +31,8 @@ import (
 	"github.com/thin-edge/tedge-container-plugin/pkg/utils"
 )
 
+var ErrNoImage = errors.New("no container image found")
+
 var ContainerType string = "container"
 var ContainerGroupType string = "container-group"
 
@@ -499,8 +501,21 @@ type ImagePullOptions struct {
 // Use credentials function to generate initial credentials
 // and call again if the credentials fail which gives the credentials
 // helper to invalid its own cache
-func (c *ContainerClient) ImagePullWithRetries(ctx context.Context, imageRef string, opts ImagePullOptions) error {
-	return utils.Retry(opts.MaxAttempts, opts.Wait, func(attempt int) error {
+func (c *ContainerClient) ImagePullWithRetries(ctx context.Context, imageRef string, alwaysPull bool, opts ImagePullOptions) (*image.Summary, error) {
+	// Check if an image
+	images, err := c.Client.ImageList(ctx, image.ListOptions{
+		Filters: filters.NewArgs(filters.Arg("reference", imageRef)),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(images) > 0 && !alwaysPull {
+		slog.Info("Image already exists.", "ref", imageRef, "id", images[0].ID, "tags", images[0].RepoTags)
+		return &images[0], nil
+	}
+
+	result, err := utils.Retry(opts.MaxAttempts, opts.Wait, func(attempt int) (any, error) {
 		slog.Info("Pulling image.", "attempt", attempt)
 		pullOptions := image.PullOptions{}
 
@@ -515,7 +530,7 @@ func (c *ContainerClient) ImagePullWithRetries(ctx context.Context, imageRef str
 		// so after pulling the image, check if it is loaded to confirm everything worked as expected
 		out, err := c.Client.ImagePull(ctx, imageRef, pullOptions)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		defer out.Close()
 		if _, ioErr := io.Copy(os.Stderr, out); ioErr != nil {
@@ -528,14 +543,20 @@ func (c *ContainerClient) ImagePullWithRetries(ctx context.Context, imageRef str
 			Filters: filters.NewArgs(filters.Arg("reference", imageRef)),
 		})
 		if imageErr != nil {
-			return imageErr
+			return nil, imageErr
 		}
 		if len(imageList) == 0 {
-			return fmt.Errorf("image pull failed")
+			slog.Info("No image found after pulling")
+			return nil, ErrNoImage
 		}
 		slog.Info("Image found after pull.", "count", len(imageList))
-		return nil
+		return &imageList[0], nil
 	})
+
+	if err != nil {
+		return nil, err
+	}
+	return result.(*image.Summary), err
 }
 
 //nolint:all
