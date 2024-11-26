@@ -1079,12 +1079,17 @@ func (c *ContainerClient) CloneContainer(ctx context.Context, containerID string
 	return nil
 }
 
-func (c *ContainerClient) Fork(ctx context.Context, entrypoint []string, cmd []string) error {
+// Get the container id which is running the current process
+func (c *ContainerClient) Self(ctx context.Context) (types.ContainerJSON, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
-		return err
+		return types.ContainerJSON{}, err
 	}
-	currentContainer, err := c.Client.ContainerInspect(ctx, hostname)
+	return c.Client.ContainerInspect(ctx, hostname)
+}
+
+func (c *ContainerClient) Fork(ctx context.Context, entrypoint []string, cmd []string) error {
+	currentContainer, err := c.Self(ctx)
 	if err != nil {
 		return fmt.Errorf("could not find current container. %s", err)
 	}

@@ -58,7 +58,6 @@ func NewContainerCloneCommand(ctx cli.Cli) *cobra.Command {
 	cmd.Flags().BoolVar(&command.WaitForExit, "wait-for-exit", false, "Wait for the container to stop/exit before updating")
 	cmd.Flags().BoolVar(&command.CheckForUpdate, "check", false, "Only check if an update is necessary, don't perform the update")
 
-	_ = cmd.MarkFlagRequired("container")
 	command.Command = cmd
 	return cmd
 }
@@ -71,6 +70,39 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 	}
 
 	ctx := context.Background()
+
+	if c.ContainerID == "" {
+		// Default to the container
+		slog.Info("No container provided, inferring the update is intended for the current container")
+		if selfContainer, err := containerCli.Self(ctx); err == nil {
+			slog.Info("Found current container.", "id", selfContainer.ID, "name", selfContainer.Name, "image", selfContainer.Config.Image)
+			c.ContainerID = selfContainer.ID
+			if c.Image == "" {
+				c.Image = selfContainer.Config.Image
+			}
+		}
+	}
+
+	// Check if the container exists
+	currentContainer, err := containerCli.Client.ContainerInspect(ctx, c.ContainerID)
+	if err != nil {
+		return err
+	}
+
+	if c.Image == "" {
+		// Default to the image name of the current container
+		c.Image = currentContainer.Config.Image
+		slog.Info("Using image of current container.", "image", c.Image)
+	}
+
+	// Pull potentially new image
+	if _, err := containerCli.ImagePullWithRetries(ctx, c.Image, c.CommandContext.ImageAlwaysPull(), container.ImagePullOptions{
+		AuthFunc:    c.CommandContext.GetContainerRepositoryCredentialsFunc(c.Image),
+		MaxAttempts: 2,
+		Wait:        5 * time.Second,
+	}); err != nil {
+		return err
+	}
 
 	if c.CheckForUpdate {
 		if c.ForceUpdate {
@@ -91,15 +123,6 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 			Err:    fmt.Errorf("image does not need updating"),
 			Silent: true,
 		}
-	}
-
-	// Pull new image
-	if _, err := containerCli.ImagePullWithRetries(ctx, c.Image, c.CommandContext.ImageAlwaysPull(), container.ImagePullOptions{
-		AuthFunc:    c.CommandContext.GetContainerRepositoryCredentialsFunc(c.Image),
-		MaxAttempts: 2,
-		Wait:        5 * time.Second,
-	}); err != nil {
-		return err
 	}
 
 	if c.Fork {
