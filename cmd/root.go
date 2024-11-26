@@ -17,6 +17,7 @@ import (
 	"github.com/thin-edge/tedge-container-plugin/cli/engine"
 	"github.com/thin-edge/tedge-container-plugin/cli/initcmd"
 	"github.com/thin-edge/tedge-container-plugin/cli/run"
+	"github.com/thin-edge/tedge-container-plugin/cli/self"
 	"github.com/thin-edge/tedge-container-plugin/cli/tools"
 	"github.com/thin-edge/tedge-container-plugin/pkg/cli"
 )
@@ -41,7 +42,7 @@ func Execute() {
 	args := os.Args
 	name := filepath.Base(args[0])
 	switch name {
-	case "container", "container-group":
+	case "container", "container-group", "self":
 		slog.Debug("Calling as a software management plugin.", "name", name, "args", args)
 		rootCmd.SetArgs(append([]string{name}, args[1:]...))
 	default:
@@ -89,6 +90,7 @@ func init() {
 		run.NewRunCommand(cliConfig),
 		engine.NewCliCommand(cliConfig),
 		initcmd.NewInitCommand(cliConfig),
+		self.NewSoftwareManagementSelfCommand(cliConfig),
 		tools.NewToolsCommand(cliConfig),
 	)
 
