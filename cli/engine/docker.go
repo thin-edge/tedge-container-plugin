@@ -48,5 +48,12 @@ func (c *DockerCommand) RunE(cmd *cobra.Command, args []string) error {
 	command.Stdout = cmd.OutOrStdout()
 	command.Stdin = cmd.InOrStdin()
 
-	return cli.SilentError(command.Run())
+	runErr := command.Run()
+	if runErr != nil {
+		return cli.ExitCodeError{
+			Err:    runErr,
+			Silent: true,
+		}
+	}
+	return nil
 }

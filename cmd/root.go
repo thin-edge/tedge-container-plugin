@@ -17,6 +17,8 @@ import (
 	"github.com/thin-edge/tedge-container-plugin/cli/engine"
 	"github.com/thin-edge/tedge-container-plugin/cli/initcmd"
 	"github.com/thin-edge/tedge-container-plugin/cli/run"
+	"github.com/thin-edge/tedge-container-plugin/cli/self"
+	"github.com/thin-edge/tedge-container-plugin/cli/tools"
 	"github.com/thin-edge/tedge-container-plugin/pkg/cli"
 )
 
@@ -40,7 +42,7 @@ func Execute() {
 	args := os.Args
 	name := filepath.Base(args[0])
 	switch name {
-	case "container", "container-group":
+	case "container", "container-group", "self":
 		slog.Debug("Calling as a software management plugin.", "name", name, "args", args)
 		rootCmd.SetArgs(append([]string{name}, args[1:]...))
 	default:
@@ -49,13 +51,17 @@ func Execute() {
 
 	err := rootCmd.Execute()
 	if err != nil {
-		switch err.(type) {
-		case cli.SilentError:
-			// Don't log error
+		exitCode := 1
+		switch vErr := err.(type) {
+		case cli.ExitCodeError:
+			exitCode = vErr.ExitCode()
+			if !vErr.Silent {
+				slog.Error("Command error", "err", err)
+			}
 		default:
 			slog.Error("Command error", "err", err)
 		}
-		os.Exit(1)
+		os.Exit(exitCode)
 	}
 }
 
@@ -84,6 +90,8 @@ func init() {
 		run.NewRunCommand(cliConfig),
 		engine.NewCliCommand(cliConfig),
 		initcmd.NewInitCommand(cliConfig),
+		self.NewSoftwareManagementSelfCommand(cliConfig),
+		tools.NewToolsCommand(cliConfig),
 	)
 
 	rootCmd.PersistentFlags().String("log-level", "info", "Log level")
