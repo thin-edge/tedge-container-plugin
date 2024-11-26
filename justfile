@@ -42,6 +42,7 @@ venv:
 
 # Build test images and test artifacts
 build-test:
+  docker buildx install
   docker build --load -t {{TEST_IMAGE}} -f ./test-images/{{TEST_IMAGE}}/Dockerfile .
   ./tests/data/apps/build.sh
 
