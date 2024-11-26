@@ -33,6 +33,7 @@ type ContainerCloneCommand struct {
 	AutoRemove     bool
 	AddHost        []string
 	Env            []string
+	Entrypoint     string
 }
 
 // NewContainerCloneCommand creates a new container clone command
@@ -44,6 +45,7 @@ func NewContainerCloneCommand(ctx cli.Cli) *cobra.Command {
 		Use:          "container-clone",
 		Short:        "Clone an existing container and replace the container image",
 		RunE:         command.RunE,
+		Args:         cobra.ArbitraryArgs,
 		SilenceUsage: true,
 	}
 	cmd.Flags().StringVar(&command.ContainerID, "container", "", "Container to clone. Either container id or name")
@@ -57,6 +59,7 @@ func NewContainerCloneCommand(ctx cli.Cli) *cobra.Command {
 	cmd.Flags().BoolVar(&command.Fork, "fork", false, "Spawn a new container to do the update")
 	cmd.Flags().BoolVar(&command.WaitForExit, "wait-for-exit", false, "Wait for the container to stop/exit before updating")
 	cmd.Flags().BoolVar(&command.CheckForUpdate, "check", false, "Only check if an update is necessary, don't perform the update")
+	cmd.Flags().StringVar(&command.Entrypoint, "entrypoint", "", "Change the container entrypoint when cloning the container")
 
 	command.Command = cmd
 	return cmd
@@ -64,6 +67,14 @@ func NewContainerCloneCommand(ctx cli.Cli) *cobra.Command {
 
 func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 	slog.Debug("Executing", "cmd", cmd.CalledAs(), "args", args)
+
+	// Pass all arguments passed "--" as the entrypoint
+	containerCmd := make([]string, 0)
+	if i := cmd.ArgsLenAtDash(); len(args)-1 > i {
+		containerCmd = append(containerCmd, args[i:]...)
+		slog.Info("Custom args.", "args", containerCmd)
+	}
+
 	containerCli, err := container.NewContainerClient()
 	if err != nil {
 		return err
@@ -171,8 +182,22 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 			entrypoint = append(entrypoint, "--env", v)
 		}
 
+		if c.Entrypoint != "" {
+			entrypoint = append(entrypoint, "--entrypoint", c.Entrypoint)
+		}
+
+		if len(containerCmd) > 0 {
+			entrypoint = append(entrypoint, "--")
+			entrypoint = append(entrypoint, containerCmd...)
+		}
+
 		slog.Info("Forking container.", "command", strings.Join(entrypoint, " "))
-		return containerCli.Fork(context.Background(), entrypoint, []string{})
+		return containerCli.Fork(context.Background(), []string{}, entrypoint)
+	}
+
+	entrypoint := make([]string, 0)
+	if c.Entrypoint != "" {
+		entrypoint = append(entrypoint, c.Entrypoint)
 	}
 
 	return containerCli.CloneContainer(context.Background(), c.ContainerID, container.CloneOptions{
@@ -183,5 +208,7 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 		AutoRemove:   c.AutoRemove,
 		Env:          c.Env,
 		ExtraHosts:   c.AddHost,
+		Entrypoint:   entrypoint,
+		Cmd:          containerCmd,
 	})
 }
