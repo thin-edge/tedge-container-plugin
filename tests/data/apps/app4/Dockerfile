@@ -7,6 +7,5 @@ RUN apk del \
     && apk add --no-cache \
         podman-remote
 
-ENV REGISTRY_AUTH_FILE=/run/containers/0/auth.json
 USER tedge
 CMD [ "sleep", "infinity" ]
