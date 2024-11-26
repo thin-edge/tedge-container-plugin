@@ -1095,15 +1095,9 @@ func (c *ContainerClient) Fork(ctx context.Context, entrypoint []string, cmd []s
 	}
 
 	cloneOptions := CloneOptions{
-		// Entrypoint: append(strslice.StrSlice{}, entrypoint...),
-		// Cmd:        append(strslice.StrSlice{}, cmd...),
-		Image: currentContainer.Config.Image,
-	}
-	if len(entrypoint) > 0 {
-		cloneOptions.Entrypoint = append(strslice.StrSlice{}, entrypoint...)
-	}
-	if len(cmd) > 0 {
-		cloneOptions.Cmd = append(strslice.StrSlice{}, cmd...)
+		Entrypoint: append(strslice.StrSlice{}, entrypoint...),
+		Cmd:        append(strslice.StrSlice{}, cmd...),
+		Image:      currentContainer.Config.Image,
 	}
 	containerConfig := CloneContainerConfig(currentContainer.Config, cloneOptions)
 	labels := make(map[string]string)
