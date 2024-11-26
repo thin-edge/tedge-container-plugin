@@ -167,6 +167,10 @@ func (c *Cli) DeleteLegacyService() bool {
 	return viper.GetBool("delete_legacy")
 }
 
+func (c *Cli) ImageAlwaysPull() bool {
+	return viper.GetBool("container.alwaysPull")
+}
+
 func (c *Cli) GetMetricsInterval() time.Duration {
 	interval := viper.GetDuration("metrics.interval")
 	if interval < 60*time.Second {

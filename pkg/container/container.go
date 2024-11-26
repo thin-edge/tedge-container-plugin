@@ -27,6 +27,7 @@ import (
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/errdefs"
+	"github.com/docker/go-connections/nat"
 	"github.com/docker/go-units"
 	"github.com/thin-edge/tedge-container-plugin/pkg/utils"
 )
@@ -930,6 +931,9 @@ type CloneOptions struct {
 	AutoRemove   bool
 	Env          []string
 	ExtraHosts   []string
+	Cmd          strslice.StrSlice
+	Entrypoint   strslice.StrSlice
+	IgnorePorts  bool
 }
 
 func FormatContainerName(v string) string {
@@ -992,59 +996,16 @@ func (c *ContainerClient) CloneContainer(ctx context.Context, containerID string
 		return err
 	}
 
-	prevContainer.Config.Image = opts.Image
 	slog.Info("Creating new container.", "name", prevContainer.Name, "newImage", opts.Image, "prevImage", prevImage, "config", prevContainer.Config, "host_config", prevContainer.HostConfig)
 
-	// TODO: Move container config copy to new function
-	// Clone network settings, but only clone the network ids that the container is part of (don't clone everything as it leads to incompatibilities between engine versions)
-	networkConfig := &network.NetworkingConfig{
-		EndpointsConfig: map[string]*network.EndpointSettings{},
-	}
-	for networkName, value := range prevContainer.NetworkSettings.Networks {
-		if value.NetworkID != "" {
-			networkConfig.EndpointsConfig[networkName] = &network.EndpointSettings{
-				NetworkID: value.NetworkID,
-			}
-		}
-	}
+	// Container config
+	clonedConfig := CloneContainerConfig(prevContainer.Config, opts)
 
 	// Copy host config
-	hostConfig := &container.HostConfig{
-		Binds:       prevContainer.HostConfig.Binds,
-		AutoRemove:  opts.AutoRemove,
-		NetworkMode: prevContainer.HostConfig.NetworkMode,
-		Annotations: prevContainer.HostConfig.Annotations,
-		CapAdd:      prevContainer.HostConfig.CapAdd,
-		CapDrop:     prevContainer.HostConfig.CapDrop,
-		RestartPolicy: container.RestartPolicy{
-			Name: container.RestartPolicyAlways,
-		},
-		DNS:             prevContainer.HostConfig.DNS,
-		DNSOptions:      prevContainer.HostConfig.DNSOptions,
-		Links:           prevContainer.HostConfig.Links,
-		Privileged:      prevContainer.HostConfig.Privileged,
-		Mounts:          prevContainer.HostConfig.Mounts,
-		Tmpfs:           prevContainer.HostConfig.Tmpfs,
-		PortBindings:    prevContainer.HostConfig.PortBindings,
-		PublishAllPorts: prevContainer.HostConfig.PublishAllPorts,
-		ShmSize:         prevContainer.HostConfig.ShmSize,
-		ExtraHosts:      append(prevContainer.HostConfig.ExtraHosts, opts.ExtraHosts...),
-		OomScoreAdj:     prevContainer.HostConfig.OomScoreAdj,
-		ReadonlyRootfs:  prevContainer.HostConfig.ReadonlyRootfs,
-		VolumeDriver:    prevContainer.HostConfig.VolumeDriver,
-		VolumesFrom:     prevContainer.HostConfig.VolumesFrom,
-		Init:            prevContainer.HostConfig.Init,
-		LogConfig:       prevContainer.HostConfig.LogConfig,
-		DNSSearch:       prevContainer.HostConfig.DNSSearch,
-		StorageOpt:      prevContainer.HostConfig.StorageOpt,
-		ReadonlyPaths:   prevContainer.HostConfig.ReadonlyPaths,
-		SecurityOpt:     prevContainer.HostConfig.SecurityOpt,
-		GroupAdd:        prevContainer.HostConfig.GroupAdd,
-		Runtime:         prevContainer.HostConfig.Runtime,
-	}
+	hostConfig := CloneHostConfig(prevContainer.HostConfig, opts)
 
-	clonedConfig := prevContainer.Config
-	clonedConfig.Env = append(clonedConfig.Env, opts.Env...)
+	// Copy network config
+	networkConfig := CloneNetworkConfig(prevContainer.NetworkSettings)
 
 	nextContainer, createErr := c.Client.ContainerCreate(ctx, clonedConfig, hostConfig, networkConfig, nil, containerName)
 
@@ -1128,30 +1089,41 @@ func (c *ContainerClient) Fork(ctx context.Context, entrypoint []string, cmd []s
 		return fmt.Errorf("could not find current container. %s", err)
 	}
 
-	containerEntrypoint := make(strslice.StrSlice, 0)
-	containerEntrypoint = append(containerEntrypoint, entrypoint...)
-
-	containerCommand := make(strslice.StrSlice, 0)
-	containerCommand = append(containerCommand, cmd...)
-
-	currentContainer.Config.Entrypoint = containerEntrypoint
+	cloneOptions := CloneOptions{
+		// Entrypoint: append(strslice.StrSlice{}, entrypoint...),
+		// Cmd:        append(strslice.StrSlice{}, cmd...),
+		Image: currentContainer.Config.Image,
+	}
+	if len(entrypoint) > 0 {
+		cloneOptions.Entrypoint = append(strslice.StrSlice{}, entrypoint...)
+	}
+	if len(cmd) > 0 {
+		cloneOptions.Cmd = append(strslice.StrSlice{}, cmd...)
+	}
+	containerConfig := CloneContainerConfig(currentContainer.Config, cloneOptions)
 	labels := make(map[string]string)
 	labels["io.tedge.fork"] = "1"
 	labels["io.tedge.forked.name"] = currentContainer.Name
-	currentContainer.Config.Labels = labels
-	currentContainer.Config.Cmd = containerCommand
-	// Don't remove it until it has been acknowledged
-	currentContainer.HostConfig.AutoRemove = false
-	// TODO: Protect against the
-	currentContainer.HostConfig.RestartPolicy = container.RestartPolicy{
+	containerConfig.Labels = labels
+
+	hostConfig := CloneHostConfig(currentContainer.HostConfig, CloneOptions{
+		// Don't remove it until it has been acknowledged
+		AutoRemove: false,
+		// Ensure ports don't conflict with any other containers
+		IgnorePorts: true,
+	})
+
+	// TODO: Protect against the updater from shutting down due to a machine restart
+	// or is this not required if the restart policy of the container being updated
+	// is left at RestartAlways (as it would restart after a device reboot)
+	hostConfig.RestartPolicy = container.RestartPolicy{
 		Name: container.RestartPolicyDisabled,
-		// Name: container.RestartPolicyAlways,
 	}
 
-	networkConfig := &network.NetworkingConfig{
-		EndpointsConfig: currentContainer.NetworkSettings.Networks,
-	}
-	resp, respErr := c.Client.ContainerCreate(ctx, currentContainer.Config, currentContainer.HostConfig, networkConfig, nil, "")
+	networkConfig := CloneNetworkConfig(currentContainer.NetworkSettings)
+	slog.Info("Forking container.", "new_image", containerConfig.Image, "from_id", currentContainer.ID)
+
+	resp, respErr := c.Client.ContainerCreate(ctx, containerConfig, hostConfig, networkConfig, nil, "")
 	if respErr != nil {
 		return respErr
 	}
@@ -1180,4 +1152,92 @@ func IsInsideContainer() bool {
 		}
 	}
 	return false
+}
+
+func CloneContainerConfig(ref *container.Config, opts CloneOptions) *container.Config {
+	clonedConfig := &container.Config{
+		User:            ref.User,
+		Cmd:             ref.Cmd,
+		Entrypoint:      ref.Entrypoint,
+		Env:             append([]string{}, ref.Env...),
+		NetworkDisabled: false,
+		StopSignal:      ref.StopSignal,
+		Image:           ref.Image,
+		Volumes:         ref.Volumes,
+		Tty:             ref.Tty,
+		ExposedPorts:    ref.ExposedPorts,
+		Domainname:      ref.Domainname,
+		Labels:          ref.Labels,
+	}
+	if len(opts.Cmd) > 0 {
+		clonedConfig.Cmd = opts.Cmd
+	}
+
+	if len(opts.Entrypoint) > 0 {
+		clonedConfig.Entrypoint = opts.Entrypoint
+	}
+	if opts.Image != "" {
+		clonedConfig.Image = opts.Image
+	}
+	clonedConfig.Env = append(clonedConfig.Env, opts.Env...)
+	return clonedConfig
+}
+
+func CloneHostConfig(ref *container.HostConfig, opts CloneOptions) *container.HostConfig {
+	clone := &container.HostConfig{
+		Binds:       ref.Binds,
+		AutoRemove:  opts.AutoRemove,
+		NetworkMode: ref.NetworkMode,
+		Annotations: ref.Annotations,
+		CapAdd:      ref.CapAdd,
+		CapDrop:     ref.CapDrop,
+		RestartPolicy: container.RestartPolicy{
+			Name: container.RestartPolicyAlways,
+		},
+		DNS:             ref.DNS,
+		DNSOptions:      ref.DNSOptions,
+		Links:           ref.Links,
+		Privileged:      ref.Privileged,
+		Mounts:          ref.Mounts,
+		Tmpfs:           ref.Tmpfs,
+		PortBindings:    ref.PortBindings,
+		PublishAllPorts: ref.PublishAllPorts,
+		ShmSize:         ref.ShmSize,
+		ExtraHosts:      append(ref.ExtraHosts, opts.ExtraHosts...),
+		OomScoreAdj:     ref.OomScoreAdj,
+		ReadonlyRootfs:  ref.ReadonlyRootfs,
+		VolumeDriver:    ref.VolumeDriver,
+		VolumesFrom:     ref.VolumesFrom,
+		Init:            ref.Init,
+		LogConfig:       ref.LogConfig,
+		DNSSearch:       ref.DNSSearch,
+		StorageOpt:      ref.StorageOpt,
+		ReadonlyPaths:   ref.ReadonlyPaths,
+		SecurityOpt:     ref.SecurityOpt,
+		GroupAdd:        ref.GroupAdd,
+		Runtime:         ref.Runtime,
+	}
+
+	if opts.IgnorePorts {
+		clone.PortBindings = nat.PortMap{}
+		clone.PublishAllPorts = false
+	}
+
+	return clone
+}
+
+// Clone network settings, but only clone the network ids that the container is part of
+// don't clone everything as it leads to incompatibilities between engine versions
+func CloneNetworkConfig(ref *types.NetworkSettings) *network.NetworkingConfig {
+	networkConfig := &network.NetworkingConfig{
+		EndpointsConfig: map[string]*network.EndpointSettings{},
+	}
+	for networkName, value := range ref.Networks {
+		if value.NetworkID != "" {
+			networkConfig.EndpointsConfig[networkName] = &network.EndpointSettings{
+				NetworkID: value.NetworkID,
+			}
+		}
+	}
+	return networkConfig
 }

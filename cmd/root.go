@@ -17,6 +17,7 @@ import (
 	"github.com/thin-edge/tedge-container-plugin/cli/engine"
 	"github.com/thin-edge/tedge-container-plugin/cli/initcmd"
 	"github.com/thin-edge/tedge-container-plugin/cli/run"
+	"github.com/thin-edge/tedge-container-plugin/cli/tools"
 	"github.com/thin-edge/tedge-container-plugin/pkg/cli"
 )
 
@@ -88,6 +89,7 @@ func init() {
 		run.NewRunCommand(cliConfig),
 		engine.NewCliCommand(cliConfig),
 		initcmd.NewInitCommand(cliConfig),
+		tools.NewToolsCommand(cliConfig),
 	)
 
 	rootCmd.PersistentFlags().String("log-level", "info", "Log level")

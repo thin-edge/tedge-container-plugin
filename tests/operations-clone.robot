@@ -15,19 +15,19 @@ Check for Update
     DeviceLibrary.Execute Command    cmd=tedge-container engine docker container inspect app1 --format "{{.Id}}"
 
     # No update
-    DeviceLibrary.Execute Command    sudo tedge-container engine container-clone --container app1 --image httpd:2.4.61-alpine --check    exp_exit_code=2
+    DeviceLibrary.Execute Command    sudo tedge-container tools container-clone --container app1 --image httpd:2.4.61-alpine --check    exp_exit_code=2
 
     # Force update
-    DeviceLibrary.Execute Command    sudo tedge-container engine container-clone --container app1 --image httpd:2.4.61-alpine --check --force    exp_exit_code=0
+    DeviceLibrary.Execute Command    sudo tedge-container tools container-clone --container app1 --image httpd:2.4.61-alpine --check --force    exp_exit_code=0
 
     # Update is required as local image is not available
-    DeviceLibrary.Execute Command    sudo tedge-container engine container-clone --container app1 --image httpd:2.4.62-alpine --check    exp_exit_code=0
+    DeviceLibrary.Execute Command    sudo tedge-container tools container-clone --container app1 --image httpd:2.4.62-alpine --check    exp_exit_code=0
 
 Clone Existing Container
     Create Container    app2    httpd:2.4
     ${prev_container_id}=    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker container inspect app2 --format "{{.Id}}"
 
-    DeviceLibrary.Execute Command    sudo tedge-container engine container-clone --container app2 --force
+    DeviceLibrary.Execute Command    sudo tedge-container tools container-clone --container app2 --force
 
     ${next_container_id}=    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker inspect app2 --format "{{.Id}}"
     Should Not Be Equal    ${next_container_id}    ${prev_container_id}
@@ -36,7 +36,7 @@ Clone Existing Container by Timeout Whilst Waiting For Exit
     Create Container    app3    httpd:2.4
     ${prev_container_id}=    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker container inspect app3 --format "{{.Id}}"
 
-    DeviceLibrary.Execute Command    sudo tedge-container engine container-clone --container app3 --force --wait-for-exit --stop-timeout 15s    exp_exit_code=!0
+    DeviceLibrary.Execute Command    sudo tedge-container tools container-clone --container app3 --force --wait-for-exit --stop-timeout 15s    exp_exit_code=!0
 
     ${next_container_id}=    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker inspect app3 --format "{{.Id}}"
     Should Be Equal    ${next_container_id}    ${prev_container_id}
@@ -45,7 +45,7 @@ Clone Existing Container but Waiting For Exit
     Create Container    app4    httpd:2.4
     ${prev_container_id}=    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker container inspect app4 --format "{{.Id}}"
 
-    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine container-clone --container app4 --force --wait-for-exit --stop-timeout 60s 2>&1
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container tools container-clone --container app4 --force --wait-for-exit --stop-timeout 60s 2>&1
 
     Sleep    5s
     DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker container stop app4

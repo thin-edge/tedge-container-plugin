@@ -1,12 +1,13 @@
 /*
 Copyright © 2024 thin-edge.io <info@thin-edge.io>
 */
-package engine
+package tools
 
 import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -34,7 +35,7 @@ type ContainerCloneCommand struct {
 	Env            []string
 }
 
-// NewRunCommand create a new run command
+// NewContainerCloneCommand creates a new container clone command
 func NewContainerCloneCommand(ctx cli.Cli) *cobra.Command {
 	command := &ContainerCloneCommand{
 		CommandContext: ctx,
@@ -44,7 +45,6 @@ func NewContainerCloneCommand(ctx cli.Cli) *cobra.Command {
 		Short:        "Clone an existing container and replace the container image",
 		RunE:         command.RunE,
 		SilenceUsage: true,
-		Hidden:       true,
 	}
 	cmd.Flags().StringVar(&command.ContainerID, "container", "", "Container to clone. Either container id or name")
 	cmd.Flags().StringVar(&command.Image, "image", "", "Container image")
@@ -93,6 +93,15 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Pull new image
+	if _, err := containerCli.ImagePullWithRetries(ctx, c.Image, c.CommandContext.ImageAlwaysPull(), container.ImagePullOptions{
+		AuthFunc:    c.CommandContext.GetContainerRepositoryCredentialsFunc(c.Image),
+		MaxAttempts: 2,
+		Wait:        5 * time.Second,
+	}); err != nil {
+		return err
+	}
+
 	if c.Fork {
 		if !container.IsInsideContainer() {
 			return fmt.Errorf("can't fork from outside of a container")
@@ -106,15 +115,26 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 		entrypoint = append(
 			entrypoint,
 			"tedge-container",
-			"engine",
+			"tools",
 			"container-clone",
 			"--container",
 			c.ContainerID,
 			"--image",
 			c.Image,
-			"--wait-for-exit",
-			"stop-timeout", c.StopTimeout.String(),
 		)
+
+		// TODO: Pull in new image, and fail early if it does not work (before forking etc.)
+
+		// TODO: Should the container be run as root instead?
+
+		if c.WaitForExit {
+			// Wait for exit does not work if the restart policy can't be changed
+			// For example podman <5.1 does not support changing of the restart policy
+			// of a container after creation
+			// "--wait-for-exit",
+			entrypoint = append(entrypoint, "--wait-for-exit")
+			entrypoint = append(entrypoint, "stop-timeout", c.StopTimeout.String())
+		}
 
 		if c.AutoRemove {
 			entrypoint = append(entrypoint, "--rm")
@@ -128,6 +148,7 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 			entrypoint = append(entrypoint, "--env", v)
 		}
 
+		slog.Info("Forking container.", "command", strings.Join(entrypoint, " "))
 		return containerCli.Fork(context.Background(), entrypoint, []string{})
 	}
 
