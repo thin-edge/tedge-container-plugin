@@ -1201,7 +1201,6 @@ func CloneHostConfig(ref *container.HostConfig, opts CloneOptions) *container.Ho
 		Tmpfs:           ref.Tmpfs,
 		PortBindings:    ref.PortBindings,
 		PublishAllPorts: ref.PublishAllPorts,
-		ShmSize:         ref.ShmSize,
 		ExtraHosts:      append(ref.ExtraHosts, opts.ExtraHosts...),
 		OomScoreAdj:     ref.OomScoreAdj,
 		ReadonlyRootfs:  ref.ReadonlyRootfs,
