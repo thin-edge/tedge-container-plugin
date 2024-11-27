@@ -1214,6 +1214,7 @@ func CloneHostConfig(ref *container.HostConfig, opts CloneOptions) *container.Ho
 		SecurityOpt:     ref.SecurityOpt,
 		GroupAdd:        ref.GroupAdd,
 		Runtime:         ref.Runtime,
+		ContainerIDFile: ref.ContainerIDFile,
 	}
 
 	if opts.IgnorePorts {
