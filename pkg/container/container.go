@@ -1129,7 +1129,7 @@ func (c *ContainerClient) Fork(ctx context.Context, entrypoint []string, cmd []s
 
 	startErr := c.Client.ContainerStart(ctx, resp.ID, container.StartOptions{})
 	if startErr != nil {
-		slog.Error("Failed to start container.", "id", resp.ID, "err", err)
+		slog.Error("Failed to start container.", "id", resp.ID, "err", startErr)
 		return startErr
 	}
 	slog.Info("Successfully created forked container.", "id", resp.ID)
