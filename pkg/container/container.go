@@ -1,6 +1,7 @@
 package container
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -1080,17 +1081,72 @@ func (c *ContainerClient) CloneContainer(ctx context.Context, containerID string
 }
 
 // Get the container id which is running the current process
+//
+// Finding the container that the process is running in is fairly complicated
+// due to the differences between the container engines and versions (e.g. podman, docker etc.)
+//
+//  1. Check if hostname matches the container id/name
+//  2. Look through each con
+//     2.1 Check container ID file (if the file exists)
+//     2.2 Check HOSTNAME env variable (e.g. HOSTNAME={hostname})
+//     2.3 Check HostConfig.Hostname value
 func (c *ContainerClient) Self(ctx context.Context) (types.ContainerJSON, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return types.ContainerJSON{}, err
 	}
-	return c.Client.ContainerInspect(ctx, hostname)
-}
 
-func (c *ContainerClient) Fork(ctx context.Context, entrypoint []string, cmd []string) error {
-	currentContainer, err := c.Self(ctx)
+	envHostname := fmt.Sprintf("HOSTNAME=%s", hostname)
+
+	// Lookup container by hostname
+	// This can work on docker, and some versions of podman
+	// and it is still worth trying as it saves some api requests
+	if con, err := c.Client.ContainerInspect(ctx, hostname); err == nil {
+		slog.Info("Found container id/name by referencing hostname.", "hostname", hostname, "id", con.ID, "name", con.Name)
+		return con, nil
+	}
+
+	// Fallback to searching each container for the matching hostname
+	// Search for a container with the same hostname
+	// Note: the container list does not contain the hostname config
+	// so we have to inspect each container until we find a match
+	conList, err := c.Client.ContainerList(ctx, container.ListOptions{
+		// only include running containers
+		All: false,
+	})
 	if err != nil {
+		return types.ContainerJSON{}, err
+	}
+	for _, conItem := range conList {
+		if con, err := c.Client.ContainerInspect(ctx, conItem.ID); err == nil {
+			// Check container id file (if present)
+			if con.HostConfig != nil && con.HostConfig.ContainerIDFile != "" {
+				if contID, err := os.ReadFile(con.HostConfig.ContainerIDFile); err == nil {
+					if hostname == string(bytes.TrimSpace(contID)) {
+						slog.Info("Found container id/name by container id file.", "hostname", hostname, "cidFile", con.HostConfig.ContainerIDFile, "id", con.ID, "name", con.Name)
+						return con, nil
+					}
+				}
+			}
+
+			// Ignore forked containers as these are only temporary containers
+			if _, found := con.Config.Labels["io.tedge.fork"]; found {
+				continue
+			}
+			if con.Config.Hostname == hostname {
+				slog.Info("Found container id/name by config.hostname.", "hostname", hostname, "id", con.ID, "name", con.Name)
+				return con, nil
+			}
+			for _, v := range con.Config.Env {
+				if v == envHostname {
+					slog.Info("Found container id/name by HOSTNAME env.", "hostname", hostname, "id", con.ID, "name", con.Name)
+					return con, nil
+				}
+			}
+		}
+	}
+	return types.ContainerJSON{}, errdefs.NotFound(fmt.Errorf("could not find container by hostname"))
+}
 
 func (c *ContainerClient) Fork(ctx context.Context, currentContainer types.ContainerJSON, cloneOptions CloneOptions) error {
 	if cloneOptions.Image == "" {
