@@ -141,13 +141,13 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("can't fork from outside of a container")
 		}
 
-		entrypoint := make([]string, 0)
+		forkCmd := make([]string, 0)
 
 		if utils.CommandExists("sudo") {
-			entrypoint = append(entrypoint, "sudo")
+			forkCmd = append(forkCmd, "sudo")
 		}
-		entrypoint = append(
-			entrypoint,
+		forkCmd = append(
+			forkCmd,
 			"tedge-container",
 			"tools",
 			"container-clone",
@@ -166,33 +166,47 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 			// For example podman <5.1 does not support changing of the restart policy
 			// of a container after creation
 			// "--wait-for-exit",
-			entrypoint = append(entrypoint, "--wait-for-exit")
-			entrypoint = append(entrypoint, "stop-timeout", c.StopTimeout.String())
+			forkCmd = append(forkCmd, "--wait-for-exit")
+			forkCmd = append(forkCmd, "stop-timeout", c.StopTimeout.String())
 		}
 
 		if c.AutoRemove {
-			entrypoint = append(entrypoint, "--rm")
+			forkCmd = append(forkCmd, "--rm")
 		}
 
 		for _, v := range c.AddHost {
-			entrypoint = append(entrypoint, "--add-host", v)
+			forkCmd = append(forkCmd, "--add-host", v)
 		}
 
 		for _, v := range c.Env {
-			entrypoint = append(entrypoint, "--env", v)
+			forkCmd = append(forkCmd, "--env", v)
 		}
 
 		if c.Entrypoint != "" {
-			entrypoint = append(entrypoint, "--entrypoint", c.Entrypoint)
+			forkCmd = append(forkCmd, "--entrypoint", c.Entrypoint)
 		}
 
 		if len(containerCmd) > 0 {
-			entrypoint = append(entrypoint, "--")
-			entrypoint = append(entrypoint, containerCmd...)
+			forkCmd = append(forkCmd, "--")
+			forkCmd = append(forkCmd, containerCmd...)
 		}
 
-		slog.Info("Forking container.", "command", strings.Join(entrypoint, " "))
-		return containerCli.Fork(context.Background(), []string{}, entrypoint)
+		slog.Info("Forking container.", "command", strings.Join(forkCmd, " "))
+
+		cloneOptions := container.CloneOptions{
+			Cmd: forkCmd,
+
+			// Use the new image, so that fixes can be delivered in the new image
+			Image: c.Image,
+
+			// Don't remove it until it has been acknowledged
+			AutoRemove: false,
+
+			// Ensure ports don't conflict with any other containers
+			IgnorePorts: true,
+		}
+
+		return containerCli.Fork(context.Background(), currentContainer, cloneOptions)
 	}
 
 	entrypoint := make([]string, 0)

@@ -1091,13 +1091,10 @@ func (c *ContainerClient) Self(ctx context.Context) (types.ContainerJSON, error)
 func (c *ContainerClient) Fork(ctx context.Context, entrypoint []string, cmd []string) error {
 	currentContainer, err := c.Self(ctx)
 	if err != nil {
-		return fmt.Errorf("could not find current container. %s", err)
-	}
 
-	cloneOptions := CloneOptions{
-		Entrypoint: append(strslice.StrSlice{}, entrypoint...),
-		Cmd:        append(strslice.StrSlice{}, cmd...),
-		Image:      currentContainer.Config.Image,
+func (c *ContainerClient) Fork(ctx context.Context, currentContainer types.ContainerJSON, cloneOptions CloneOptions) error {
+	if cloneOptions.Image == "" {
+		cloneOptions.Image = currentContainer.Config.Image
 	}
 	containerConfig := CloneContainerConfig(currentContainer.Config, cloneOptions)
 	labels := make(map[string]string)
@@ -1105,12 +1102,7 @@ func (c *ContainerClient) Fork(ctx context.Context, entrypoint []string, cmd []s
 	labels["io.tedge.forked.name"] = currentContainer.Name
 	containerConfig.Labels = labels
 
-	hostConfig := CloneHostConfig(currentContainer.HostConfig, CloneOptions{
-		// Don't remove it until it has been acknowledged
-		AutoRemove: false,
-		// Ensure ports don't conflict with any other containers
-		IgnorePorts: true,
-	})
+	hostConfig := CloneHostConfig(currentContainer.HostConfig, cloneOptions)
 
 	// TODO: Protect against the updater from shutting down due to a machine restart
 	// or is this not required if the restart policy of the container being updated
