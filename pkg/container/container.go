@@ -924,6 +924,22 @@ func (c *ContainerClient) UpdateRequired(ctx context.Context, containerID string
 	return true, prevContainer, nil
 }
 
+// Log options type alias
+type LogsOptions container.LogsOptions
+
+func (c *ContainerClient) ContainerLogs(ctx context.Context, w io.Writer, containerID string, opts LogsOptions) error {
+	reader, logErr := c.Client.ContainerLogs(ctx, containerID, container.LogsOptions(opts))
+	if logErr != nil {
+		return logErr
+	}
+	defer reader.Close()
+	_, err := StdCopy(w, w, reader)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 type CloneOptions struct {
 	Image        string
 	HealthyAfter time.Duration
