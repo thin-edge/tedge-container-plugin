@@ -1,6 +1,7 @@
 package container
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -1080,24 +1081,76 @@ func (c *ContainerClient) CloneContainer(ctx context.Context, containerID string
 }
 
 // Get the container id which is running the current process
+//
+// Finding the container that the process is running in is fairly complicated
+// due to the differences between the container engines and versions (e.g. podman, docker etc.)
+//
+//  1. Check if hostname matches the container id/name
+//  2. Look through each con
+//     2.1 Check container ID file (if the file exists)
+//     2.2 Check HOSTNAME env variable (e.g. HOSTNAME={hostname})
+//     2.3 Check HostConfig.Hostname value
 func (c *ContainerClient) Self(ctx context.Context) (types.ContainerJSON, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return types.ContainerJSON{}, err
 	}
-	return c.Client.ContainerInspect(ctx, hostname)
-}
 
-func (c *ContainerClient) Fork(ctx context.Context, entrypoint []string, cmd []string) error {
-	currentContainer, err := c.Self(ctx)
-	if err != nil {
-		return fmt.Errorf("could not find current container. %s", err)
+	envHostname := fmt.Sprintf("HOSTNAME=%s", hostname)
+
+	// Lookup container by hostname
+	// This can work on docker, and some versions of podman
+	// and it is still worth trying as it saves some api requests
+	if con, err := c.Client.ContainerInspect(ctx, hostname); err == nil {
+		slog.Info("Found container id/name by referencing hostname.", "hostname", hostname, "id", con.ID, "name", con.Name)
+		return con, nil
 	}
 
-	cloneOptions := CloneOptions{
-		Entrypoint: append(strslice.StrSlice{}, entrypoint...),
-		Cmd:        append(strslice.StrSlice{}, cmd...),
-		Image:      currentContainer.Config.Image,
+	// Fallback to searching each container for the matching hostname
+	// Search for a container with the same hostname
+	// Note: the container list does not contain the hostname config
+	// so we have to inspect each container until we find a match
+	conList, err := c.Client.ContainerList(ctx, container.ListOptions{
+		// only include running containers
+		All: false,
+	})
+	if err != nil {
+		return types.ContainerJSON{}, err
+	}
+	for _, conItem := range conList {
+		if con, err := c.Client.ContainerInspect(ctx, conItem.ID); err == nil {
+			// Check container id file (if present)
+			if con.HostConfig != nil && con.HostConfig.ContainerIDFile != "" {
+				if contID, err := os.ReadFile(con.HostConfig.ContainerIDFile); err == nil {
+					if hostname == string(bytes.TrimSpace(contID)) {
+						slog.Info("Found container id/name by container id file.", "hostname", hostname, "cidFile", con.HostConfig.ContainerIDFile, "id", con.ID, "name", con.Name)
+						return con, nil
+					}
+				}
+			}
+
+			// Ignore forked containers as these are only temporary containers
+			if _, found := con.Config.Labels["io.tedge.fork"]; found {
+				continue
+			}
+			if con.Config.Hostname == hostname {
+				slog.Info("Found container id/name by config.hostname.", "hostname", hostname, "id", con.ID, "name", con.Name)
+				return con, nil
+			}
+			for _, v := range con.Config.Env {
+				if v == envHostname {
+					slog.Info("Found container id/name by HOSTNAME env.", "hostname", hostname, "id", con.ID, "name", con.Name)
+					return con, nil
+				}
+			}
+		}
+	}
+	return types.ContainerJSON{}, errdefs.NotFound(fmt.Errorf("could not find container by hostname"))
+}
+
+func (c *ContainerClient) Fork(ctx context.Context, currentContainer types.ContainerJSON, cloneOptions CloneOptions) error {
+	if cloneOptions.Image == "" {
+		cloneOptions.Image = currentContainer.Config.Image
 	}
 	containerConfig := CloneContainerConfig(currentContainer.Config, cloneOptions)
 	labels := make(map[string]string)
@@ -1105,12 +1158,7 @@ func (c *ContainerClient) Fork(ctx context.Context, entrypoint []string, cmd []s
 	labels["io.tedge.forked.name"] = currentContainer.Name
 	containerConfig.Labels = labels
 
-	hostConfig := CloneHostConfig(currentContainer.HostConfig, CloneOptions{
-		// Don't remove it until it has been acknowledged
-		AutoRemove: false,
-		// Ensure ports don't conflict with any other containers
-		IgnorePorts: true,
-	})
+	hostConfig := CloneHostConfig(currentContainer.HostConfig, cloneOptions)
 
 	// TODO: Protect against the updater from shutting down due to a machine restart
 	// or is this not required if the restart policy of the container being updated
@@ -1129,7 +1177,7 @@ func (c *ContainerClient) Fork(ctx context.Context, entrypoint []string, cmd []s
 
 	startErr := c.Client.ContainerStart(ctx, resp.ID, container.StartOptions{})
 	if startErr != nil {
-		slog.Error("Failed to start container.", "id", resp.ID, "err", err)
+		slog.Error("Failed to start container.", "id", resp.ID, "err", startErr)
 		return startErr
 	}
 	slog.Info("Successfully created forked container.", "id", resp.ID)
@@ -1201,7 +1249,6 @@ func CloneHostConfig(ref *container.HostConfig, opts CloneOptions) *container.Ho
 		Tmpfs:           ref.Tmpfs,
 		PortBindings:    ref.PortBindings,
 		PublishAllPorts: ref.PublishAllPorts,
-		ShmSize:         ref.ShmSize,
 		ExtraHosts:      append(ref.ExtraHosts, opts.ExtraHosts...),
 		OomScoreAdj:     ref.OomScoreAdj,
 		ReadonlyRootfs:  ref.ReadonlyRootfs,
@@ -1215,6 +1262,7 @@ func CloneHostConfig(ref *container.HostConfig, opts CloneOptions) *container.Ho
 		SecurityOpt:     ref.SecurityOpt,
 		GroupAdd:        ref.GroupAdd,
 		Runtime:         ref.Runtime,
+		ContainerIDFile: ref.ContainerIDFile,
 	}
 
 	if opts.IgnorePorts {
