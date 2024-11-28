@@ -943,6 +943,7 @@ func (c *ContainerClient) ContainerLogs(ctx context.Context, w io.Writer, contai
 type CloneOptions struct {
 	Image        string
 	HealthyAfter time.Duration
+	StopAfter    time.Duration
 	StopTimeout  time.Duration
 	WaitForExit  bool
 	AutoRemove   bool
@@ -1001,6 +1002,12 @@ func (c *ContainerClient) CloneContainer(ctx context.Context, containerID string
 		}
 		slog.Info("Container stopped.", "id", prevContainer.ID)
 	} else {
+		// Pause before stopping the container
+		if opts.StopAfter > 0 {
+			slog.Info("Waiting before stopping container.", "id", prevContainer.ID, "duration", opts.StopAfter)
+			time.Sleep(opts.StopAfter)
+		}
+
 		slog.Info("Stopping previous container.", "id", prevContainer.ID, "name", prevContainer.Name)
 		stopErr := c.Client.ContainerStop(ctx, prevContainer.ID, container.StopOptions{})
 		if stopErr != nil {
