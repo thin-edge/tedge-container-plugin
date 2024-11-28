@@ -169,7 +169,7 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 			// of a container after creation
 			// "--wait-for-exit",
 			forkCmd = append(forkCmd, "--wait-for-exit")
-			forkCmd = append(forkCmd, "stop-timeout", c.StopTimeout.String())
+			forkCmd = append(forkCmd, "--stop-timeout", c.StopTimeout.String())
 		}
 
 		if c.StopAfter > 0 {
