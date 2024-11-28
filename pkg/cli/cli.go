@@ -378,3 +378,12 @@ func (c *Cli) GetFilterOptions() container.FilterOptions {
 	}
 	return options
 }
+
+func GetTedgeConfig(property string) (string, error) {
+	cmd := exec.Command("tedge", "config", "get", property)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(bytes.TrimRight(out, "\n")), nil
+}
