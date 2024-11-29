@@ -501,7 +501,13 @@ type ImagePullOptions struct {
 // Check if the given docker.io image has fully qualified (e.g. docker.io/library/<image>)
 // if not, then expand it to its fully qualified name.
 func ResolveDockerIOImage(imageRef string) (string, bool) {
-	if strings.HasPrefix(imageRef, "docker.io/library/") {
+	if !strings.HasPrefix(imageRef, "docker.io/") {
+		return imageRef, false
+	}
+
+	slashCount := strings.Count(imageRef, "/")
+
+	if strings.HasPrefix(imageRef, "docker.io/library/") || slashCount >= 2 {
 		// Is already normalized
 		return imageRef, false
 	}
@@ -511,6 +517,11 @@ func ResolveDockerIOImage(imageRef string) (string, bool) {
 	}
 
 	return "docker.io/library/" + strings.TrimPrefix(imageRef, "docker.io/"), true
+}
+
+func NormalizeImageRef(imageRef string) string {
+	fullRef, _ := ResolveDockerIOImage(imageRef)
+	return fullRef
 }
 
 // Pull a container image. The image will be verified if it exists afterwards

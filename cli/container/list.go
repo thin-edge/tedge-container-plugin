@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/thin-edge/tedge-container-plugin/pkg/cli"
@@ -34,8 +33,7 @@ func NewListCommand(cliContext cli.Cli) *cobra.Command {
 			stdout := cmd.OutOrStdout()
 			for _, item := range containers {
 				if item.ServiceType == container.ContainerType {
-					version := item.Container.Image[strings.LastIndex(item.Container.Image, "/")+1:]
-					fmt.Fprintf(stdout, "%s\t%s\n", item.Name, version)
+					fmt.Fprintf(stdout, "%s\t%s\n", item.Name, container.NormalizeImageRef(item.Container.Image))
 				}
 			}
 			return nil
