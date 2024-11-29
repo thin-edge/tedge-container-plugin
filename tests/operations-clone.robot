@@ -11,7 +11,7 @@ Test Tags    docker    podman
 *** Test Cases ***
 
 Check for Update
-    Create Container    app1    httpd:2.4.61-alpine
+    Create Container    app1    docker.io/library/httpd:2.4.61-alpine
     DeviceLibrary.Execute Command    cmd=tedge-container engine docker container inspect app1 --format "{{.Id}}"
 
     # No update
@@ -24,7 +24,7 @@ Check for Update
     DeviceLibrary.Execute Command    sudo tedge-container tools container-clone --container app1 --image httpd:2.4.62-alpine --check    exp_exit_code=0
 
 Clone Existing Container
-    Create Container    app2    httpd:2.4
+    Create Container    app2    docker.io/library/httpd:2.4
     ${prev_container_id}=    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker container inspect app2 --format "{{.Id}}"
 
     DeviceLibrary.Execute Command    sudo tedge-container tools container-clone --container app2 --force
@@ -33,7 +33,7 @@ Clone Existing Container
     Should Not Be Equal    ${next_container_id}    ${prev_container_id}
 
 Clone Existing Container by Timeout Whilst Waiting For Exit
-    Create Container    app3    httpd:2.4
+    Create Container    app3    docker.io/library/httpd:2.4
     ${prev_container_id}=    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker container inspect app3 --format "{{.Id}}"
 
     DeviceLibrary.Execute Command    sudo tedge-container tools container-clone --container app3 --force --wait-for-exit --stop-timeout 15s    exp_exit_code=!0
@@ -42,7 +42,7 @@ Clone Existing Container by Timeout Whilst Waiting For Exit
     Should Be Equal    ${next_container_id}    ${prev_container_id}
 
 Clone Existing Container but Waiting For Exit
-    Create Container    app4    httpd:2.4
+    Create Container    app4    docker.io/library/httpd:2.4
     ${prev_container_id}=    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker container inspect app4 --format "{{.Id}}"
 
     ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container tools container-clone --container app4 --force --wait-for-exit --stop-timeout 60s 2>&1

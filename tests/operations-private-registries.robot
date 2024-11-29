@@ -9,7 +9,6 @@ Test Teardown    Collect Logs
 *** Variables ***
 
 ${PRIVATE_IMAGE}            %{PRIVATE_IMAGE=}
-${PRIVATE_IMAGE_VERSION}    %{PRIVATE_IMAGE_VERSION=}
 ${REGISTRY1_REPO}           %{REGISTRY1_REPO=docker.io}
 ${REGISTRY1_USERNAME}       %{REGISTRY1_USERNAME=}
 ${REGISTRY1_PASSWORD}       %{REGISTRY1_PASSWORD=}
@@ -23,7 +22,7 @@ Install/uninstall container package from private repository - credentials file
 
     ${operation}=    Cumulocity.Install Software    {"name": "testapp1", "version": "${PRIVATE_IMAGE}", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
-    Device Should Have Installed Software    {"name": "testapp1", "version": "${PRIVATE_IMAGE_VERSION}", "softwareType": "container"}
+    Device Should Have Installed Software    {"name": "testapp1", "version": "${PRIVATE_IMAGE}", "softwareType": "container"}
 
 Install/uninstall container package from private repository - credentials script
     [Tags]    docker    podman
@@ -33,7 +32,7 @@ Install/uninstall container package from private repository - credentials script
 
     ${operation}=    Cumulocity.Install Software    {"name": "testapp2", "version": "${PRIVATE_IMAGE}", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
-    Device Should Have Installed Software    {"name": "testapp2", "version": "${PRIVATE_IMAGE_VERSION}", "softwareType": "container"}
+    Device Should Have Installed Software    {"name": "testapp2", "version": "${PRIVATE_IMAGE}", "softwareType": "container"}
 
 Install/uninstall container package from private repository - credentials script with cache
     [Tags]    docker    podman
@@ -43,7 +42,7 @@ Install/uninstall container package from private repository - credentials script
 
     ${operation}=    Cumulocity.Install Software    {"name": "testapp2", "version": "${PRIVATE_IMAGE}", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
-    Device Should Have Installed Software    {"name": "testapp2", "version": "${PRIVATE_IMAGE_VERSION}", "softwareType": "container"}
+    Device Should Have Installed Software    {"name": "testapp2", "version": "${PRIVATE_IMAGE}", "softwareType": "container"}
 
 Install/uninstall container package from private repository - engine credentials
     [Documentation]    login to registry from host
@@ -51,7 +50,7 @@ Install/uninstall container package from private repository - engine credentials
     DeviceLibrary.Execute Command    tedge-container engine docker login ${REGISTRY1_REPO} -u '${REGISTRY1_USERNAME}' --password '${REGISTRY1_PASSWORD}'
     ${operation}=    Cumulocity.Install Software    {"name": "testapp3", "version": "${PRIVATE_IMAGE}", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
-    Device Should Have Installed Software    {"name": "testapp3", "version": "${PRIVATE_IMAGE_VERSION}", "softwareType": "container"}
+    Device Should Have Installed Software    {"name": "testapp3", "version": "${PRIVATE_IMAGE}", "softwareType": "container"}
 
 Install/uninstall container package from private repository - docker from docker
     [Documentation]    login inside a container with the auth file mounted from the host

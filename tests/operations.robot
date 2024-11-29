@@ -47,16 +47,16 @@ Install container-group with multiple files - app2
     Install container-group file    app2    1.2.3    app2    ${CURDIR}/data/apps/app2.zip
 
 Install/uninstall container package
-    ${operation}=    Cumulocity.Install Software    {"name": "webserver", "version": "httpd:2.4", "softwareType": "container"}
+    ${operation}=    Cumulocity.Install Software    {"name": "webserver", "version": "docker.io/library/httpd:2.4", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
-    Device Should Have Installed Software    {"name": "webserver", "version": "httpd:2.4", "softwareType": "container"}
-    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge docker.io/busybox wget -O- webserver:80;
+    Device Should Have Installed Software    {"name": "webserver", "version": "docker.io/library/httpd:2.4", "softwareType": "container"}
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge docker.io/library/busybox wget -O- webserver:80;
     Operation Should Be SUCCESSFUL    ${operation}
     Should Contain    ${operation.to_json()["c8y_Command"]["result"]}    It works!
     Cumulocity.Should Have Services    name=webserver    service_type=container    status=up
 
     # Uninstall
-    ${operation}=     Cumulocity.Uninstall Software    {"name": "webserver", "version": "httpd:2.4", "softwareType": "container"}
+    ${operation}=     Cumulocity.Uninstall Software    {"name": "webserver", "version": "docker.io/library/httpd:2.4", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}
     Device Should Not Have Installed Software    webserver
     Cumulocity.Should Have Services    name=webserver    service_type=container    min_count=0    max_count=0
@@ -65,13 +65,13 @@ Install/uninstall container package
 Install/uninstall container package from file
     ${binary_url}=    Cumulocity.Create Inventory Binary    app3    container    file=${CURDIR}/data/apps/app3.tar
 
-    ${operation}=    Cumulocity.Install Software    {"name": "app3", "version": "app3", "softwareType": "container", "url": "${binary_url}"}
+    ${operation}=    Cumulocity.Install Software    {"name": "app3", "version": "docker.io/library/app3:latest", "softwareType": "container", "url": "${binary_url}"}
     Operation Should Be SUCCESSFUL    ${operation}
-    Device Should Have Installed Software    {"name": "app3", "version": "app3:latest", "softwareType": "container"}
+    Device Should Have Installed Software    {"name": "app3", "version": "docker.io/library/app3:latest", "softwareType": "container"}
     Cumulocity.Should Have Services    name=app3    service_type=container    status=up
 
     # Uninstall
-    ${operation}=     Cumulocity.Uninstall Software    {"name": "app3", "version": "app3:latest", "softwareType": "container"}
+    ${operation}=     Cumulocity.Uninstall Software    {"name": "app3", "version": "docker.io/library/app3:latest", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}
     Device Should Not Have Installed Software    app3
     Cumulocity.Should Have Services    name=app3    service_type=container    min_count=0    max_count=0
@@ -81,7 +81,7 @@ Manual container creation/deletion
     ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker network create tedge ||:; sudo tedge-container engine docker run -d --network tedge --name manualapp1 httpd:2.4
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
 
-    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge docker.io/busybox wget -O- manualapp1:80;
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge docker.io/library/busybox wget -O- manualapp1:80;
     Operation Should Be SUCCESSFUL    ${operation}
 
     Should Contain    ${operation.to_json()["c8y_Command"]["result"]}    It works!
@@ -152,7 +152,7 @@ Install container-group file
     DeviceLibrary.Directory Should Not Be Empty    /data/tedge-container-plugin/compose/${package_name}
 
     Device Should Have Installed Software    {"name": "${package_name}", "version": "${package_version}", "softwareType": "container-group"}
-    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge docker.io/busybox wget -O- ${service_name}:80
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge docker.io/library/busybox wget -O- ${service_name}:80
     Operation Should Be SUCCESSFUL    ${operation}
     Should Contain    ${operation.to_json()["c8y_Command"]["result"]}    My Custom Web Application
     Cumulocity.Should Have Services    name=${package_name}@${service_name}    service_type=container-group    status=up
