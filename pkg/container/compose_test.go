@@ -1,6 +1,11 @@
 package container
 
-import "testing"
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func Test_Podman(t *testing.T) {
 	output := `
@@ -33,5 +38,35 @@ exit code: 0
 `
 	if CheckPodmanComposeError(output) != nil {
 		t.Errorf("did not expect an error")
+	}
+}
+
+func Test_DetectImagesInCompose(t *testing.T) {
+	contents := `
+services:
+  app1:
+    image: hello-world
+
+  app2:
+    build: "."
+`
+	workingDir, err := os.MkdirTemp("", "compose")
+	if err != nil {
+		t.Fail()
+	}
+	defer os.RemoveAll(workingDir)
+
+	composeFile := filepath.Join(workingDir, "docker-compose.yml")
+	if err := os.WriteFile(composeFile, []byte(contents), 0o644); err != nil {
+		t.Fail()
+	}
+
+	images, err := ReadImages(context.Background(), []string{composeFile}, workingDir)
+	if err != nil {
+		t.Errorf("Failed to parse images. %s", err)
+	}
+
+	if images[0] != "hello-world" {
+		t.Errorf("Image not found. got=%s, wanted=%s", images[0], "hello-world")
 	}
 }
