@@ -58,7 +58,6 @@ jobs:
           echo 'C8Y_USER="${{ secrets.C8Y_USER }}"' >> .env
           echo 'C8Y_PASSWORD="${{ secrets.C8Y_PASSWORD }}"' >> .env
           echo 'PRIVATE_IMAGE="${{ secrets.PRIVATE_IMAGE }}"' >> .env
-          echo 'PRIVATE_IMAGE_VERSION="${{ secrets.PRIVATE_IMAGE_VERSION }}"' >> .env
           echo 'REGISTRY1_REPO="${{ secrets.REGISTRY1_REPO }}"' >> .env
           echo 'REGISTRY1_USERNAME="${{ secrets.REGISTRY1_USERNAME }}"' >> .env
           echo 'REGISTRY1_PASSWORD="${{ secrets.REGISTRY1_PASSWORD }}"' >> .env
