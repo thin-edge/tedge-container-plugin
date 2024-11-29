@@ -498,6 +498,21 @@ type ImagePullOptions struct {
 	Wait        time.Duration
 }
 
+// Check if the given docker.io image has fully qualified (e.g. docker.io/library/<image>)
+// if not, then expand it to its fully qualified name.
+func ResolveDockerIOImage(imageRef string) (string, bool) {
+	if strings.HasPrefix(imageRef, "docker.io/library/") {
+		// Is already normalized
+		return imageRef, false
+	}
+	if !strings.HasPrefix(imageRef, "docker.io/") {
+		// Not a docker.io image
+		return imageRef, false
+	}
+
+	return "docker.io/library/" + strings.TrimPrefix(imageRef, "docker.io/"), true
+}
+
 // Pull a container image. The image will be verified if it exists afterwards
 //
 // Use credentials function to generate initial credentials
@@ -505,8 +520,17 @@ type ImagePullOptions struct {
 // helper to invalid its own cache
 func (c *ContainerClient) ImagePullWithRetries(ctx context.Context, imageRef string, alwaysPull bool, opts ImagePullOptions) (*image.Summary, error) {
 	// Check if an image
+	filterArgs := filters.NewArgs(filters.Arg("reference", imageRef))
+
+	// Include full image name of docker.io image as the user can
+	// provide the short form (docker.io/<image>) which results in the post-pull image check
+	// to fail. Add the fully qualified docker.io image to the image list filter options to find both
+	if fullImageRef, ok := ResolveDockerIOImage(imageRef); ok {
+		filterArgs.Add("reference", fullImageRef)
+	}
+
 	images, err := c.Client.ImageList(ctx, image.ListOptions{
-		Filters: filters.NewArgs(filters.Arg("reference", imageRef)),
+		Filters: filterArgs,
 	})
 	if err != nil {
 		return nil, err
@@ -542,7 +566,7 @@ func (c *ContainerClient) ImagePullWithRetries(ctx context.Context, imageRef str
 		//
 		// Check if image is not present
 		imageList, imageErr := c.Client.ImageList(ctx, image.ListOptions{
-			Filters: filters.NewArgs(filters.Arg("reference", imageRef)),
+			Filters: filterArgs,
 		})
 		if imageErr != nil {
 			return nil, imageErr

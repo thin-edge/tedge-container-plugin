@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/codeclysm/extract/v4"
 	"github.com/spf13/cobra"
@@ -85,15 +86,38 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	composeFile := filepath.Join(workingDir, "docker-compose.yaml")
+
 	composeUpExtraArgs := []string{"--build"}
 	if err := extract.Archive(ctx, file, workingDir, nil); err != nil {
 		// Fallback to treating it as a text file
-		dst := filepath.Join(workingDir, "docker-compose.yaml")
-		slog.Info("Copying file.", "src", c.File, "dst", dst)
-		if err := utils.CopyFile(c.File, dst); err != nil {
+		slog.Info("Copying file.", "src", c.File, "dst", composeFile)
+		if err := utils.CopyFile(c.File, composeFile); err != nil {
 			return err
 		}
 		composeUpExtraArgs = []string{}
+	}
+
+	// Pull images which allows uses to avoid having to set any private credentials
+	// as tedge-container-plugin supports user set credentials
+	if !utils.PathExists(composeFile) {
+		if p := filepath.Join(workingDir, "docker-compose.yml"); utils.PathExists(p) {
+			composeFile = p
+		}
+	}
+	images, err := container.ReadImages(ctx, []string{composeFile}, workingDir)
+	if err != nil {
+		return err
+	}
+	for _, imageRef := range images {
+		if _, err := cli.ImagePullWithRetries(ctx, imageRef, c.CommandContext.ImageAlwaysPull(), container.ImagePullOptions{
+			AuthFunc:    c.CommandContext.GetContainerRepositoryCredentialsFunc(imageRef),
+			MaxAttempts: 2,
+			Wait:        5 * time.Second,
+		}); err != nil {
+			// Proceed anyway so docker-compose can potentially pull in the images
+			slog.Warn("Error whilst pulling images. Trying to proceed anyway.", "err", err)
+		}
 	}
 
 	// Create shared network
