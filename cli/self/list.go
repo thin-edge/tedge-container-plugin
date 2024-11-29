@@ -41,16 +41,9 @@ func NewListCommand(cliContext cli.Cli) *cobra.Command {
 			}
 
 			name := strings.TrimPrefix(currentContainer.Name, "/")
-			version := formatImageName(currentContainer.Config.Image)
+			version := currentContainer.Config.Image
 			_, wErr := fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\n", name, version)
 			return wErr
 		},
 	}
-}
-
-func formatImageName(v string) string {
-	if i := strings.LastIndex(v, "/"); i > -1 && i < len(v)-1 {
-		return v[i+1:]
-	}
-	return v
 }
