@@ -1,10 +1,13 @@
 package container
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os/exec"
 	"strings"
+
+	composeCli "github.com/compose-spec/compose-go/v2/cli"
 )
 
 func detectCompose() (command string, args []string, err error) {
@@ -54,4 +57,29 @@ func filter(ss []string, test func(string) bool) (ret []string) {
 		}
 	}
 	return
+}
+
+func ReadImages(ctx context.Context, paths []string, workingDir string) ([]string, error) {
+	images := make([]string, 0)
+
+	project, err := composeCli.NewProjectOptions(
+		paths,
+		composeCli.WithDotEnv,
+	)
+	if err != nil {
+		return images, err
+	}
+
+	projectT, err := project.LoadProject(ctx)
+	if err != nil {
+		return images, err
+	}
+	for name, service := range projectT.Services {
+		if service.Image != "" {
+			slog.Info("Found image for service.", "service", name, "image", service.Image)
+			images = append(images, service.Image)
+		}
+	}
+
+	return images, nil
 }
