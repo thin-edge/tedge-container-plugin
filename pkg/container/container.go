@@ -529,27 +529,16 @@ func NormalizeImageRef(imageRef string) string {
 // Use credentials function to generate initial credentials
 // and call again if the credentials fail which gives the credentials
 // helper to invalid its own cache
-func (c *ContainerClient) ImagePullWithRetries(ctx context.Context, imageRef string, alwaysPull bool, opts ImagePullOptions) (*image.Summary, error) {
-	// Check if an image
-	filterArgs := filters.NewArgs(filters.Arg("reference", imageRef))
-
-	// Include full image name of docker.io image as the user can
-	// provide the short form (docker.io/<image>) which results in the post-pull image check
-	// to fail. Add the fully qualified docker.io image to the image list filter options to find both
-	if fullImageRef, ok := ResolveDockerIOImage(imageRef); ok {
-		filterArgs.Add("reference", fullImageRef)
-	}
-
-	images, err := c.Client.ImageList(ctx, image.ListOptions{
-		Filters: filterArgs,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if len(images) > 0 && !alwaysPull {
-		slog.Info("Image already exists.", "ref", imageRef, "id", images[0].ID, "tags", images[0].RepoTags)
-		return &images[0], nil
+func (c *ContainerClient) ImagePullWithRetries(ctx context.Context, imageRef string, alwaysPull bool, opts ImagePullOptions) (*types.ImageInspect, error) {
+	// Check if image exists
+	// Use ImageInspectWithRaw over ImageList as inspect is able to look up images either with or without
+	// the repository details making it more compatible between docker and podman
+	if imageInspect, _, err := c.Client.ImageInspectWithRaw(ctx, imageRef); err != nil {
+		// Don't fail, just log it and continue
+		slog.Info("Image does not already exist, trying to pull image.", "response", err)
+	} else if !alwaysPull {
+		slog.Info("Image already exists.", "ref", imageRef, "id", imageInspect.ID, "tags", imageInspect.RepoTags)
+		return &imageInspect, nil
 	}
 
 	result, err := utils.Retry(opts.MaxAttempts, opts.Wait, func(attempt int) (any, error) {
@@ -576,24 +565,19 @@ func (c *ContainerClient) ImagePullWithRetries(ctx context.Context, imageRef str
 
 		//
 		// Check if image is not present
-		imageList, imageErr := c.Client.ImageList(ctx, image.ListOptions{
-			Filters: filterArgs,
-		})
+		imageInspect, _, imageErr := c.Client.ImageInspectWithRaw(ctx, imageRef)
 		if imageErr != nil {
+			slog.Error("No image found after pulling.", "err", imageErr)
 			return nil, imageErr
 		}
-		if len(imageList) == 0 {
-			slog.Info("No image found after pulling")
-			return nil, ErrNoImage
-		}
-		slog.Info("Image found after pull.", "count", len(imageList))
-		return &imageList[0], nil
+		slog.Info("Image found after pull.", "id", imageInspect.ID, "name", imageInspect.RepoTags)
+		return &imageInspect, nil
 	})
 
 	if err != nil {
 		return nil, err
 	}
-	return result.(*image.Summary), err
+	return result.(*types.ImageInspect), err
 }
 
 //nolint:all
