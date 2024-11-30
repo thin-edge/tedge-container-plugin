@@ -107,12 +107,6 @@ nfpms:
         dst: /etc/tedge/sm-plugins/container-group
         type: symlink
 
-      # apk only (used for self updates)
-      - src: /usr/bin/tedge-container
-        dst: /etc/tedge/sm-plugins/self
-        type: symlink
-        packager: apk
-
       # Config
       - src: ./packaging/config.toml
         dst: /etc/tedge/plugins/tedge-container-plugin.toml
