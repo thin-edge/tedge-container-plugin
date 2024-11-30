@@ -114,8 +114,8 @@ nfpms:
         packager: apk
 
       # Config
-      - src: ./packaging/config.*
-        dst: /etc/tedge-container-plugin/
+      - src: ./packaging/config.toml
+        dst: /etc/tedge/plugins/tedge-container-plugin.toml
         file_info:
           mode: 0644
           owner: tedge
