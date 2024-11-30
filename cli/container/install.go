@@ -138,8 +138,10 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create shared network
-	if err := cli.CreateSharedNetwork(ctx, commonNetwork); err != nil {
-		return err
+	if commonNetwork != "" {
+		if err := cli.CreateSharedNetwork(ctx, commonNetwork); err != nil {
+			return err
+		}
 	}
 
 	//
@@ -168,21 +170,26 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 		Labels: map[string]string{},
 	}
 
+	networkConfig := make(map[string]*network.EndpointSettings)
+	if commonNetwork != "" {
+		slog.Info("Connecting container to common network.", "network", commonNetwork)
+		networkConfig[commonNetwork] = &network.EndpointSettings{
+			NetworkID: commonNetwork,
+		}
+	}
+
 	resp, err := cli.Client.ContainerCreate(
 		ctx,
 		containerConfig,
 		&containerSDK.HostConfig{
 			PublishAllPorts: true,
+			NetworkMode:     network.NetworkBridge,
 			RestartPolicy: containerSDK.RestartPolicy{
 				Name: containerSDK.RestartPolicyAlways,
 			},
 		},
 		&network.NetworkingConfig{
-			EndpointsConfig: map[string]*network.EndpointSettings{
-				commonNetwork: {
-					NetworkID: commonNetwork,
-				},
-			},
+			EndpointsConfig: networkConfig,
 		},
 		nil,
 		containerName,
