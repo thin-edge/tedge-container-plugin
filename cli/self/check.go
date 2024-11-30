@@ -106,10 +106,14 @@ func (c *CheckCommand) RunE(cmd *cobra.Command, args []string) error {
 					match.ContainerName = item.Name
 					match.Image = item.Version
 					includesSelfUpdate = true
-					break
+				} else if item.Action == SoftwareManagementActionRemove {
+					return cli.ExitCodeError{
+						Code:   ExitError,
+						Err:    fmt.Errorf("tedge's own container cannot be removed. name=%s, version=%s, containerId=%s", item.Name, item.Version, selfContainerID),
+						Silent: true,
+					}
 				}
 			}
-			break
 		} else if module.Type == SoftwareManagementTypeContainer {
 			// container update
 			// Filter non self-updated modules
@@ -119,7 +123,11 @@ func (c *CheckCommand) RunE(cmd *cobra.Command, args []string) error {
 				if selfContainerName == item.Name {
 					if item.Action == SoftwareManagementActionRemove {
 						// Protect against the user deleting the tedge container itself
-						return fmt.Errorf("tedge's own container cannot be removed. name=%s, version=%s, containerId=%s", item.Name, item.Version, selfContainerID)
+						return cli.ExitCodeError{
+							Code:   ExitError,
+							Err:    fmt.Errorf("tedge's own container cannot be removed. name=%s, version=%s, containerId=%s", item.Name, item.Version, selfContainerID),
+							Silent: true,
+						}
 					} else if item.Action == SoftwareManagementActionInstall {
 						// install
 						match.ContainerName = item.Name

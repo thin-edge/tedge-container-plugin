@@ -10,7 +10,11 @@ Test Tags    docker    podman
 
 *** Test Cases ***
 
-Self Update Is Present
+Self Update Is Present Using Self Type
+    ${output}=    DeviceLibrary.Execute Command    cmd=tedge-container self check '[{"type":"self","modules":[{"name":"tedge","action":"install","version":"123"}]},{"type":"container","modules":[{"name":"foo","version":"bar:1.0.0","action":"install"}]}]' --container tedge    strip=${True}
+    Should Contain    ${output}    {"containerName":"tedge","image":"123","updateList":[{"type":"container","modules":[{"name":"foo","version":"bar:1.0.0","action":"install"}]}]}
+
+Self Update Is Present Using Container Type
     ${output}=    DeviceLibrary.Execute Command    cmd=tedge-container self check '[{"type":"container","modules":[{"name":"tedge","action":"install","version":"123"},{"name":"foo","action":"install","version":"bar:latest","url":"https://foobar.com/example"}]}]' --container tedge    strip=${True}
     Should Contain    ${output}    {"containerName":"tedge","image":"123","updateList":[{"type":"container","modules":[{"name":"foo","version":"bar:latest","url":"https://foobar.com/example","action":"install"}]}]}
 
