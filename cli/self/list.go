@@ -29,6 +29,12 @@ func NewListCommand(cliContext cli.Cli) *cobra.Command {
 		Args:  cobra.ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			slog.Info("Executing", "cmd", cmd.CalledAs(), "args", args)
+
+			if CalledAsSMPlugin() {
+				slog.Info("Called as sm-plugin, ignoring legacy plugin. 'container' is used for updates")
+				return nil
+			}
+
 			ctx := context.Background()
 			containerCli, err := container.NewContainerClient()
 			if err != nil {
