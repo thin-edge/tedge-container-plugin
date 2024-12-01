@@ -28,6 +28,7 @@ type ContainerRunInContextCommand struct {
 	Env         []string
 	AutoRemove  bool
 	Entrypoint  string
+	Labels      []string
 }
 
 // NewRunRemoteAccessCommand creates a new c8y remote access command
@@ -47,6 +48,7 @@ func NewContainerRunInContextCommand(ctx cli.Cli) *cobra.Command {
 	cmd.Flags().StringVar(&command.Entrypoint, "entrypoint", "", "Overwrite the default ENTRYPOINT of the image")
 	cmd.Flags().StringSliceVarP(&command.Env, "env", "e", []string{}, "Set environment variables")
 	cmd.Flags().BoolVar(&command.AutoRemove, "rm", false, "Auto remove the closed container on exit")
+	cmd.Flags().StringSliceVarP(&command.Labels, "label", "l", []string{}, "Set meta data on a container")
 
 	command.Command = cmd
 	return cmd
@@ -140,6 +142,7 @@ func (c *ContainerRunInContextCommand) RunE(cmd *cobra.Command, args []string) e
 		Entrypoint:  entrypoint,
 		Cmd:         containerCmd,
 		IgnorePorts: true,
+		Labels:      container.FormatLabels(c.Labels),
 	}
 
 	// Container config

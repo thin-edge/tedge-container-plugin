@@ -27,10 +27,13 @@ Clone Existing Container
     Create Container    app2    docker.io/library/httpd:2.4
     ${prev_container_id}=    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker container inspect app2 --format "{{.Id}}"
 
-    DeviceLibrary.Execute Command    sudo tedge-container tools container-clone --container app2 --force
+    DeviceLibrary.Execute Command    cmd=sudo tedge-container tools container-clone --container app2 --force --label io.thin-edge.last_id=${prev_container_id}
 
     ${next_container_id}=    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker inspect app2 --format "{{.Id}}"
     Should Not Be Equal    ${next_container_id}    ${prev_container_id}
+
+    ${label_prev_id}=    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker inspect app2 --format '{{ index .Config.Labels "io.thin-edge.last_id" }}'
+    Should Be Equal    ${label_prev_id}    ${prev_container_id}
 
 Clone Existing Container by Timeout Whilst Waiting For Exit
     Create Container    app3    docker.io/library/httpd:2.4
