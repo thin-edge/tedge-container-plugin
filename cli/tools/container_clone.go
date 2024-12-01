@@ -35,6 +35,8 @@ type ContainerCloneCommand struct {
 	AddHost        []string
 	Env            []string
 	Entrypoint     string
+	ForkLabels     []string
+	Labels         []string
 }
 
 // NewContainerCloneCommand creates a new container clone command
@@ -62,6 +64,8 @@ func NewContainerCloneCommand(ctx cli.Cli) *cobra.Command {
 	cmd.Flags().BoolVar(&command.WaitForExit, "wait-for-exit", false, "Wait for the container to stop/exit before updating")
 	cmd.Flags().BoolVar(&command.CheckForUpdate, "check", false, "Only check if an update is necessary, don't perform the update")
 	cmd.Flags().StringVar(&command.Entrypoint, "entrypoint", "", "Change the container entrypoint when cloning the container")
+	cmd.Flags().StringSliceVarP(&command.Labels, "label", "l", []string{}, "Set meta data on the new container")
+	cmd.Flags().StringSliceVar(&command.ForkLabels, "fork-label", []string{}, "Set meta data on a the forked container")
 
 	command.Command = cmd
 	return cmd
@@ -180,6 +184,10 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 			forkCmd = append(forkCmd, "--rm")
 		}
 
+		for _, v := range c.Labels {
+			forkCmd = append(forkCmd, "--label", v)
+		}
+
 		for _, v := range c.AddHost {
 			forkCmd = append(forkCmd, "--add-host", v)
 		}
@@ -210,6 +218,9 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 
 			// Ensure ports don't conflict with any other containers
 			IgnorePorts: true,
+
+			// Labels for the forked container
+			Labels: container.FormatLabels(c.ForkLabels),
 		}
 
 		return containerCli.Fork(context.Background(), currentContainer, cloneOptions)
@@ -231,5 +242,6 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 		ExtraHosts:   c.AddHost,
 		Entrypoint:   entrypoint,
 		Cmd:          containerCmd,
+		Labels:       container.FormatLabels(c.Labels),
 	})
 }

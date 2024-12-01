@@ -971,6 +971,7 @@ type CloneOptions struct {
 	Cmd          strslice.StrSlice
 	Entrypoint   strslice.StrSlice
 	IgnorePorts  bool
+	Labels       map[string]string
 }
 
 func FormatContainerName(v string) string {
@@ -1268,6 +1269,11 @@ func CloneContainerConfig(ref *container.Config, opts CloneOptions) *container.C
 	if opts.Image != "" {
 		clonedConfig.Image = opts.Image
 	}
+
+	for label, value := range opts.Labels {
+		clonedConfig.Labels[label] = value
+	}
+
 	clonedConfig.Env = append(clonedConfig.Env, opts.Env...)
 	return clonedConfig
 }
@@ -1329,4 +1335,14 @@ func CloneNetworkConfig(ref *types.NetworkSettings) *network.NetworkingConfig {
 		}
 	}
 	return networkConfig
+}
+
+func FormatLabels(labels []string) map[string]string {
+	labelMap := make(map[string]string)
+	for _, label := range labels {
+		if name, value, found := strings.Cut(label, "="); found {
+			labelMap[name] = value
+		}
+	}
+	return labelMap
 }
