@@ -22,6 +22,7 @@ type ContainerCloneCommand struct {
 	CommandContext cli.Cli
 
 	// Options
+	ForkName       string
 	ForceUpdate    bool
 	Fork           bool
 	WaitForExit    bool
@@ -64,6 +65,7 @@ func NewContainerCloneCommand(ctx cli.Cli) *cobra.Command {
 	cmd.Flags().BoolVar(&command.WaitForExit, "wait-for-exit", false, "Wait for the container to stop/exit before updating")
 	cmd.Flags().BoolVar(&command.CheckForUpdate, "check", false, "Only check if an update is necessary, don't perform the update")
 	cmd.Flags().StringVar(&command.Entrypoint, "entrypoint", "", "Change the container entrypoint when cloning the container")
+	cmd.Flags().StringVar(&command.ForkName, "fork-name", "", "Container name to use for the fork")
 	cmd.Flags().StringSliceVarP(&command.Labels, "label", "l", []string{}, "Set meta data on the new container")
 	cmd.Flags().StringSliceVar(&command.ForkLabels, "fork-label", []string{}, "Set meta data on a the forked container")
 
@@ -208,6 +210,9 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 		slog.Info("Forking container.", "command", strings.Join(forkCmd, " "))
 
 		cloneOptions := container.CloneOptions{
+			// Fork container name. If blank then a random name will be used
+			Name: c.ForkName,
+
 			Cmd: forkCmd,
 
 			// Use the new image, so that fixes can be delivered in the new image

@@ -960,6 +960,7 @@ func (c *ContainerClient) ContainerLogs(ctx context.Context, w io.Writer, contai
 }
 
 type CloneOptions struct {
+	Name         string
 	Image        string
 	HealthyAfter time.Duration
 	StopAfter    time.Duration
@@ -1195,11 +1196,11 @@ func (c *ContainerClient) Fork(ctx context.Context, currentContainer types.Conta
 	if cloneOptions.Image == "" {
 		cloneOptions.Image = currentContainer.Config.Image
 	}
+
+	cloneOptions.Labels["io.tedge.fork"] = "1"
+	cloneOptions.Labels["io.tedge.forked.name"] = currentContainer.Name
+
 	containerConfig := CloneContainerConfig(currentContainer.Config, cloneOptions)
-	labels := make(map[string]string)
-	labels["io.tedge.fork"] = "1"
-	labels["io.tedge.forked.name"] = currentContainer.Name
-	containerConfig.Labels = labels
 
 	hostConfig := CloneHostConfig(currentContainer.HostConfig, cloneOptions)
 
@@ -1213,7 +1214,13 @@ func (c *ContainerClient) Fork(ctx context.Context, currentContainer types.Conta
 	networkConfig := CloneNetworkConfig(currentContainer.NetworkSettings)
 	slog.Info("Forking container.", "new_image", containerConfig.Image, "from_id", currentContainer.ID)
 
-	resp, respErr := c.Client.ContainerCreate(ctx, containerConfig, hostConfig, networkConfig, nil, "")
+	if cloneOptions.Name != "" {
+		if err := c.StopRemoveContainer(ctx, cloneOptions.Name); err != nil {
+			return err
+		}
+	}
+
+	resp, respErr := c.Client.ContainerCreate(ctx, containerConfig, hostConfig, networkConfig, nil, cloneOptions.Name)
 	if respErr != nil {
 		return respErr
 	}

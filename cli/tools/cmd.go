@@ -16,6 +16,7 @@ func NewToolsCommand(cmdCli cli.Cli) *cobra.Command {
 		NewContainerCloneCommand(cmdCli),
 		NewContainerLogsCommand(cmdCli),
 		NewContainerRunInContextCommand(cmdCli),
+		NewContainerRemoveCommand(cmdCli),
 	)
 	return cmd
 }
