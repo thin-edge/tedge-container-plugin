@@ -1,4 +1,4 @@
-import '../../cumulocity-dynamic-mapper/dynamic-mapping-ui/src/i18n';
+import './i18n';
 import { applyOptions, loadOptions } from '@c8y/bootstrap';
 
 const barHolder: HTMLElement = document.querySelector('body > .init-load');
@@ -13,7 +13,7 @@ async function applicationSetup() {
   });
 
   const mod = await import(
-    '../../cumulocity-dynamic-mapper/dynamic-mapping-ui/src/bootstrap'
+    './bootstrap'
   );
   const bootstrapApp =
     mod.bootstrap || (window as any).bootstrap || (() => null);
