@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/thin-edge/tedge-container-plugin/pkg/cli"
 	"github.com/thin-edge/tedge-container-plugin/pkg/container"
+	"github.com/thin-edge/tedge-container-plugin/pkg/random"
 )
 
 type ContainerRunInContextCommand struct {
@@ -29,6 +30,7 @@ type ContainerRunInContextCommand struct {
 	AutoRemove  bool
 	Entrypoint  string
 	Labels      []string
+	NamePrefix  string
 }
 
 // NewRunRemoteAccessCommand creates a new c8y remote access command
@@ -46,6 +48,7 @@ func NewContainerRunInContextCommand(ctx cli.Cli) *cobra.Command {
 	cmd.Flags().StringVar(&command.ContainerID, "container", "", "Container to clone. Either container id or name. By default the container id of the current container will be used")
 	cmd.Flags().StringVar(&command.Image, "image", "", "Container image")
 	cmd.Flags().StringVar(&command.Entrypoint, "entrypoint", "", "Overwrite the default ENTRYPOINT of the image")
+	cmd.Flags().StringVar(&command.NamePrefix, "name-prefix", "", "Prefix to be added when generating the name. If left blank then the default will be used")
 	cmd.Flags().StringSliceVarP(&command.Env, "env", "e", []string{}, "Set environment variables")
 	cmd.Flags().BoolVar(&command.AutoRemove, "rm", false, "Auto remove the closed container on exit")
 	cmd.Flags().StringSliceVarP(&command.Labels, "label", "l", []string{}, "Set meta data on a container")
@@ -155,7 +158,13 @@ func (c *ContainerRunInContextCommand) RunE(cmd *cobra.Command, args []string) e
 	// Copy network config
 	networkConfig := container.CloneNetworkConfig(currentContainer.NetworkSettings)
 
-	nextContainer, createErr := containerCli.Client.ContainerCreate(ctx, clonedConfig, hostConfig, networkConfig, nil, "")
+	// container name
+	containerName := "" // default. let docker create a random name
+	if c.NamePrefix != "" {
+		containerName = c.NamePrefix + "_" + random.String(8)
+	}
+
+	nextContainer, createErr := containerCli.Client.ContainerCreate(ctx, clonedConfig, hostConfig, networkConfig, nil, containerName)
 
 	if createErr != nil {
 		slog.Warn("Failed to create container.", "err", createErr)
