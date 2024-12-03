@@ -40,10 +40,10 @@ fdmove -c 2 1
 ifte -X
 {
     # then
-    exec sudo -E /usr/bin/tedge-container run --config /etc/tedge-container-plugin/config.toml
+    exec sudo -E /usr/bin/tedge-container run --config /etc/tedge/plugins/tedge-container-plugin.toml
 }
 {
     # else
-    exec /usr/bin/tedge-container run --config /etc/tedge-container-plugin/config.toml
+    exec /usr/bin/tedge-container run --config /etc/tedge/plugins/tedge-container-plugin.toml
 }
 exec which sudo
