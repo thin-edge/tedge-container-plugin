@@ -418,8 +418,6 @@ func (c *ContainerClient) List(ctx context.Context, options FilterOptions) ([]Te
 		})
 	}
 
-	// filterValues = append(filterValues, filters.Arg("label", "com.docker.compose.project"))
-
 	// Match by label
 	for _, label := range options.Labels {
 		filterValues = append(filterValues, filters.KeyValuePair{
