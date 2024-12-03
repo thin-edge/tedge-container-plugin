@@ -59,6 +59,19 @@ Clone Existing Container but Waiting For Exit
     ${next_container_id}=    DeviceLibrary.Execute Command    cmd=tedge-container engine docker inspect app4 --format "{{.Id}}"
     Should Not Be Equal    ${next_container_id}    ${prev_container_id}
 
+Ignore Containers With Given Label
+    # ignore using label
+    ${prev_container_id}=    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker run -d --label tedge.ignore=1 --name httpapp1 httpd:2.4.61-alpine
+    Sleep    10s
+    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker inspect httpapp1
+    Cumulocity.Should Have Services    service_type=container    name=httpapp1    min_count=0    max_count=0    timeout=10
+
+    # don't ignore
+    ${prev_container_id}=    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker run -d --name httpapp2 httpd:2.4.61-alpine
+    Sleep    10s
+    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker inspect httpapp2
+    Cumulocity.Should Have Services    service_type=container    name=httpapp2    min_count=1    max_count=1    timeout=10
+
 *** Keywords ***
 
 Suite Setup
