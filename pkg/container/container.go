@@ -723,31 +723,45 @@ func CheckPodmanComposeError(b string) error {
 	return lastErr
 }
 
-func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectName string) error {
+func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectName string, defaultWorkingDir string) error {
 	// TODO: Read setting from configuration
 	manualCleanup := false
 	errs := make([]error, 0)
 
-	workingDir := ""
-
 	projectFilter := filters.NewArgs(
 		filters.Arg("label", "com.docker.compose.project="+projectName),
 	)
+	slog.Info("Searching for project containers.", "project", projectName)
 	projectContainers, err := c.Client.ContainerList(ctx, container.ListOptions{
 		Filters: projectFilter,
 	})
 	if err != nil {
 		errs = append(errs, err)
 	}
+	slog.Info("Found project containers.", "count", len(projectContainers))
+
+	workingDir := ""
+
+	// Prefer using the working_dir on the container rather than
+	// the default project working dir as the project could
 	for _, item := range projectContainers {
 		if v, ok := item.Labels["com.docker.compose.project.working_dir"]; ok {
-			workingDir = v
-			break
+			if utils.PathExists(v) {
+				slog.Info("Using project working dir found on container label.", "project", projectName, "working_dir", workingDir, "container_id", item.ID, "container_name", item.Names)
+				workingDir = v
+				break
+			}
 		}
 	}
 
+	// Fallback to the default project dir
+	if workingDir == "" {
+		slog.Info("Using default project working dir.", "path", defaultWorkingDir)
+		workingDir = defaultWorkingDir
+	}
+
 	// Find
-	if workingDir != "" && utils.PathExists(workingDir) {
+	if utils.PathExists(workingDir) {
 		command, args, err := prepareComposeCommand("down", "--remove-orphans", "--volumes")
 		if err != nil {
 			return err
@@ -760,15 +774,16 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 
 		if err == nil {
 			slog.Info("Removing project directory.", "dir", workingDir)
-			if err := os.RemoveAll(workingDir); err != nil {
+			if removeErr := os.RemoveAll(workingDir); removeErr != nil {
 				// non critical error
-				slog.Warn("Failed to remove project directory.", "err", err)
+				slog.Warn("Failed to remove project directory.", "err", removeErr)
 			}
-			return nil
 		}
 
 		errs = append(errs, err)
 		slog.Warn("compose failed.", "err", err)
+	} else {
+		errs = append(errs, fmt.Errorf("compose project working directory does not exist. dir=%s", workingDir))
 	}
 
 	if !manualCleanup {
@@ -780,6 +795,7 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 
 	// Stop containers
 	for _, item := range projectContainers {
+		slog.Info("Manually stopping container.", "id", item.ID, "names", item.Names)
 		if err := c.Client.ContainerStop(ctx, item.ID, container.StopOptions{}); err != nil {
 			slog.Warn("Failed to stop container.", "err", err)
 			errs = append(errs, err)
@@ -788,6 +804,7 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 
 	// Remove containers
 	for _, item := range projectContainers {
+		slog.Info("Manually removing container.", "id", item.ID, "names", item.Names)
 		if err := c.Client.ContainerRemove(ctx, item.ID, container.RemoveOptions{
 			RemoveVolumes: true,
 			RemoveLinks:   true,
@@ -808,6 +825,7 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 
 	// Remove networks
 	for _, item := range projectNetworks {
+		slog.Info("Manually removing network.", "name", item.ID)
 		if err := c.Client.NetworkRemove(ctx, item.ID); err != nil {
 			slog.Warn("Failed to remove network.", "err", err)
 			errs = append(errs, err)
@@ -823,6 +841,7 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 	}
 
 	for _, item := range projectVolumes.Volumes {
+		slog.Info("Manually removing volume.", "name", item.Name)
 		if err := c.Client.VolumeRemove(ctx, item.Name, true); err != nil {
 			slog.Warn("Failed to remove volume.", "err", err)
 			errs = append(errs, err)

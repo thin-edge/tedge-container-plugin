@@ -70,7 +70,7 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 
 	// Stop project
 	if downFirst {
-		if err := cli.ComposeDown(ctx, stderr, projectName); err != nil {
+		if err := cli.ComposeDown(ctx, stderr, projectName, workingDir); err != nil {
 			slog.Warn("Compose down failed, but continuing anyway.", "err", err)
 		}
 	}
