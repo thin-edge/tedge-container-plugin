@@ -20,7 +20,7 @@ import (
 	"github.com/thin-edge/tedge-container-plugin/pkg/utils"
 )
 
-var LinuxConfigFilePath = "/etc/tedge-container-plugin/config.toml"
+var LinuxConfigFilePath = "/etc/tedge/plugins/tedge-container-plugin.toml"
 
 func NewExitCodeError(err error) *ExitCodeError {
 	return &ExitCodeError{
