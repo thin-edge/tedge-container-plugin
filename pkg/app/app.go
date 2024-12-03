@@ -280,6 +280,7 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 			slog.Info("Stopping engine monitor")
 			return ctx.Err()
 		case evt := <-evtCh:
+			slog.Info("Received event.", "value", evt)
 			switch evt.Type {
 			case events.ContainerEventType:
 				// Note: health checks will run command inside the containers periodically, and this results
@@ -315,26 +316,33 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 
 				switch evt.Action {
 				case events.ActionExecDie, events.ActionCreate, events.ActionStart, events.ActionStop, events.ActionPause, events.ActionUnPause, events.ActionHealthStatusHealthy, events.ActionHealthStatusUnhealthy:
-					go func() {
+					go func(evt events.Message) {
 						// Delay before trigger update to allow the service status to be updated
 						time.Sleep(500 * time.Millisecond)
 						if err := a.Update(container.FilterOptions{
 							IDs: []string{evt.Actor.ID},
+
+							// Preserve default filter options
+							Names:            filterOptions.Names,
+							Labels:           filterOptions.Labels,
+							Types:            filterOptions.Types,
+							ExcludeNames:     filterOptions.ExcludeNames,
+							ExcludeWithLabel: filterOptions.ExcludeWithLabel,
 						}); err != nil {
 							slog.Warn("Error updating container state.", "err", err)
 						}
-					}()
+					}(evt)
 				case events.ActionDestroy, events.ActionRemove, events.ActionDie:
 					slog.Info("Container removed/destroyed", "container", evt.Actor.ID, "attributes", evt.Actor.Attributes)
 					// TODO: Trigger a removal instead of checking the whole state
 					// Lookup container name by container id (from the entity store) as lookup by name won't work for container-groups
-					go func() {
+					go func(evt events.Message) {
 						// Delay before trigger update to allow the service status to be updated
 						time.Sleep(500 * time.Millisecond)
-						if err := a.Update(container.FilterOptions{}); err != nil {
+						if err := a.Update(filterOptions); err != nil {
 							slog.Warn("Error updating container state.", "err", err)
 						}
-					}()
+					}(evt)
 				}
 
 				if a.config.EnableEngineEvents {
@@ -345,8 +353,6 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 					}
 				}
 			}
-
-			slog.Info("Received event.", "value", evt)
 		case err := <-errCh:
 			if errors.Is(err, io.EOF) {
 				slog.Info("No more events")
