@@ -29,7 +29,7 @@ type ContainerRemoveCommand struct {
 
 // NewContainerLogsCommand creates a new container remove command
 func NewContainerRemoveCommand(ctx cli.Cli) *cobra.Command {
-	command := &ContainerLogsCommand{
+	command := &ContainerRemoveCommand{
 		CommandContext: ctx,
 	}
 	cmd := &cobra.Command{
