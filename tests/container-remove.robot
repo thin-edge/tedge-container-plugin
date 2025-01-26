@@ -11,7 +11,7 @@ Test Tags    docker    podman
 *** Test Cases ***
 
 Remove Container
-    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker run -d --network bridge --name app30 httpd:2.4.61-alpine
+    DeviceLibrary.Execute Command    cmd=sudo tedge-container tools container-remove app30 ||: ; sudo tedge-container engine docker run -d --network bridge --name app30 httpd:2.4.61-alpine
     DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker container inspect app30    exp_exit_code=0
 
     DeviceLibrary.Execute Command    cmd=sudo tedge-container tools container-remove app30
