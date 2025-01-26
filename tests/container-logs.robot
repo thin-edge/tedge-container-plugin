@@ -12,7 +12,7 @@ Test Tags    docker    podman
 
 Get Container Logs
     # Run dummy container then exit
-    DeviceLibrary.Execute Command    cmd=tedge-container engine docker run --name app10 httpd:2.4.61-alpine sh -c 'echo hello inside container stdout; echo hello inside container stderr >&2;'
+    DeviceLibrary.Execute Command    cmd=tedge-container tools container-remove app10 ||: ; tedge-container engine docker run --name app10 httpd:2.4.61-alpine sh -c 'echo hello inside container stdout; echo hello inside container stderr >&2;'
 
     # Fetch logs
     ${output}=    DeviceLibrary.Execute Command    sudo tedge-container tools container-logs app10
