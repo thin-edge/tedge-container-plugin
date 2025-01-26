@@ -12,8 +12,15 @@ export class ContainerGuard implements CanActivate {
     return this.inventoryService
       .childAdditionsList(
         { id },
-        { query: `(serviceType eq 'container' or serviceType eq 'container-group') and has(container)`, pageSize: 1 }
+        {
+          query: `(serviceType eq 'container' or serviceType eq 'container-group') and has(container)`,
+          pageSize: 1,
+        }
       )
-      .then(result => !!result?.data?.length);
+      .then(result => {
+        console.log('Verify container:', !!result?.data?.length);
+        // !!result?.data?.length
+        return !!result?.data?.length;
+      });
   }
 }
