@@ -1307,7 +1307,8 @@ func CloneContainerConfig(ref *container.Config, opts CloneOptions) *container.C
 		Tty:             ref.Tty,
 		ExposedPorts:    ref.ExposedPorts,
 		Domainname:      ref.Domainname,
-		Labels:          ref.Labels,
+		// Don't copy oci labels as they are included in the image itself
+		Labels: FilterLabels(ref.Labels, []string{"org.opencontainers."}),
 	}
 	if len(opts.Cmd) > 0 {
 		clonedConfig.Cmd = opts.Cmd
@@ -1395,4 +1396,15 @@ func FormatLabels(labels []string) map[string]string {
 		}
 	}
 	return labelMap
+}
+
+func FilterLabels(l map[string]string, exclude []string) map[string]string {
+	filtered := make(map[string]string)
+
+	for k, v := range l {
+		if !strings.HasPrefix(k, "org.opencontainers.") {
+			filtered[k] = v
+		}
+	}
+	return filtered
 }
