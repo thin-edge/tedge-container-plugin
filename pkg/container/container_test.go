@@ -3,6 +3,8 @@ package container
 import (
 	"context"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func Test_ResolveDockerIOImage(t *testing.T) {
@@ -32,6 +34,18 @@ func Test_ResolveDockerIOImage(t *testing.T) {
 		}
 	}
 
+}
+
+func Test_FilterLabels(t *testing.T) {
+	in := map[string]string{
+		"foo":                              "bar",
+		"org.opencontainers.image.authors": "thin-edge.io",
+		"org.opencontainers.image.version": "1.2.3",
+	}
+	out := FilterLabels(in, []string{"org.opencontainers."})
+
+	assert.Len(t, out, 1)
+	assert.Equal(t, out["foo"], "bar")
 }
 
 func Test_PruneIMages(t *testing.T) {
