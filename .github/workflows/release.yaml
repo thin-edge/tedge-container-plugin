@@ -45,3 +45,35 @@ jobs:
           PUBLISH_OWNER: ${{ secrets.PUBLISH_OWNER }}
         run: |
           ./ci/publish.sh ./dist --repo "$PUBLISH_REPO" --owner "$PUBLISH_OWNER"
+
+  ui:
+    needs: [goreleaser]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install node.js dependencies
+        run: |
+          cd ./ui
+          npm install npm -g
+          npm ci --no-optional
+
+      - name: Build and zip UI-Plugin
+        run : |
+          cd ./ui
+          UI_VERSION=$(jq -r .version package.json)
+          npm run build-ci
+          cd dist/apps/tedge-container-plugin-ui
+          zip -r -q "../../../../dist/tedge-container-plugin-ui_${UI_VERSION}.zip" *
+
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" dist/tedge-container-plugin-ui_*.zip
