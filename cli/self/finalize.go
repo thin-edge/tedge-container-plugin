@@ -20,6 +20,6 @@ func NewFinalizeCommand(ctx cli.Cli) *cobra.Command {
 			return nil
 		},
 	}
-	viper.SetDefault("container.pruneImages", false)
+	viper.SetDefault("container.pruneImages", true)
 	return cmd
 }

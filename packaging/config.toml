@@ -51,7 +51,7 @@ alwayspull = false
 network = "tedge"
 
 # Prune any unused images after creating/deleting the containers
-pruneimages = false
+pruneimages = true
 
 [metrics]
 # Enable/disable the container telemetry metrics such as memory etc. Regardless of this value, the containers status will still be sent, but the measurements will not
