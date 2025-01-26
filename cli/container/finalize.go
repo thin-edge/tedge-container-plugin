@@ -7,7 +7,6 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/go-units"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -31,7 +30,7 @@ func NewFinalizeCommand(ctx cli.Cli) *cobra.Command {
 			}
 			slog.Info("Pruning images")
 			ctx := context.Background()
-			resp, err := cli.Client.ImagesPrune(ctx, filters.Args{})
+			resp, err := cli.ImagesPruneUnused(ctx)
 			if err != nil {
 				return err
 			}

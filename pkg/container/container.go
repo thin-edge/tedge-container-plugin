@@ -1209,6 +1209,14 @@ func (c *ContainerClient) Self(ctx context.Context) (types.ContainerJSON, error)
 	return types.ContainerJSON{}, errdefs.NotFound(fmt.Errorf("could not find container by hostname"))
 }
 
+// Prune both unused and dangling images
+func (c *ContainerClient) ImagesPruneUnused(ctx context.Context) (image.PruneReport, error) {
+	pruneFilters := filters.NewArgs()
+	// Note: dangling=false is the equivalent to docker image prune -a
+	pruneFilters.Add("dangling", strconv.FormatBool(false))
+	return c.Client.ImagesPrune(ctx, pruneFilters)
+}
+
 func (c *ContainerClient) Fork(ctx context.Context, currentContainer types.ContainerJSON, cloneOptions CloneOptions) error {
 	if cloneOptions.Image == "" {
 		cloneOptions.Image = currentContainer.Config.Image
