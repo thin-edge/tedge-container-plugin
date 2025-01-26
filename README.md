@@ -1,7 +1,8 @@
 # tedge-container-plugin
 
-thin-edge.io container plugin to install, start, stop and monitor containers on a device.
-Cumulocity UI Plugin to monitor running containers in the UI.
+thin-edge.io container management plugin which enables you to install, remove and monitor containers on a device.
+
+There is a custom Cumulocity UI Plugin to display these container directly from the UI.
 
 ## Plugin summary
 
@@ -11,14 +12,11 @@ The instructions assume that you are using thin-edge.io &gt;= 1.0.0
 
 ### What will be deployed to the device?
 
-* A service called `tedge-container-monitor`. This provides the monitoring of the containers
+* A service called `tedge-container-plugin`. This provides the monitoring of the containers
 * The following software management plugins which is called when installing and removing containers/container groups via Cumulocity IoT
     * `container` - Deploy a single container (`docker run xxx` equivalent)
     * `container-group` - Deploy one or more container as defined by a `docker-compose.yaml` file (`docker compose up` equivalent), or an archive (gzip or zip)
 
-**Note**
-
-Child device support does not make any sense with this plugin as it needs to install/remove/monitor containers running on the current device (where the container engine is running). Though I guess you could try modifying the `DOCKER_HOST` environment variable etc. Though PRs are welcome to extend/edit any of the features ;)
 
 **Technical summary**
 
@@ -26,11 +24,10 @@ The following details the technical aspects of the plugin to get an idea what sy
 
 |||
 |--|--|
-|**Languages**|`shell` (posix compatible)|
-|**CPU Architectures**|`all/noarch`|
+|**Languages**|`golang`|
+|**CPU Architectures**|`armv6 (armhf)`, `armv7 (armhf)`, `arm64 (aarch64)`, `amd64 (x86_64)`|
 |**Supported init systems**|`systemd` and `init.d/open-rc`|
 |**Required Dependencies**|-|
-|**Optional Dependencies (feature specific)**|`mosquitto_sub`|
 
 ### How to do I get it?
 
@@ -38,18 +35,18 @@ The following linux package formats are provided on the releases page and also i
 
 |Operating System|Repository link|
 |--|--|
-|Debian/Raspbian (deb)|[![Latest version of 'tedge-container-plugin' @ Cloudsmith](https://api-prd.cloudsmith.io/v1/badges/version/thinedge/community/deb/tedge-container-plugin/latest/a=all;d=any-distro%252Fany-version;t=binary/?render=true&show_latest=true)](https://cloudsmith.io/~thinedge/repos/community/packages/detail/deb/tedge-container-plugin/latest/a=all;d=any-distro%252Fany-version;t=binary/)|
-|Alpine Linux (apk)|[![Latest version of 'tedge-container-plugin' @ Cloudsmith](https://api-prd.cloudsmith.io/v1/badges/version/thinedge/community/alpine/tedge-container-plugin/latest/a=noarch;d=alpine%252Fany-version/?render=true&show_latest=true)](https://cloudsmith.io/~thinedge/repos/community/packages/detail/alpine/tedge-container-plugin/latest/a=noarch;d=alpine%252Fany-version/)|
-|RHEL/CentOS/Fedora (rpm)|[![Latest version of 'tedge-container-plugin' @ Cloudsmith](https://api-prd.cloudsmith.io/v1/badges/version/thinedge/community/rpm/tedge-container-plugin/latest/a=noarch;d=any-distro%252Fany-version;t=binary/?render=true&show_latest=true)](https://cloudsmith.io/~thinedge/repos/community/packages/detail/rpm/tedge-container-plugin/latest/a=noarch;d=any-distro%252Fany-version;t=binary/)|
+|Debian/Raspbian (deb)|[![Latest version of 'tedge-container-plugin-ng' @ Cloudsmith](https://api-prd.cloudsmith.io/v1/badges/version/thinedge/community/deb/tedge-container-plugin-ng/latest/a=arm64;d=any-distro%252Fany-version;t=binary/?render=true&show_latest=true)](https://cloudsmith.io/~thinedge/repos/community/packages/detail/deb/tedge-container-plugin-ng/latest/a=arm64;d=any-distro%252Fany-version;t=binary/)|
+|Alpine Linux (apk)|[![Latest version of 'tedge-container-plugin-ng' @ Cloudsmith](https://api-prd.cloudsmith.io/v1/badges/version/thinedge/community/alpine/tedge-container-plugin-ng/latest/a=aarch64;d=alpine%252Fany-version/?render=true&show_latest=true)](https://cloudsmith.io/~thinedge/repos/community/packages/detail/alpine/tedge-container-plugin-ng/latest/a=aarch64;d=alpine%252Fany-version/)|
+|RHEL/CentOS/Fedora (rpm)|[![Latest version of 'tedge-container-plugin-ng' @ Cloudsmith](https://api-prd.cloudsmith.io/v1/badges/version/thinedge/community/alpine/tedge-container-plugin-ng/latest/a=aarch64;d=alpine%252Fany-version/?render=true&show_latest=true)](https://cloudsmith.io/~thinedge/repos/community/packages/detail/alpine/tedge-container-plugin-ng/latest/a=aarch64;d=alpine%252Fany-version/)|
 ## Features
 
 The following features are supported by the plugin:
 
 * Install/remove containers via the Cumulocity IoT software interface
 * Install multiple containers as one group using a `docker-compose.yaml` file or an archive container a `docker-compose.yaml` file
-* Monitor container states (e.g. up/down) via Cumulocity IoT Services (only supported from tedge >= 0.10.0)
+* Monitor container states (e.g. up/down) via Cumulocity IoT Services (only supported from tedge >= 1.0.0)
 * Download container images via Cumulocity IoT binaries if a URL is provided
-* Support for multiple container engines (docker, podman, nerdctl)
+* Support for multiple container engines (docker, podman)
 
 
 ## Documentation
@@ -69,6 +66,10 @@ The software package properties are also describe below:
 |`softwareType`|`container`. This indicates that the package should be managed by the `container` software management plugin|
 |`url`|Optional url pointing to the container image in a tarball format. The file is downloaded and loaded into the container engine, prior to starting the container. The image inside the gzip **MUST** match the one given by the `version` property!|
 
+#### Private container registries
+
+Pulling image from private container registries is supported. Check out the [container registries](./docs/CONTAINER_REGISTRIES.md) documentation for the available options.
+
 ### Install/remove a `container-group`
 
 A `container-group` is the name given to deploy a `docker-compose.yaml` file or an archive (zip or gzip file) with the `docker-compose.yaml` file at the root level of the archive. A docker compose file allows use to deploy multiple containers/networks/volumes and allows you maximum control over how the container is started. This means you can create a complex setup of persisted volumes, isolated networks, and also facilitate communication between containers. Check out the [docker compose documentation](https://docs.docker.com/compose/compose-file/) for more details on how to write your own service definition.
@@ -83,36 +84,6 @@ The software package properties are also describe below:
 |`url`|The url to the uploaded `docker-compose.yaml` file. This is a MANDATORY field and cannot be left blank.|
 
 
-#### Configuration
-
-The container software management plugin can be configured with the following properties.
-
-|Property|Value|Description|
-|--|--|--|
-|`PRUNE_IMAGES`|`0` or `1`|Prune any unused images after creating/deleting the containers. This is turned off by default|
-|`VALIDATE_TAR_CONTENTS`|`0` or `1`|If the image is in a tarball format, then this setting controls whether the contains of the tarball should be validated against the image name and tag provided in the `version` field of the software package. This is useful to protect against accidentally uploading the wrong binary images to the wrong software packages.|
-|`CONTAINER_RUN_OPTIONS`|String. Example `"--cpus 1 --memory 64m"`|Additional command options to be used when creating/starting the containers. The options will be used by all containers|
-|`ALWAYS_PULL_IMAGE`|`0` or `1`|Always try pulling the image without checking if a local image already exists or not|
-|`CONTAINER_DEFAULT_NETWORK`|String. Example `tedge`|Default network to add when creating a new container|
-
-The configuration is managed from the following file, and an example of the contents are shown below.
-
-**File**
-```sh
-/etc/tedge-container-plugin/env
-```
-
-**Contents**
-
-```sh
-# container sm-plugin settings
-PRUNE_IMAGES=0
-VALIDATE_TAR_CONTENTS=0
-CONTAINER_RUN_OPTIONS="--cpus 1 --memory 64m"
-ALWAYS_PULL_IMAGE=0
-CONTAINER_DEFAULT_NETWORK=tedge
-```
-
 ### Monitoring
 
 The plugin also includes a service which monitors the running status of the containers and includes some runtime metrics such as memory, cpu and network io. Please note that access to the container monitoring might not be supported by your container engine. When in doubt, just manually do a `docker stats` and if the data is only showing zeros, then the plugin will also see zeros.
@@ -121,112 +92,35 @@ The plugin also includes a service which monitors the running status of the cont
 
 Checkout the [TELEMETRY](./docs/TELEMETRY.md) docs for details on what is included in the telemetry data.
 
+
 #### Configuration
 
-The container software management plugin can be configured with the following properties.
+The tedge-container-plugin can be configured with the following properties.
 
-|Property|Value|Description|
-|--|--|--|
-|`CONTAINER_CLI_OPTIONS`|`docker podman nerdctl`|List of container cli tools to auto detect. This has no effect if `CONTAINER_CLI` has a non-empty value. The first command which is found will be used. It assumes that the device is only running one container engine at a time.|
-|`CONTAINER_CLI`|`podman`|Explicitly control which container cli tool will be used. Set this if you know which cli is available on the device|
-|`INTERVAL`|`60`|Interval in seconds on how often the container status/telemetry should be collected. The interval will be the minimal interval as it is the time to sleep between collections|
-|`TELEMETRY`|`1` or `0`|Enable/disable the container telemetry metrics such as memory etc. Regardless of this value, the containers status will still be sent, but the measurements will not|
-|`META_INFO`|`1` or `0`|Enable/disable the container meta information collection (e.g. container id, image, ports, network etc.|
-|`MONITOR_COMPOSE_PROJECTS`|`1` or `0`|Enable/disable the monitoring of docker compose deployments. It is turned on by default, however it will be automatically disabled if docker compose is not available.|
-|`LOG_LEVEL`|`debug`, `info`, `warn`, `error`|Service log level|
-|`SERVICE_TYPE`|`container`|Service type to be used in the service monitoring for single container deployments|
-|`GROUP_SERVICE_TYPE`|`container-group`|Service type used in the service monitoring for docker compose deployments|
+A default configuration is provided in the package, [tedge-container-plugin/config.toml](./packaging/config.toml) and it include a description of each property.
 
-The configuration is managed from the following file, and an example of the contents are shown below.
 
-**File**
-```sh
-/etc/tedge-container-plugin/env
-```
-
-**Contents**
+**Default Configuration file location**
 
 ```sh
-CONTAINER_CLI_OPTIONS="docker podman nerdctl"
-CONTAINER_CLI=docker
-
-# Interval in seconds
-INTERVAL=60
-
-# Enable/disable telemetry (1/0)
-TELEMETRY=1
-
-# Enable/disable meta info (1/0)
-META_INFO=1
-
-# Only used if tedge cli is not installed
-MQTT_HOST=127.0.0.1
-MQTT_PORT=1883
-
-# Log levels: error, warn, info, debug, none
-LOG_LEVEL=info
-LOG_TIMESTAMPS=1
-
-# Service type to be used for the containers and container groups
-SERVICE_TYPE=container
-GROUP_SERVICE_TYPE=container-group
+/etc/tedge-container-plugin/config.toml
 ```
 
+**Note**
 
-#### Troubleshooting
+The configuration can be controlled by setting environment variables. The configuration property name to environment variable name can be translated using the following rules:
 
+* Use the `CONTAINER_` prefix
+* Upper case the 
+* Replace the `.` character with an underscore `_`
 
-##### Systemd
+Below are some examples showing the mapping between the configuration values and environment variables:
 
-**Start**
-
-```sh
-sudo systemctl start tedge-container-monitor
-```
-
-**Stop**
-
-```sh
-sudo systemctl stop tedge-container-monitor
-```
-
-**Reload (configuration)**
-
-```sh
-sudo systemctl reload tedge-container-monitor
-```
-
-**Get Logs**
-
-```sh
-sudo journalctl -u tedge-container-monitor -f
-```
-
-##### init.d/open-rc
-
-**Start**
-
-```sh
-sudo service tedge-container-monitor start
-```
-
-**Stop**
-
-```sh
-sudo service tedge-container-monitor stop
-```
-
-**Reload (configuration)**
-
-```sh
-sudo service tedge-container-monitor reload
-```
-
-**Get Logs**
-
-```sh
-tail -f /var/log/tedge-container-monitor.err
-```
+|Configuration|EnvironmentVariable|
+|-------------|-------------------|
+|`filter.exclude.name = ["type1", "type2"]`| `CONTAINER_FILTER_EXCLUDE_NAME=type1,type2` |
+|`container.alwayspull= true`| `CONTAINER_CONTAINER_ALWAYSPULL=true` |
+|`container.network= true`| `CONTAINER_CONTAINER_NETWORK=tedge` |
 
 ### UI Plugin
 
@@ -263,26 +157,20 @@ This section details everything you need to know about building the package your
 
 ### Building
 
-To build the linux packages use the following steps:
+To build the project use the following steps:
 
 1. Checkout the project
 
-2. Install [nfpm](https://nfpm.goreleaser.com/install/)
+2. Install [goreleaser]https://goreleaser.com/install/)
 
     **Note**
-    Make sure you install it somewhere that is included in your `PATH` environment variable. Use `which nfpm` to check if your shell can find it after installation.
+
+    Make sure you install it somewhere that is included in your `PATH` environment variable. Use `which goreleaser` to check if your shell can find it after installation.
 
 3. Build the packages
 
     ```sh
-    ./ci/build.sh
-    ```
-
-    Ideally the `SEMVER` environment variable should be set to the git tag, however
-    you can also use a manual version using:
-
-    ```sh
-    ./ci/build.sh 1.0.1
+    just release-local
     ```
 
     The built packages are created under the `./dist` folder.
@@ -292,44 +180,41 @@ To build the linux packages use the following steps:
 You can run the system tests can be run locally, however if you're having problem, look at the [test.yaml](.github/workflows/test.yaml) workflow for the tests as this is known to work.
 
 If you're using VS Code, then you can also install the following extensions to enable running tests via the `tests/*robot` files:
+
 * robocorp.robocorp-code
 * robocorp.robotframework-lsp
 
 To run the tests you will need to have python3 &gt;> 3.9 installed on your system, then run the following
 
-1. Create a `.env` file, and set you Cumulocity IoT credentials
+1. Create an initial `.env` file and fill in your Cumulocity credentials to be used for the tests
 
-   ```
-   DEVICE_ID=ci_mydevice
-   C8Y_BASEURL=mytenant.eu-latest.cumulocity.com
-   C8Y_USER=admin
-   C8Y_PASSWORD="mypassword"
+   ```sh
+   just init-dotenv
    ```
 
 2. Build the software management plugin
 
-   ```
-   just build
+   ```sh
+   just release-local
    ```
 
-3. Startup the test setup, and bootstrap it
+3. Build the test images
 
-   ```
-   just up
-
-   just bootstrap
+   ```sh
+   just build-test
    ```
 
 4. Setup the python3 virtual environment and install the test dependencies
 
-   ```
+   ```sh
    just venv
    ```
 
 5. Run the RobotFramework tests
 
-   ```
-   just test
+   ```sh
+   just test --include podman
+   just test --include docker
    ```
 
 ### Building UI
@@ -339,26 +224,36 @@ To build the ui use the following steps:
 1. Checkout the project
 
 2. Install dependencies:
+
    ```sh
    npm install
    ```
+
 3. (Optional) Run the UI locally.
+
    Add your tenant in the package.json file:
+
    ```json
     "scripts": {
     "start": "c8ycli server -u https://{{add the url of your tenant here}} --shell devicemanagement",
     ...
     }
    ```
+
    Start the UI locally via:
+
    ```sh
    npm start
    ```
+
 4. Build the Plugin
+
    ```sh
     npm run build
    ```
+
 5. Deploy the Plugin
+
    ```sh
    npm run deploy
    ```

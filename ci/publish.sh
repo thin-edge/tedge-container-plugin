@@ -47,7 +47,9 @@ do
     case "$1" in
         # Repository owner
         --owner)
-            PUBLISH_OWNER="$2"
+            if [ -n "$2" ]; then
+                PUBLISH_OWNER="$2"
+            fi
             shift
             ;;
 
@@ -65,7 +67,9 @@ do
 
         # Which debian repo to publish to (under the given host url)
         --repo)
-            PUBLISH_REPO="$2"
+            if [ -n "$2" ]; then
+                PUBLISH_REPO="$2"
+            fi
             shift
             ;;
 

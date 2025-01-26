@@ -1,0 +1,2 @@
+#!/command/execlineb -P
+s6-format-filter "\033[34m%1 |\033[0m %s" tedge-container-plugin

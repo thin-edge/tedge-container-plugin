@@ -1,18 +1,8 @@
-*** Settings ***
-Library    Cumulocity
-
 *** Variables ***
-
-${DEVICE_ID}         %{DEVICE_ID=main}
-${CHILD_DEVICE_1}    ${DEVICE_ID}_child01
 
 # Cumulocity settings
 &{C8Y_CONFIG}        host=%{C8Y_BASEURL= }    username=%{C8Y_USER= }    password=%{C8Y_PASSWORD= }    tenant=%{C8Y_TENANT= }
 
-*** Keywords ***
-
-Set Main Device
-    Cumulocity.Set Device    ${DEVICE_ID}
-
-Set Child Device1
-    Cumulocity.Set Device    ${CHILD_DEVICE_1}
+# Docker adapter settings (to control which image is used in the system tests).
+# The user just needs to set the TEST_IMAGE env variable
+&{DOCKER_CONFIG}    image=%{TEST_IMAGE=}

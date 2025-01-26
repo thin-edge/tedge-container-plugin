@@ -1,0 +1,49 @@
+#!/command/execlineb -P
+
+# tedge-container-plugin generally requires root access to be able to interact
+# with the container engine socket, therefore it will try to run as root
+# if sudo is available, otherwise it will run as the user defined in the Dockerfile
+# "USER <name>" directive.
+#
+# Since the service can be running as root, it will require stopping the service
+# using a root user, therefore a trap is used to specifically listen to the SIGTERM
+# signal and pass it down to the service by using sudo (if present) to ensure the
+# kill command is allowed to operate on the service.
+trap -x
+{
+  SIGTERM {
+    multisubstitute { importas ! ! importas SIGNAL SIGNAL }
+
+    foreground {
+        echo Sending SIGTERM to tedge-container service SIGNAL=${SIGNAL} PID=${!}
+    }
+
+    ifte -X
+    {
+        # then
+        exec sudo kill -$SIGNAL $!
+    }
+    {
+        # else
+        exec kill -$SIGNAL $!
+    }
+    exec which sudo
+  }
+}
+
+# with-contenv
+s6-envdir -Lfn -- /run/s6/container_environment
+
+# Redirect stderr to stdout
+fdmove -c 2 1
+
+ifte -X
+{
+    # then
+    exec sudo -E /usr/bin/tedge-container run --config /etc/tedge/plugins/tedge-container-plugin.toml
+}
+{
+    # else
+    exec /usr/bin/tedge-container run --config /etc/tedge/plugins/tedge-container-plugin.toml
+}
+exec which sudo
