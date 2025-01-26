@@ -42,7 +42,7 @@ archives:
     <<: &archive_defaults
       name_template: '{{ .ProjectName }}_{{ .Version }}_{{- if eq .Os "darwin" }}macOS{{- else }}{{ .Os }}{{ end }}_{{ .Arch }}{{- if ne .Arm "" }}_v{{ .Arm }}{{ end }}'
     wrap_in_directory: "true"
-    format: tar.gz
+    formats: [tar.gz]
     files:
       - LICENSE
 
@@ -50,7 +50,7 @@ archives:
     builds: [macOS]
     <<: *archive_defaults
     wrap_in_directory: "true"
-    format: tar.gz
+    formats: [tar.gz]
     files:
       - LICENSE
 
@@ -58,7 +58,7 @@ archives:
     builds: [windows]
     <<: *archive_defaults
     wrap_in_directory: "false"
-    format: zip
+    formats: [zip]
     files:
       - LICENSE
   
@@ -67,7 +67,7 @@ archives:
     # Don't include the binary version in the filename so it is easier to download the latest
     <<: &archive_defaults
       name_template: '{{ .ProjectName }}_{{- if eq .Os "darwin" }}macOS{{- else }}{{ .Os }}{{ end }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
-    format: binary
+    formats: [binary]
 
 nfpms:
   - 
