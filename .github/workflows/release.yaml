@@ -62,18 +62,17 @@ jobs:
         run: |
           cd ./ui
           npm install npm -g
-          npm ci --no-optional
+          npm ci
 
       - name: Build and zip UI-Plugin
         run : |
           cd ./ui
           UI_VERSION=$(jq -r .version package.json)
-          npm run build-ci
-          cd dist/apps/tedge-container-plugin-ui
-          zip -r -q "../../../../dist/tedge-container-plugin-ui_${UI_VERSION}.zip" *
+          npm run build
+          mv dist/tedge-container-plugin-ui.zip "dist/tedge-container-plugin-ui_${UI_VERSION}.zip"
 
       - name: Upload
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ github.ref_name }}" dist/tedge-container-plugin-ui_*.zip
+          gh release upload "${{ github.ref_name }}" ui/dist/tedge-container-plugin-ui_*.zip
