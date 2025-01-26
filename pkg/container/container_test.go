@@ -1,6 +1,9 @@
 package container
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func Test_ResolveDockerIOImage(t *testing.T) {
 	testcases := []struct {
@@ -29,4 +32,16 @@ func Test_ResolveDockerIOImage(t *testing.T) {
 		}
 	}
 
+}
+
+func Test_PruneIMages(t *testing.T) {
+	client, err := NewContainerClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.ImagesPruneUnused(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = result
 }

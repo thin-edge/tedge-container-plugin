@@ -1214,7 +1214,25 @@ func (c *ContainerClient) ImagesPruneUnused(ctx context.Context) (image.PruneRep
 	pruneFilters := filters.NewArgs()
 	// Note: dangling=false is the equivalent to docker image prune -a
 	pruneFilters.Add("dangling", strconv.FormatBool(false))
-	return c.Client.ImagesPrune(ctx, pruneFilters)
+	report, apiErr := c.Client.ImagesPrune(ctx, pruneFilters)
+	if apiErr == nil {
+		return report, apiErr
+	}
+
+	// Note: Due to a bug in podman <= 4.8, the above call will fail, so the direct libpod is used instead
+	// Reference: https://github.com/containers/podman/issues/20469
+	slog.Info("Prune images failed. This is expected when using podman < 4.8.", "err", apiErr)
+
+	slog.Info("Using podman api to prune unused images")
+	socketAddr := findContainerEngineSocket()
+	libpod := NewLibPodHTTPClient(socketAddr)
+	report, libpodErr := libpod.PruneImages(nil)
+
+	// Don't fail as it is unclear how stable the libpod api is
+	if libpodErr != nil {
+		slog.Warn("podman (libpod) prune images failed but error will be ignored.", "err", libpodErr)
+	}
+	return report, nil
 }
 
 func (c *ContainerClient) Fork(ctx context.Context, currentContainer types.ContainerJSON, cloneOptions CloneOptions) error {
