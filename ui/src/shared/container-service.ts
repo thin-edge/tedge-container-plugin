@@ -45,21 +45,23 @@ export class ContainerService {
 
   private managedObjectToContainer(mo: IManagedObject): Container {
     const container = mo.container;
-    return {
-      id: mo.id,
-      name: mo.name,
-      status: mo.status,
-      containerId: container.containerId,
-      ports: container.ports,
-      command: container.command,
-      networks: container.networks,
-      filesystem: container.filesystem,
-      image: container.image,
-      runningFor: container.runningFor,
-      state: container.state,
-      project: container.projectName,
-      lastUpdated: mo.lastUpdated,
-    };
+    if (container) {
+      return {
+        id: mo.id,
+        name: mo.name,
+        status: mo.status,
+        containerId: container.containerId,
+        ports: container.ports,
+        command: container.command,
+        networks: container.networks,
+        filesystem: container.filesystem,
+        image: container.image,
+        runningFor: container.runningFor,
+        state: container.state,
+        project: container.projectName,
+        lastUpdated: mo.lastUpdated,
+      };
+    }
   }
   private managedObjectToContainerWithParent(
     mo: IManagedObject
@@ -75,7 +77,7 @@ export class ContainerService {
     containers: Container[]
   ): ContainerGroup[] {
     let projects: string[] = containers
-      .map(c => c.project)
+      .map(container => container?.project)
       .filter((value, index, array) => array.indexOf(value) === index && value);
     return projects.map(p => {
       return { project: p, containers: containers.filter(c => c.project == p) };
