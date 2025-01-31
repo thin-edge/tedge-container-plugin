@@ -80,7 +80,7 @@ export class ContainerService {
       .map(container => container?.project)
       .filter((value, index, array) => array.indexOf(value) === index && value);
     return projects.map(p => {
-      return { project: p, containers: containers.filter(c => c.project == p) };
+      return { project: p, containers: containers.filter(container => container?.project == p) };
     });
   }
 }
