@@ -162,8 +162,14 @@ func (s *UIExtensionService) CreateExtension(ctx context.Context, application *A
 		}
 	} else if application.Name != "" {
 		// Lookup via name
-		opts := &ApplicationOptions{}
-		matches, listResp, listErr := s.client.Application.GetApplicationsByName(ctx, application.Name, opts.WithHasVersions(true))
+		hasVersions := true
+		opts := &ApplicationOptions{
+			Name: application.Name,
+			// Only applications that are owned by the current tenant can be managed
+			Owner:       s.client.TenantName,
+			HasVersions: &hasVersions,
+		}
+		matches, listResp, listErr := s.client.Application.GetApplications(ctx, opts)
 		if listErr != nil {
 			return nil, listResp, listErr
 		}
