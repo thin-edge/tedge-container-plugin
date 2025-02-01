@@ -20,7 +20,3 @@ tests/data/apps/app4.tar.gz
 
 # MacOS
 .DS_Store
-.angular
-
-# test files
-attic

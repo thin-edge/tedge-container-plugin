@@ -122,34 +122,27 @@ Below are some examples showing the mapping between the configuration values and
 |`container.alwayspull= true`| `CONTAINER_CONTAINER_ALWAYSPULL=true` |
 |`container.network= true`| `CONTAINER_CONTAINER_NETWORK=tedge` |
 
-### UI Plugin
+### Cumulocity UI Plugin
 
-With the UI plugin, container monitoring can be added to the Cumulocity UI. The Ui plugin contains 3 components that add the following tabs to the UI:
+A Cumulocity UI plugin is available to compliment the functionality provided by the tedge-container-plugin. The plugin can be downloaded from the [thin-edge/tedge-container-plugin-ui](https://github.com/thin-edge/tedge-container-plugin-ui) repository.
 
-| Plug-In                        | Function                                                                                                                   |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| Container Info Tab             | Adds a tab to a container service to display all relevant container information.                                           |
-| Container Management Tab       | Adds a tab to the device to monitor containers. The tab can include/exclude the containers hosted within container groups. |
-| Container Group Management Tab | Adds a tab to the device to monitor container groups (aka. docker compose).                                                |
-
-The UI Plugin was developed for the Device Management application, but can also be added to the Cockpit if needed.
-
-To use the UI-Plugin, download the tedge-container-plugin-ui.zip version that matches your Cumulocity UI version form the releases and upload it in the Cumulocity administration. Detailed instructions on how to install UI plugins can also be found [here](https://cumulocity.com/guides/users-guide/administration/#custom-applications).
+Below shows some example screenshots of the plugin in action:
 
 #### Container Info Tab
 
 The tab will be enabled for all services of type container. Displays the container properties that are stored in the managed Object.
-![Container Info Screenshot](./docs/img/container-info.png)
+
+![Container Info Screenshot](https://github.com/thin-edge/tedge-container-plugin/raw/refs/heads/main/docs/img/container-info.png)
 
 #### Container Management Tab
 
 The tab will be enabled for all devices with a childAddition with serviceType=container. Lists all containers in a grid or list.The search can be used for the image name and the project id. The list can include/exclude the containers that are part of a container group.
-![Container Container Management Screenshot](./docs/img/container-management.png)
+![Container Container Management Screenshot](https://github.com/thin-edge/tedge-container-plugin/raw/refs/heads/main/docs/img/container-management.png)
 
 #### Container Group Management Tab
 
 The tab will be enabled for all devices with a childAddition with serviceType=container. Lists all containers that are part of a project. The filter/search can be used to search for project names or container images.
-![Container Container Management Screenshot](./docs/img/container-group-management.png)
+![Container Container Management Screenshot](https://github.com/thin-edge/tedge-container-plugin/raw/refs/heads/main/docs/img/container-group-management.png)
 
 ## Developers
 
