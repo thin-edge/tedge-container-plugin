@@ -6,22 +6,26 @@ import { Container } from 'src/shared/container';
 })
 export class ContainerFilterPipe implements PipeTransform {
   private filter(container: Container, filterStr: string): boolean {
-    let matchName =
-      (container.image &&
-      container.image
-        .toLocaleLowerCase()
-        .includes(filterStr.toLocaleLowerCase())) || (container.name &&
-          container.name
+    if (container) {
+      let matchName =
+        (container.image &&
+          container.image
             .toLocaleLowerCase()
-            .includes(filterStr.toLocaleLowerCase()));
-    let matchContainerId =
-      container.containerId &&
-      container.containerId
-        .toLocaleLowerCase()
-        .includes(filterStr.toLocaleLowerCase());
-    let notUninstalled = 
+            .includes(filterStr.toLocaleLowerCase())) || (container.name &&
+              container.name
+                .toLocaleLowerCase()
+                .includes(filterStr.toLocaleLowerCase()));
+      let matchContainerId =
+        container.containerId &&
+        container.containerId
+          .toLocaleLowerCase()
+          .includes(filterStr.toLocaleLowerCase());
+      let notUninstalled =
         container.status && container.status != "uninstalled"
-    return container.containerId && notUninstalled && (matchName || matchContainerId);
+      return container.containerId && notUninstalled && (matchName || matchContainerId);
+    } else {
+      return false;
+    }
   }
 
   transform(
@@ -34,7 +38,7 @@ export class ContainerFilterPipe implements PipeTransform {
       return containers.filter(container => this.filter(container, filterStr));
     } else {
       return containers.filter(
-        container => !container.project && this.filter(container, filterStr)
+        container => !container?.project && this.filter(container, filterStr)
       );
     }
   }
