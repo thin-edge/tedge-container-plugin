@@ -163,7 +163,7 @@ To build the project use the following steps:
 3. Build the packages
 
     ```sh
-    just release-local
+    just build-local
     ```
 
     The built packages are created under the `./dist` folder.
@@ -188,7 +188,7 @@ To run the tests you will need to have python3 &gt;> 3.9 installed on your syste
 2. Build the software management plugin
 
    ```sh
-   just release-local
+   just build-local
    ```
 
 3. Build the test images

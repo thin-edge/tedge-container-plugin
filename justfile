@@ -30,8 +30,13 @@ release *ARGS='':
     docker context use default
     goreleaser release --clean --auto-snapshot {{ARGS}}
 
+# install docker buildx and allow multi-arch builds
+build-setup:
+    docker buildx install
+    docker run --privileged --rm tonistiigi/binfmt --install all
+
 # Build a release locally (for testing the release artifacts)
-release-local:
+build-local:
     just -f "{{justfile()}}" release --snapshot
 
 # Install python virtual environment
