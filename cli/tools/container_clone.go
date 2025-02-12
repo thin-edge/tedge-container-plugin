@@ -22,22 +22,24 @@ type ContainerCloneCommand struct {
 	CommandContext cli.Cli
 
 	// Options
-	ForkName       string
-	ForceUpdate    bool
-	Fork           bool
-	WaitForExit    bool
-	CheckForUpdate bool
-	ContainerID    string
-	Image          string
-	Duration       time.Duration
-	StopTimeout    time.Duration
-	StopAfter      time.Duration
-	AutoRemove     bool
-	AddHost        []string
-	Env            []string
-	Entrypoint     string
-	ForkLabels     []string
-	Labels         []string
+	ForkName        string
+	ForceUpdate     bool
+	Fork            bool
+	WaitForExit     bool
+	CheckForUpdate  bool
+	ContainerID     string
+	Image           string
+	Duration        time.Duration
+	StopTimeout     time.Duration
+	StopAfter       time.Duration
+	AutoRemove      bool
+	AddHost         []string
+	Env             []string
+	Entrypoint      string
+	ForkLabels      []string
+	ForkSkipNetwork bool
+	Labels          []string
+	IgnoreEnv       []string
 }
 
 // NewContainerCloneCommand creates a new container clone command
@@ -64,10 +66,12 @@ func NewContainerCloneCommand(ctx cli.Cli) *cobra.Command {
 	cmd.Flags().BoolVar(&command.Fork, "fork", false, "Spawn a new container to do the update")
 	cmd.Flags().BoolVar(&command.WaitForExit, "wait-for-exit", false, "Wait for the container to stop/exit before updating")
 	cmd.Flags().BoolVar(&command.CheckForUpdate, "check", false, "Only check if an update is necessary, don't perform the update")
+	cmd.Flags().BoolVar(&command.ForkSkipNetwork, "fork-skip-network", true, "Don't copy network settings in the forked container. Copying settings can cause podman iptables to fail for unknown reasons")
 	cmd.Flags().StringVar(&command.Entrypoint, "entrypoint", "", "Change the container entrypoint when cloning the container")
 	cmd.Flags().StringVar(&command.ForkName, "fork-name", "", "Container name to use for the fork")
 	cmd.Flags().StringSliceVarP(&command.Labels, "label", "l", []string{}, "Set meta data on the new container")
 	cmd.Flags().StringSliceVar(&command.ForkLabels, "fork-label", []string{}, "Set meta data on a the forked container")
+	cmd.Flags().StringSliceVar(&command.IgnoreEnv, "ignore-env", []string{"HOSTNAME", "HOST"}, "Ignore list of environment variables cloning the container")
 
 	command.Command = cmd
 	return cmd
@@ -198,6 +202,12 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 			forkCmd = append(forkCmd, "--env", v)
 		}
 
+		if len(c.IgnoreEnv) > 0 {
+			for _, envItem := range c.IgnoreEnv {
+				forkCmd = append(forkCmd, "--ignore-env", envItem)
+			}
+		}
+
 		if c.Entrypoint != "" {
 			forkCmd = append(forkCmd, "--entrypoint", c.Entrypoint)
 		}
@@ -226,6 +236,15 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 
 			// Labels for the forked container
 			Labels: container.FormatLabels(c.ForkLabels),
+
+			// Don't copy network settings in the forked container
+			// as this can be problematic in podman leading to the iptables
+			// being removed for the network it is joining. The exact root cause
+			// is unknown, so this could be lifted in the future
+			SkipNetwork: c.ForkSkipNetwork,
+
+			// Ignore the same env variables in the forked container as used in the cloning
+			IgnoreEnvVars: c.IgnoreEnv,
 		}
 
 		return containerCli.Fork(context.Background(), currentContainer, cloneOptions)
@@ -237,16 +256,17 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 	}
 
 	return containerCli.CloneContainer(context.Background(), c.ContainerID, container.CloneOptions{
-		Image:        c.Image,
-		HealthyAfter: c.Duration,
-		WaitForExit:  c.WaitForExit,
-		StopTimeout:  c.StopTimeout,
-		StopAfter:    c.StopAfter,
-		AutoRemove:   c.AutoRemove,
-		Env:          c.Env,
-		ExtraHosts:   c.AddHost,
-		Entrypoint:   entrypoint,
-		Cmd:          containerCmd,
-		Labels:       container.FormatLabels(c.Labels),
+		Image:         c.Image,
+		HealthyAfter:  c.Duration,
+		WaitForExit:   c.WaitForExit,
+		StopTimeout:   c.StopTimeout,
+		StopAfter:     c.StopAfter,
+		AutoRemove:    c.AutoRemove,
+		Env:           c.Env,
+		ExtraHosts:    c.AddHost,
+		Entrypoint:    entrypoint,
+		Cmd:           containerCmd,
+		Labels:        container.FormatLabels(c.Labels),
+		IgnoreEnvVars: c.IgnoreEnv,
 	})
 }

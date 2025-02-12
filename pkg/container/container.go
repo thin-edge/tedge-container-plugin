@@ -996,6 +996,9 @@ type CloneOptions struct {
 	Entrypoint   strslice.StrSlice
 	IgnorePorts  bool
 	Labels       map[string]string
+
+	SkipNetwork   bool
+	IgnoreEnvVars []string
 }
 
 func FormatContainerName(v string) string {
@@ -1064,7 +1067,7 @@ func (c *ContainerClient) CloneContainer(ctx context.Context, containerID string
 		return err
 	}
 
-	slog.Info("Creating new container.", "name", prevContainer.Name, "newImage", opts.Image, "prevImage", prevImage, "config", prevContainer.Config, "host_config", prevContainer.HostConfig)
+	slog.Info("Copying configuration from an existing container.", "name", prevContainer.Name, "newImage", opts.Image, "prevImage", prevImage, "config", prevContainer.Config, "host_config", prevContainer.HostConfig)
 
 	// Container config
 	clonedConfig := CloneContainerConfig(prevContainer.Config, opts)
@@ -1073,8 +1076,12 @@ func (c *ContainerClient) CloneContainer(ctx context.Context, containerID string
 	hostConfig := CloneHostConfig(prevContainer.HostConfig, opts)
 
 	// Copy network config
-	networkConfig := CloneNetworkConfig(prevContainer.NetworkSettings)
+	var networkConfig *network.NetworkingConfig
+	if !opts.SkipNetwork {
+		networkConfig = CloneNetworkConfig(prevContainer.NetworkSettings)
+	}
 
+	slog.Info("Creating new container.", "name", prevContainer.Name, "newImage", opts.Image, "prevImage", prevImage, "config", prevContainer.Config, "host_config", prevContainer.HostConfig)
 	nextContainer, createErr := c.Client.ContainerCreate(ctx, clonedConfig, hostConfig, networkConfig, nil, containerName)
 
 	if createErr != nil {
@@ -1260,7 +1267,13 @@ func (c *ContainerClient) Fork(ctx context.Context, currentContainer types.Conta
 		Name: container.RestartPolicyDisabled,
 	}
 
-	networkConfig := CloneNetworkConfig(currentContainer.NetworkSettings)
+	var networkConfig *network.NetworkingConfig
+	if !cloneOptions.SkipNetwork {
+		slog.Info("Cloning network configuration")
+		networkConfig = CloneNetworkConfig(currentContainer.NetworkSettings)
+	} else {
+		slog.Info("Ignoring network configuration in forked container")
+	}
 	slog.Info("Forking container.", "new_image", containerConfig.Image, "from_id", currentContainer.ID)
 
 	if cloneOptions.Name != "" {
@@ -1305,7 +1318,7 @@ func CloneContainerConfig(ref *container.Config, opts CloneOptions) *container.C
 		User:            ref.User,
 		Cmd:             ref.Cmd,
 		Entrypoint:      ref.Entrypoint,
-		Env:             append([]string{}, ref.Env...),
+		Env:             FilterEnvVariables(ref.Env, opts.IgnoreEnvVars),
 		NetworkDisabled: false,
 		StopSignal:      ref.StopSignal,
 		Image:           ref.Image,
@@ -1339,7 +1352,6 @@ func CloneHostConfig(ref *container.HostConfig, opts CloneOptions) *container.Ho
 	clone := &container.HostConfig{
 		Binds:       ref.Binds,
 		AutoRemove:  opts.AutoRemove,
-		NetworkMode: ref.NetworkMode,
 		Annotations: ref.Annotations,
 		CapAdd:      ref.CapAdd,
 		CapDrop:     ref.CapDrop,
@@ -1368,6 +1380,12 @@ func CloneHostConfig(ref *container.HostConfig, opts CloneOptions) *container.Ho
 		GroupAdd:        ref.GroupAdd,
 		Runtime:         ref.Runtime,
 		ContainerIDFile: ref.ContainerIDFile,
+	}
+
+	if opts.SkipNetwork {
+		clone.NetworkMode = network.NetworkNone
+	} else {
+		clone.NetworkMode = ref.NetworkMode
 	}
 
 	if opts.IgnorePorts {
@@ -1410,6 +1428,24 @@ func FilterLabels(l map[string]string, exclude []string) map[string]string {
 	for k, v := range l {
 		if !strings.HasPrefix(k, "org.opencontainers.") {
 			filtered[k] = v
+		}
+	}
+	return filtered
+}
+
+func FilterEnvVariables(l []string, exclude []string) []string {
+	filtered := make([]string, 0, len(l))
+
+	for _, envItem := range l {
+		ignore := false
+		for _, excludePattern := range exclude {
+			if strings.HasPrefix(envItem, excludePattern) {
+				ignore = false
+				break
+			}
+		}
+		if !ignore {
+			filtered = append(filtered, envItem)
 		}
 	}
 	return filtered

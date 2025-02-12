@@ -48,6 +48,19 @@ func Test_FilterLabels(t *testing.T) {
 	assert.Equal(t, out["foo"], "bar")
 }
 
+func Test_FilterEnvVariables(t *testing.T) {
+	in := []string{
+		"FOO=bar",
+		"BAR=2",
+		"HOSTNAME=bar",
+	}
+	out := FilterEnvVariables(in, []string{"HOSTNAME"})
+
+	assert.Len(t, out, 2)
+	assert.Equal(t, out[0], "FOO=bar")
+	assert.Equal(t, out[1], "BAR=2")
+}
+
 func Test_PruneIMages(t *testing.T) {
 	client, err := NewContainerClient()
 	if err != nil {
