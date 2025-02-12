@@ -83,7 +83,7 @@ jobs:
           go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
           go install github.com/goreleaser/goreleaser/v2@latest
       - name: Build package (for testing)
-        run: just release-local
+        run: just build-local
 
       #
       # Test
