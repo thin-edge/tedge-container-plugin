@@ -57,7 +57,7 @@ func NewContainerCloneCommand(ctx cli.Cli) *cobra.Command {
 	cmd.Flags().DurationVar(&command.Duration, "duration", 15*time.Second, "How long to wait for the clone container to be healthy")
 	cmd.Flags().DurationVar(&command.StopTimeout, "stop-timeout", 60*time.Second, "Timeout used whilst waiting for container to stop. Only used with --wait-for-exit")
 	cmd.Flags().DurationVar(&command.StopAfter, "stop-after", 10*time.Second, "Timeout container after a delay. Incompatible with --wait-for-exit")
-	cmd.Flags().BoolVar(&command.AutoRemove, "rm", false, "Auto remove the closed container on exit")
+	cmd.Flags().BoolVar(&command.AutoRemove, "rm", false, "Auto remove the cloned container on exit")
 	cmd.Flags().StringSliceVar(&command.AddHost, "add-host", []string{}, "Add extra hosts to the container")
 	cmd.Flags().StringSliceVarP(&command.Env, "env", "e", []string{}, "Environment variables to add to the container")
 	cmd.Flags().BoolVar(&command.ForceUpdate, "force", false, "Force an update, disable the image comparison check")

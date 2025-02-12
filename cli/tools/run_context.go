@@ -50,7 +50,7 @@ func NewContainerRunInContextCommand(ctx cli.Cli) *cobra.Command {
 	cmd.Flags().StringVar(&command.Entrypoint, "entrypoint", "", "Overwrite the default ENTRYPOINT of the image")
 	cmd.Flags().StringVar(&command.NamePrefix, "name-prefix", "", "Prefix to be added when generating the name. If left blank then the default will be used")
 	cmd.Flags().StringSliceVarP(&command.Env, "env", "e", []string{}, "Set environment variables")
-	cmd.Flags().BoolVar(&command.AutoRemove, "rm", false, "Auto remove the closed container on exit")
+	cmd.Flags().BoolVar(&command.AutoRemove, "rm", false, "Auto remove the cloned container on exit")
 	cmd.Flags().StringSliceVarP(&command.Labels, "label", "l", []string{}, "Set meta data on a container")
 
 	command.Command = cmd
