@@ -876,9 +876,9 @@ func (c *ContainerClient) WaitForHealthy(ctx context.Context, containerID string
 			continue
 		}
 
-		// Check if container has a healthcheck command
+		// Check if container has a health check command
 		if con.Config.Healthcheck == nil {
-			slog.Info("Container does not have a healthy script, using state.", "state", con.State.Status, "ok_count", runningCount)
+			slog.Info("Container does not have a health-check script, using state.", "state", con.State.Status, "ok_count", runningCount)
 			if con.State.Running && runningCount > 1 {
 				return nil
 			}
