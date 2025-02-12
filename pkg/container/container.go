@@ -393,6 +393,12 @@ func (c *ContainerClient) StopRemoveContainer(ctx context.Context, containerID s
 	return err
 }
 
+// RestartContainer a container
+func (c *ContainerClient) RestartContainer(ctx context.Context, containerID string) error {
+	slog.Info("Restarting container.", "id", containerID)
+	return c.Client.ContainerRestart(ctx, containerID, container.StopOptions{})
+}
+
 func (c *ContainerClient) List(ctx context.Context, options FilterOptions) ([]TedgeContainer, error) {
 	// Filter for docker compose projects
 	listOptions := container.ListOptions{
