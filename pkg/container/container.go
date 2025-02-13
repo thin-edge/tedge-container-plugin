@@ -558,13 +558,37 @@ func (c *ContainerClient) ImagePullWithRetries(ctx context.Context, imageRef str
 
 		// Note: ImagePull does not seem to return an error if the private registries authentication fails
 		// so after pulling the image, check if it is loaded to confirm everything worked as expected
-		out, err := c.Client.ImagePull(ctx, imageRef, pullOptions)
-		if err != nil {
-			return nil, err
+		useDockerPull := false
+
+		// try podman api first and but fallback to docker pull API fails
+		// Note: Podman 4.4 was observed to have an issue pulling images via the docker API where the only reported error is:
+		// "write /dev/stderr: input/output error"
+		podmanLib := NewDefaultLibPodHTTPClient()
+		if podmanLib.Test(ctx) == nil {
+			slog.Info("Using podman API to pull image")
+			libpodErr := podmanLib.PullImages(ctx, imageRef, alwaysPull, PodmanPullOptions{
+				PullOptions: pullOptions,
+				Quiet:       false,
+			})
+
+			// Don't fail as it is unclear how stable the libpod API is
+			// and a check for the image is done afterwards anyway
+			if libpodErr != nil {
+				slog.Warn("podman (libpod) pull images failed but error will be ignored.", "err", libpodErr)
+				useDockerPull = true
+			}
 		}
-		defer out.Close()
-		if _, ioErr := io.Copy(os.Stderr, out); ioErr != nil {
-			slog.Warn("Could not write to stderr.", "err", ioErr)
+
+		if useDockerPull {
+			slog.Info("Trying to pull image using docker API")
+			out, err := c.Client.ImagePull(ctx, imageRef, pullOptions)
+			if err != nil {
+				return nil, err
+			}
+			defer out.Close()
+			if _, ioErr := io.Copy(os.Stderr, out); ioErr != nil {
+				slog.Warn("Could not write to stderr.", "err", ioErr)
+			}
 		}
 
 		//
@@ -1234,12 +1258,12 @@ func (c *ContainerClient) ImagesPruneUnused(ctx context.Context) (image.PruneRep
 
 	// Note: Due to a bug in podman <= 4.8, the above call will fail, so the direct libpod is used instead
 	// Reference: https://github.com/containers/podman/issues/20469
+	// NewDefaultLibPodHTTPClient
+
 	slog.Info("Prune images failed. This is expected when using podman < 4.8.", "err", apiErr)
 
 	slog.Info("Using podman api to prune unused images")
-	socketAddr := findContainerEngineSocket()
-	libpod := NewLibPodHTTPClient(socketAddr)
-	report, libpodErr := libpod.PruneImages(nil)
+	report, libpodErr := NewDefaultLibPodHTTPClient().PruneImages(nil)
 
 	// Don't fail as it is unclear how stable the libpod api is
 	if libpodErr != nil {
