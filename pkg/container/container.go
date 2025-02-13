@@ -558,14 +558,14 @@ func (c *ContainerClient) ImagePullWithRetries(ctx context.Context, imageRef str
 
 		// Note: ImagePull does not seem to return an error if the private registries authentication fails
 		// so after pulling the image, check if it is loaded to confirm everything worked as expected
-		useDockerPull := false
+		useDockerPull := true
 
 		// try podman api first and but fallback to docker pull API fails
 		// Note: Podman 4.4 was observed to have an issue pulling images via the docker API where the only reported error is:
 		// "write /dev/stderr: input/output error"
 		podmanLib := NewDefaultLibPodHTTPClient()
 		if podmanLib.Test(ctx) == nil {
-			slog.Info("Using podman API to pull image")
+			slog.Info("Trying to pull image using podman API")
 			libpodErr := podmanLib.PullImages(ctx, imageRef, alwaysPull, PodmanPullOptions{
 				PullOptions: pullOptions,
 				Quiet:       false,
@@ -575,7 +575,9 @@ func (c *ContainerClient) ImagePullWithRetries(ctx context.Context, imageRef str
 			// and a check for the image is done afterwards anyway
 			if libpodErr != nil {
 				slog.Warn("podman (libpod) pull images failed but error will be ignored.", "err", libpodErr)
-				useDockerPull = true
+
+			} else {
+				useDockerPull = false
 			}
 		}
 
