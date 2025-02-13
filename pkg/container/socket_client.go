@@ -154,5 +154,9 @@ func (c *SocketClient) PullImages(ctx context.Context, imageRef string, alwaysPu
 	}
 
 	slog.Info("Podman API response was successful.", "status", r.Status)
+	statusOK := r.StatusCode >= 200 && r.StatusCode < 400
+	if !statusOK {
+		return fmt.Errorf("podman api failed. code=%s", r.Status)
+	}
 	return nil
 }
