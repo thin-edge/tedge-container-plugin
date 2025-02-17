@@ -124,7 +124,7 @@ Below are some examples showing the mapping between the configuration values and
 
 ### Cumulocity UI Plugin
 
-A Cumulocity UI plugin is available to compliment the functionality provided by the tedge-container-plugin. The plugin can be downloaded from the [thin-edge/tedge-container-plugin-ui](https://github.com/thin-edge/tedge-container-plugin-ui) repository.
+A Cumulocity UI plugin is available to compliment the functionality provided by the tedge-container-plugin. The plugin can be downloaded from the [thin-edge/tedge-container-plugin-ui](https://github.com/thin-edge/tedge-container-plugin-ui/releases) Releases page.
 
 Below shows some example screenshots of the plugin in action:
 
@@ -132,17 +132,17 @@ Below shows some example screenshots of the plugin in action:
 
 The tab will be enabled for all services of type container. Displays the container properties that are stored in the managed Object.
 
-![Container Info Screenshot](https://github.com/thin-edge/tedge-container-plugin/raw/refs/heads/main/docs/img/container-info.png)
+![Container Info Screenshot](https://github.com/thin-edge/tedge-container-plugin-ui/raw/refs/heads/main/docs/img/container-info.png)
 
 #### Container Management Tab
 
 The tab will be enabled for all devices with a childAddition with serviceType=container. Lists all containers in a grid or list.The search can be used for the image name and the project id. The list can include/exclude the containers that are part of a container group.
-![Container Container Management Screenshot](https://github.com/thin-edge/tedge-container-plugin/raw/refs/heads/main/docs/img/container-management.png)
+![Container Container Management Screenshot](https://github.com/thin-edge/tedge-container-plugin-ui/raw/refs/heads/main/docs/img/container-management.png)
 
 #### Container Group Management Tab
 
 The tab will be enabled for all devices with a childAddition with serviceType=container. Lists all containers that are part of a project. The filter/search can be used to search for project names or container images.
-![Container Container Management Screenshot](https://github.com/thin-edge/tedge-container-plugin/raw/refs/heads/main/docs/img/container-group-management.png)
+![Container Container Management Screenshot](https://github.com/thin-edge/tedge-container-plugin-ui/raw/refs/heads/main/docs/img/container-group-management.png)
 
 ## Developers
 
