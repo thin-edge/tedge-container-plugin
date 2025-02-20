@@ -13,7 +13,7 @@ The instructions assume that you are using thin-edge.io &gt;= 1.0.0
 ### What will be deployed to the device?
 
 * A service called `tedge-container-plugin`. This provides the monitoring of the containers
-* The following software management plugins which is called when installing and removing containers/container groups via Cumulocity IoT
+* The following software management plugins which is called when installing and removing containers/container groups via Cumulocity
     * `container` - Deploy a single container (`docker run xxx` equivalent)
     * `container-group` - Deploy one or more container as defined by a `docker-compose.yaml` file (`docker compose up` equivalent), or an archive (gzip or zip)
 
@@ -42,10 +42,10 @@ The following linux package formats are provided on the releases page and also i
 
 The following features are supported by the plugin:
 
-* Install/remove containers via the Cumulocity IoT software interface
+* Install/remove containers via the Cumulocity software interface
 * Install multiple containers as one group using a `docker-compose.yaml` file or an archive container a `docker-compose.yaml` file
-* Monitor container states (e.g. up/down) via Cumulocity IoT Services (only supported from tedge >= 1.0.0)
-* Download container images via Cumulocity IoT binaries if a URL is provided
+* Monitor container states (e.g. up/down) via Cumulocity Services (only supported from tedge >= 1.0.0)
+* Download container images via Cumulocity binaries if a URL is provided
 * Support for multiple container engines (docker, podman)
 
 
@@ -53,7 +53,7 @@ The following features are supported by the plugin:
 
 ### Install/remove single containers
 
-Containers can be installed and removed via the Cumulocity IoT Software Management interface in the Device Management Application.
+Containers can be installed and removed via the Cumulocity Software Management interface in the Device Management Application.
 
 The software package is modeled so that each software name corresponds to one container instance. Upon installation of a software item, the container uses the `version` field as the source of the container image/tag which is used to create the container. The software package can include an optional `url` referring to an exported container image in the gzip (compressed tarball) format (e.g. the image that you get when running `docker save <my_image> --output <my_image>.tar.gz`).
 
