@@ -12,7 +12,7 @@
 [ -f /etc/tedge-container-plugin/env ] && . /etc/tedge-container-plugin/env
 
 dir="/var"
-cmd="/usr/bin/tedge-container run /usr/bin/tedge-container run --config /etc/tedge/plugins/tedge-container-plugin.toml"
+cmd="/usr/bin/tedge-container run --config /etc/tedge/plugins/tedge-container-plugin.toml"
 user="root"
 
 name=$(basename "$0")
