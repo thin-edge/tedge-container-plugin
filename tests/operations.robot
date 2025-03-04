@@ -162,7 +162,7 @@ Collect Logs
     Collect Systemd Logs
 
 Collect Systemd Logs
-    Execute Command    sudo journalctl -n 10000
+    Execute Command    sudo journalctl -n 10000 || head -n 10000 /var/log/*.log
 
 Collect Workflow Logs
     Execute Command    cat /var/log/tedge/agent/*
