@@ -135,7 +135,7 @@ nfpms:
       - src: ./packaging/services/init.d/service.init
         dst: /etc/init.d/tedge-container-plugin
         file_info:
-          mode: 0644
+          mode: 0755
           owner: tedge
           group: tedge
         packager: deb
