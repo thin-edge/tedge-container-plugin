@@ -11,10 +11,19 @@ remove() {
     fi
 
     if [ -x "/usr/bin/deb-systemd-helper" ]; then
+        # SystemD (debian)
         deb-systemd-helper purge "${SERVICE_NAME}.service" >/dev/null
         deb-systemd-helper unmask "${SERVICE_NAME}.service" >/dev/null
     elif command -V systemctl >/dev/null 2>&1; then
+        # SystemD (native)
         systemctl unmask "${SERVICE_NAME}.service" >/dev/null
+    elif command -V rc-service >/dev/null 2>&1; then
+        # OpenRC
+        rc-update delete "$SERVICE_NAME" ||:
+        rc-service "$SERVICE_NAME" stop ||:
+
+        rm -f /etc/init.d/tedge-container-plugin
+        rm -f /etc/conf.d/tedge-container-plugin
     fi
 }
 

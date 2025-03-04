@@ -1,0 +1,18 @@
+#!/sbin/openrc-run
+description="thin-edge.io container monitor"
+command="/usr/bin/tedge-container"
+: ${command_args=run --config /etc/tedge/plugins/tedge-container-plugin.toml}
+: ${command_user=root}
+: ${supervise_daemon_args=}
+
+pidfile="/run/lock/${RC_SVCNAME}.lock"
+error_log="${LOGFILE:-/var/log/${RC_SVCNAME}.log}"
+
+start_pre()
+{
+    checkpath --file --owner "root" "$error_log"
+}
+
+depend() {
+    after net
+}

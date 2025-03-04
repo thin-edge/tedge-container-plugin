@@ -153,6 +153,25 @@ nfpms:
         dst: /etc/s6-overlay/s6-rc.d
         packager: apk
 
+      # OpenRC
+      # Note: symlinks will be created linking the services during the post install script
+      # if openrc is detected
+      - src: ./packaging/services/openrc/tedge-container-plugin.init
+        dst: /usr/share/tedge-container-plugin/services/openrc/init.d/tedge-container-plugin
+        file_info:
+          mode: 0755
+          owner: root
+          group: root
+        packager: apk
+
+      - src: ./packaging/services/openrc/tedge-container-plugin.conf
+        dst: /usr/share/tedge-container-plugin/services/openrc/conf.d/tedge-container-plugin
+        file_info:
+          mode: 0644
+          owner: root
+          group: root
+        packager: apk
+
       # Completions
       - src: ./output/completions.bash
         dst: /etc/bash_completion.d/tedge-container
