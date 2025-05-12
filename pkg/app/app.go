@@ -69,6 +69,9 @@ type Config struct {
 	EnableEngineEvents bool
 	DeleteFromCloud    bool
 
+	HTTPHost string
+	HTTPPort uint16
+
 	MQTTHost string
 	MQTTPort uint16
 
@@ -79,6 +82,8 @@ type Config struct {
 func NewApp(device tedge.Target, config Config) (*App, error) {
 	serviceTarget := device.Service(config.ServiceName)
 	tedgeOpts := &tedge.ClientConfig{
+		HTTPHost: config.HTTPHost,
+		HTTPPort: config.HTTPPort,
 		MqttHost: config.MQTTHost,
 		MqttPort: config.MQTTPort,
 		C8yHost:  config.CumulocityHost,
@@ -92,6 +97,18 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 	containerClient, err := container.NewContainerClient()
 	if err != nil {
 		return nil, err
+	}
+
+	// Register via http interface
+	_, registrationErr := tedgeClient.TedgeAPI.CreateEntity(context.Background(), tedge.Entity{
+		TedgeType:    tedge.EntityTypeService,
+		Name:         serviceTarget.Name,
+		TedgeTopicID: serviceTarget.TopicID,
+	})
+	if registrationErr == nil {
+		slog.Info("Registered service", "topic", serviceTarget.Topic())
+	} else {
+		slog.Error("Could not register tedge entity.", "err", registrationErr)
 	}
 
 	if err := tedgeClient.Connect(); err != nil {
@@ -137,13 +154,10 @@ func (a *App) DeleteLegacyService(deleteFromCloud bool) {
 	target := a.client.Target.Service("tedge-container-monitor")
 	slog.Info("Removing legacy service from the cloud", "topic", target.Topic())
 
-	if err := a.client.Publish(tedge.GetHealthTopic(*target), 1, true, ""); err != nil {
-		slog.Warn("Failed to clear health status.", "topic", tedge.GetHealthTopic(*target))
+	if _, err := a.client.TedgeAPI.DeleteEntity(context.Background(), *target); err != nil {
+		slog.Warn("Failed to clear registration message.", "topic-id", target.TopicID)
 	}
-	time.Sleep(500 * time.Millisecond)
-	if err := a.client.Publish(tedge.GetTopic(*target), 1, true, ""); err != nil {
-		slog.Warn("Failed to clear registration message.", "topic", tedge.GetHealthTopic(*target))
-	}
+
 	time.Sleep(500 * time.Millisecond)
 
 	if target.CloudIdentity != "" && deleteFromCloud {
@@ -373,10 +387,16 @@ func (a *App) updateMetrics(items []container.TedgeContainer) error {
 	doWork := func(jobs <-chan container.TedgeContainer, results chan<- error) {
 		for j := range jobs {
 			var jobErr error
-			stats, jobErr := a.ContainerClient.GetStats(context.Background(), j.Container.Id)
+			// TODO: Check if container exists, if not then do nothing
+			target := a.Device.Service(j.Name)
+			if _, entityErr := a.client.TedgeAPI.GetEntity(context.Background(), *target); entityErr != nil {
+				slog.Info("Entity has not be registered yet, skipping metric for it.", "topic-id", target.TopicID)
+				results <- jobErr
+				continue
+			}
 
+			stats, jobErr := a.ContainerClient.GetStats(context.Background(), j.Container.Id)
 			if jobErr == nil {
-				target := a.Device.Service(j.Name)
 				topic := tedge.GetTopic(*target, "m", "resource_usage")
 				payload, err := json.Marshal(stats)
 				if err == nil {
@@ -443,25 +463,26 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 		target := a.Device.Service(item.Name)
 
 		// Skip registration message if it already exists
-		if _, ok := existingServices[target.Topic()]; ok {
-			slog.Debug("Container is already registered", "topic", target.Topic())
-			delete(existingServices, target.Topic())
-			continue
-		}
+		// if _, ok := existingServices[target.Topic()]; ok {
+		// 	slog.Info("Container is already registered", "topic", target.Topic())
+		// 	delete(existingServices, target.Topic())
+		// 	continue
+		// }
 		delete(existingServices, target.Topic())
 
-		payload := map[string]any{
-			"@type": "service",
-			"name":  item.Name,
-			"type":  item.ServiceType,
-		}
-		b, err := json.Marshal(payload)
-		if err != nil {
-			slog.Warn("Could not marshal registration message", "err", err)
-			continue
-		}
-		if err := tedgeClient.Publish(target.Topic(), 1, true, b); err != nil {
-			slog.Error("Failed to register container", "target", target.Topic(), "err", err)
+		// Register using HTTP API
+		resp, err := tedgeClient.TedgeAPI.CreateEntity(context.Background(), tedge.Entity{
+			TedgeType:     tedge.EntityTypeService,
+			TedgeTopicID:  target.TopicID,
+			Name:          item.Name,
+			Type:          item.ServiceType,
+			TedgeParentID: tedgeClient.Parent.TopicID,
+		})
+
+		if err == nil {
+			slog.Info("Registered container.", "topic", target.Topic(), "url", resp.RawResponse.Request.URL.String(), "status_code", resp.RawResponse.Status)
+		} else {
+			slog.Error("Failed to register container.", "topic", target.Topic(), "err", err)
 		}
 	}
 
@@ -490,18 +511,16 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 	for _, item := range items {
 		target := a.Device.Service(item.Name)
 
-		topic := tedge.GetTopic(*target, "twin", "container")
-
 		// Create status
-		payload, err := json.Marshal(item.Container)
-
+		_, err := tedgeClient.TedgeAPI.UpdateTwin(
+			context.Background(),
+			tedge.Entity{
+				TedgeTopicID: target.TopicID,
+			},
+			"container",
+			item.Container,
+		)
 		if err != nil {
-			slog.Error("Failed to convert payload to json", "err", err)
-			continue
-		}
-
-		slog.Info("Publishing container status", "topic", topic, "payload", payload)
-		if err := tedgeClient.Publish(topic, 1, true, payload); err != nil {
 			slog.Error("Could not publish container status", "err", err)
 		}
 	}
@@ -518,7 +537,7 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 				continue
 			}
 
-			if err := tedgeClient.DeregisterEntity(*target, "twin/container"); err != nil {
+			if err := tedgeClient.DeregisterEntity(*target); err != nil {
 				slog.Warn("Failed to deregister entity.", "err", err)
 			}
 

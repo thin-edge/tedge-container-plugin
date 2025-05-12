@@ -155,6 +155,18 @@ func (c *Cli) DeleteFromCloud() bool {
 	return viper.GetBool("delete_from_cloud.enabled")
 }
 
+func (c *Cli) GetHTTPHost() string {
+	return viper.GetString("client.http.host")
+}
+
+func (c *Cli) GetHTTPPort() uint16 {
+	v := viper.GetUint16("client.http.port")
+	if v == 0 {
+		return 8000
+	}
+	return v
+}
+
 func (c *Cli) GetMQTTHost() string {
 	return viper.GetString("client.mqtt.host")
 }
