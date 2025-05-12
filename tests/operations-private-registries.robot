@@ -86,14 +86,3 @@ Install container-group file
     ${binary_url}=    Cumulocity.Create Inventory Binary    ${package_name}    container-group    file=${file}
     ${operation}=    Cumulocity.Install Software    {"name": "${package_name}", "version": "${package_version}", "softwareType": "container-group", "url": "${binary_url}"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=300
-
-
-Collect Logs
-    Collect Workflow Logs
-    Collect Systemd Logs
-
-Collect Systemd Logs
-    Execute Command    sudo journalctl -n 10000
-
-Collect Workflow Logs
-    Execute Command    cat /var/log/tedge/agent/*

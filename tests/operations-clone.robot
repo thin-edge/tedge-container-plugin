@@ -91,13 +91,3 @@ Create Container
     ${operation}=    Cumulocity.Install Software    {"name": "${name}", "version": "${image}", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
     Device Should Have Installed Software    {"name": "${name}", "version": "${image}", "softwareType": "container"}
-
-Collect Logs
-    Collect Workflow Logs
-    Collect Systemd Logs
-
-Collect Systemd Logs
-    Execute Command    sudo journalctl -n 10000
-
-Collect Workflow Logs
-    Execute Command    cat /var/log/tedge/agent/*

@@ -34,13 +34,3 @@ Test Setup
     # Install older version
     DeviceLibrary.Execute Command   apt-get update && apt-get install -y tedge-container-plugin
     Cumulocity.Should Have Services    name=tedge-container-monitor    service_type=service    min_count=1    max_count=1    timeout=60
-
-Collect Logs
-    Collect Workflow Logs
-    Collect Systemd Logs
-
-Collect Systemd Logs
-    Execute Command    sudo journalctl -n 10000
-
-Collect Workflow Logs
-    Execute Command    cat /var/log/tedge/agent/*
