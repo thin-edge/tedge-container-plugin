@@ -156,13 +156,3 @@ Install container-group file
     Operation Should Be SUCCESSFUL    ${operation}
     Should Contain    ${operation.to_json()["c8y_Command"]["result"]}    My Custom Web Application
     Cumulocity.Should Have Services    name=${package_name}@${service_name}    service_type=container-group    status=up
-
-Collect Logs
-    Collect Workflow Logs
-    Collect Systemd Logs
-
-Collect Systemd Logs
-    Execute Command    sudo journalctl -n 10000 || head -n 10000 /var/log/*.log
-
-Collect Workflow Logs
-    Execute Command    cat /var/log/tedge/agent/*

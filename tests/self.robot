@@ -32,13 +32,3 @@ Suite Setup
 
     # Create data directory
     DeviceLibrary.Execute Command    mkdir /data
-
-Collect Logs
-    Collect Workflow Logs
-    Collect Systemd Logs
-
-Collect Systemd Logs
-    Execute Command    sudo journalctl -n 10000
-
-Collect Workflow Logs
-    Execute Command    cat /var/log/tedge/agent/*
