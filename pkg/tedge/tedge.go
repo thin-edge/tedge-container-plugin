@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -317,6 +318,36 @@ type Entity struct {
 	Type          string `json:"type,omitempty"`
 }
 
+type Responder func(*Response, error) (*Response, error)
+
+func OkResponder(allowedCodes ...int) Responder {
+	return func(r *Response, err error) (*Response, error) {
+		if r.IsError() {
+			if !slices.Contains(allowedCodes, r.StatusCode()) {
+				return r, nil
+			}
+			return r, fmt.Errorf("invalid api response. status_code=%d", r.StatusCode())
+		}
+		return r, nil
+	}
+}
+
+func (c *TedgeAPIClient) Do(req *http.Request, responders ...Responder) (*Response, error) {
+	resp, err := c.Client.Do(req)
+	wrappedResponse := NewResponse(resp)
+
+	if err == nil {
+		for _, responder := range responders {
+			wrappedResponse, err = responder(wrappedResponse, err)
+			if err != nil {
+				break
+			}
+		}
+	}
+
+	return wrappedResponse, err
+}
+
 func (c *TedgeAPIClient) GetURL(partials ...string) string {
 	parts := make([]string, 0, 1+len(partials))
 	parts = append(parts, c.BaseURL)
@@ -337,8 +368,7 @@ func (c *TedgeAPIClient) CreateEntity(ctx context.Context, entity Entity) (*Resp
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	resp, err := c.Do(req)
-	return resp, err
+	return c.Do(req, OkResponder(201, 409))
 }
 
 func (c *TedgeAPIClient) PatchEntity(ctx context.Context, entity Entity, data any) (*Response, error) {
@@ -354,8 +384,7 @@ func (c *TedgeAPIClient) PatchEntity(ctx context.Context, entity Entity, data an
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	resp, err := c.Do(req)
-	return resp, err
+	return c.Do(req, OkResponder(200))
 }
 
 func (c *TedgeAPIClient) UpdateTwin(ctx context.Context, entity Entity, name string, data any) (*Response, error) {
@@ -371,39 +400,7 @@ func (c *TedgeAPIClient) UpdateTwin(ctx context.Context, entity Entity, name str
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	resp, err := c.Do(req)
-	return resp, err
-}
-
-var ErrNotFound = errors.New("not found")
-var ErrConflict = errors.New("conflict")
-
-func CheckResponse(r *Response, conflictOk bool) (*Response, error) {
-	if r.IsSuccess() {
-		return r, nil
-	}
-
-	var err error
-	switch statusCode := r.StatusCode(); statusCode {
-	case 404:
-		err = fmt.Errorf("api request failed. %w", ErrNotFound)
-	case 409:
-		if !conflictOk {
-			err = fmt.Errorf("api request failed. %w", ErrConflict)
-		}
-	default:
-		err = fmt.Errorf("api request failed. status=%d", statusCode)
-	}
-	return r, err
-}
-
-func (c *TedgeAPIClient) Do(req *http.Request) (*Response, error) {
-	resp, err := c.Client.Do(req)
-	wrappedResponse := NewResponse(resp)
-	if err == nil && wrappedResponse.IsError() {
-		err = fmt.Errorf("api request failed. status=%d", wrappedResponse.StatusCode())
-	}
-	return wrappedResponse, err
+	return c.Do(req, OkResponder(200))
 }
 
 func (c *TedgeAPIClient) DeleteEntity(ctx context.Context, target Target) (*Response, error) {
@@ -412,9 +409,7 @@ func (c *TedgeAPIClient) DeleteEntity(ctx context.Context, target Target) (*Resp
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.Do(req)
-	CheckResponse(resp, false)
-	return resp, err
+	return c.Do(req, OkResponder(200, 204))
 }
 
 func (c *TedgeAPIClient) GetEntity(ctx context.Context, target Target) (*Response, error) {
@@ -425,8 +420,7 @@ func (c *TedgeAPIClient) GetEntity(ctx context.Context, target Target) (*Respons
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	resp, err := c.Do(req)
-	return resp, err
+	return c.Do(req, OkResponder(200))
 }
 
 type Response struct {
