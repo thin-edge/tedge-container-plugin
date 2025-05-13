@@ -3,6 +3,7 @@ package c8y
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -36,26 +37,65 @@ func (s *ContextService) ServiceUserFromEnvironment() context.Context {
 // If no service users are found then it will panic.
 func (s *ContextService) ServiceUserContext(tenant string, skipUpdateServiceUsers bool) context.Context {
 	client := s.client
+	serviceUsersUpdated := false
 	if !skipUpdateServiceUsers {
 		client.Microservice.SetServiceUsers()
+		serviceUsersUpdated = true
+	}
+
+	findUser := func() string {
+		for _, user := range client.ServiceUsers {
+			if tenant == user.Tenant || tenant == "" {
+				auth := NewBasicAuthString(user.Tenant, user.Username, user.Password)
+				return auth
+			}
+		}
+		return ""
+	}
+
+	auth := findUser()
+
+	if auth == "" && !serviceUsersUpdated {
+		// Refresh list if user is not found
+		client.Microservice.SetServiceUsers()
+		auth = findUser()
 	}
 
 	if len(client.ServiceUsers) == 0 {
 		panic("No service users found")
 	}
-	var auth string
 
-	for _, user := range client.ServiceUsers {
-		if tenant == user.Tenant || tenant == "" {
-			auth = NewBasicAuthString(user.Tenant, user.Username, user.Password)
-			break
-		}
-	}
 	return context.WithValue(context.Background(), GetContextAuthTokenKey(), auth)
 }
 
+// Create new authorization context with an auth function
+func (s *ContextService) AuthContext(authFunc AuthFunc) context.Context {
+	return context.WithValue(context.Background(), GetContextAuthFuncKey(), authFunc)
+}
+
+// GetServiceUserAuthFunc returns an auth function which resolves the service user
+// when the request is about to be sent
+func (s *ContextService) GetServiceUserAuthFunc(tenant string) AuthFunc {
+	return func(r *http.Request) (string, error) {
+		client := s.client
+
+		var auth string
+		var err error
+		auth, err = client.Microservice.GetServiceAuth(tenant)
+		if err == nil {
+			return auth, err
+		}
+		if errors.Is(err, ErrNotFound) {
+			if serviceUserErr := client.Microservice.SetServiceUsers(); serviceUserErr == nil {
+				auth, err = client.Microservice.GetServiceAuth(tenant)
+			}
+		}
+		return auth, err
+	}
+}
+
 // ServiceUserFromRequest returns a new context with the Authorization token set which will override the Basic Auth in subsequent
-// REST requests. The service user will be seletected based on the tenant credentials provided in the request.
+// REST requests. The service user will be selected based on the tenant credentials provided in the request.
 // If the request's Authorization header does not use the tenant/username format, then the request's URL
 // will be used to determine which tenant to use.
 // Should only be used for MULTI_TENANT microservices

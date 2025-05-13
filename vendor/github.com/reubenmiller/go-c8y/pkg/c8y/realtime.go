@@ -29,8 +29,8 @@ const (
 	// VERSION preferred Bayeux version
 	VERSION = "1.0"
 
-	// MINIMUMVERSION supported Bayeux version
-	MINIMUMVERSION = "1.0"
+	// MINIMUM_VERSION supported Bayeux version
+	MINIMUM_VERSION = "1.0"
 
 	// MinimumRetryDelay is the minimum retry delay in milliseconds to wait before sending another /meta/connect message
 	MinimumRetryDelay int64 = 500
@@ -44,7 +44,7 @@ const (
 	MinimumRetryInterval int64 = 5
 
 	// RetryBackoffFactor is the backoff factor applied to the retry interval for every unsuccessful reconnection attempt.
-	// i.e. the next retry interval is calculated as followins
+	// i.e. the next retry interval is calculated as follows
 	// interval = MinimumRetryInterval
 	// interval = Min(MaximumRetryInterval, interval * RetryBackoffFactor)
 	RetryBackoffFactor float64 = 1.5
@@ -62,7 +62,7 @@ const (
 type RealtimeClient struct {
 	mtx           sync.RWMutex
 	url           *url.URL
-	c8yurl        *url.URL
+	c8yURL        *url.URL
 	clientID      string
 	tomb          *tomb.Tomb
 	messages      chan *Message
@@ -180,15 +180,15 @@ func getC8yExtensionFromXSRFToken(token string) c8yExtensionMessage {
 }
 
 func getRealtimeURL(host string) *url.URL {
-	c8yhost, _ := url.Parse(host)
+	c8yHost, _ := url.Parse(host)
 
-	if c8yhost.Scheme == "http" {
-		c8yhost.Scheme = "ws"
+	if c8yHost.Scheme == "http" {
+		c8yHost.Scheme = "ws"
 	} else {
-		c8yhost.Scheme = "wss"
+		c8yHost.Scheme = "wss"
 	}
 
-	return c8yhost.ResolveReference(&url.URL{Path: "cep/realtime"})
+	return c8yHost.ResolveReference(&url.URL{Path: "cep/realtime"})
 }
 
 // NewRealtimeClient initializes a new Bayeux client. By default `http.DefaultClient`
@@ -208,7 +208,7 @@ func NewRealtimeClient(host string, wsDialer *websocket.Dialer, tenant, username
 
 	// Convert url to a websocket
 	websocketURL := getRealtimeURL(host)
-	c8yurl, _ := url.Parse(host)
+	c8yURL, _ := url.Parse(host)
 
 	client := &RealtimeClient{
 		url:       websocketURL,
@@ -216,7 +216,7 @@ func NewRealtimeClient(host string, wsDialer *websocket.Dialer, tenant, username
 		messages:  make(chan *Message, 100),
 		extension: getC8yExtension(tenant, username, password),
 
-		c8yurl:   c8yurl,
+		c8yURL:   c8yURL,
 		tenant:   tenant,
 		username: username,
 		password: password,
@@ -231,7 +231,7 @@ func NewRealtimeClient(host string, wsDialer *websocket.Dialer, tenant, username
 	return client
 }
 
-// SetRequestHeader sets the header to use when estabilishing the realtime connection.
+// SetRequestHeader sets the header to use when establishing the realtime connection.
 func (c *RealtimeClient) SetRequestHeader(header http.Header) {
 	c.requestHeader = header
 }
@@ -246,7 +246,7 @@ func (c *RealtimeClient) SetCookies(cookies []*http.Cookie) error {
 	if err != nil {
 		return fmt.Errorf("failed to create cookie jar: %w", err)
 	}
-	jar.SetCookies(c.c8yurl, cookies)
+	jar.SetCookies(c.c8yURL, cookies)
 	c.dialer.Jar = jar
 	return nil
 }
@@ -374,7 +374,7 @@ func (c *RealtimeClient) reconnect() error {
 		}
 	}
 
-	Logger.Info("Restablished connection, any subscriptions will be also be resubmitted")
+	Logger.Info("Established connection, any subscriptions will be also be resubmitted")
 
 	c.reactivateSubscriptions()
 	return nil
@@ -450,7 +450,7 @@ func (c *RealtimeClient) worker() error {
 						c.connected = true
 						c.mtx.Unlock()
 					} else {
-						Logger.Fatalf("No clientID present in handshake. Check that the tenant, usename and password is correct. Raw Message: %v", message)
+						Logger.Fatalf("No clientID present in handshake. Check that the tenant, username and password is correct. Raw Message: %v", message)
 					}
 
 				case "/meta/subscribe":
@@ -556,7 +556,7 @@ func (c *RealtimeClient) handshake() chan error {
 		ID:                       c.nextMessageID(),
 		Channel:                  "/meta/handshake",
 		Version:                  VERSION,
-		MinimumVersion:           MINIMUMVERSION,
+		MinimumVersion:           MINIMUM_VERSION,
 		SupportedConnectionTypes: []string{"websocket", "long-polling"},
 		Extension:                c.extension,
 		Advice: &advice{

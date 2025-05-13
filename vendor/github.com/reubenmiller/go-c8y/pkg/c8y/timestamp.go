@@ -19,7 +19,7 @@ func NewTimestamp(value ...time.Time) *Timestamp {
 	return &Timestamp{value[0]}
 }
 
-// Timestamp represents a time that can be unmarshalled from a JSON string
+// Timestamp represents a time that can be deserialized from a JSON string
 // formatted as either an RFC3339 or Unix timestamp. This is necessary for some
 // fields since the GitHub API is inconsistent in how it represents times. All
 // exported methods of time.Time can be called on Timestamp.

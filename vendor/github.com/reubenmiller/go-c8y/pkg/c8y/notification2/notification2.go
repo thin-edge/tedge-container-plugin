@@ -31,7 +31,7 @@ const (
 	MinimumRetryInterval int64 = 5
 
 	// RetryBackoffFactor is the backoff factor applied to the retry interval for every unsuccessful reconnection attempt.
-	// i.e. the next retry interval is calculated as followins
+	// i.e. the next retry interval is calculated as follows
 	// interval = MinimumRetryInterval
 	// interval = Min(MaximumRetryInterval, interval * RetryBackoffFactor)
 	RetryBackoffFactor float64 = 2
@@ -132,13 +132,13 @@ func getEndpoint(host string, subscription Subscription) *url.URL {
 	if err != nil {
 		Logger.Fatalf("Invalid url. %s", err)
 	}
-	c8yhost := tempUrl.ResolveReference(&url.URL{Path: "notification2/consumer/"})
-	c8yhost.RawQuery = "token=" + subscription.Token
+	c8yHost := tempUrl.ResolveReference(&url.URL{Path: "notification2/consumer/"})
+	c8yHost.RawQuery = "token=" + subscription.Token
 
 	if subscription.Consumer != "" {
-		c8yhost.RawQuery += "&consumer=" + subscription.Consumer
+		c8yHost.RawQuery += "&consumer=" + subscription.Consumer
 	}
-	return c8yhost
+	return c8yHost
 }
 
 // NewNotification2Client initializes a new notification2 client used to subscribe to realtime notifications from Cumulocity

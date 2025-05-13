@@ -205,7 +205,7 @@ func (m ValueFragmentType) MarshalJSON() ([]byte, error) {
 }
 
 // MarshalJSON converts the Measurement Representation to a json string
-// A custom marshaling is required as the meausurement object is structured
+// A custom marshaling is required as the measurement object is structured
 // differently to the official Cumulocity Measurement structure to make it easier to handle
 func (m MeasurementRepresentation) MarshalJSON() ([]byte, error) {
 	// Collect the json property strings, then join all of the parts together at the end

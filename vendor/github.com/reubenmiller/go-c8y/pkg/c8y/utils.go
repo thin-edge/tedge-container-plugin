@@ -19,7 +19,7 @@ func prepareMultipartRequest(method string, url string, values map[string]io.Rea
 	// Prepare a form that you will submit to that URL.
 	w := multipart.NewWriter(pw)
 
-	// Sort formdata keys
+	// Sort form data keys
 	keys := make([]string, 0, len(values))
 	for key := range values {
 		keys = append(keys, key)

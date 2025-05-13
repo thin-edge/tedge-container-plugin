@@ -616,7 +616,7 @@ func (s *InventoryService) CreateChildAdditionWithBinary(ctx context.Context, pa
 	return mo, resp, err
 }
 
-// CreateWithBinary create managed object which also has a binary linked as a child addition so that the binary is deleted when the parent maanaged object is deleted
+// CreateWithBinary create managed object which also has a binary linked as a child addition so that the binary is deleted when the parent managed object is deleted
 func (s *InventoryService) CreateWithBinary(ctx context.Context, binaryFile binary.MultiPartReader, bodyFunc func(binaryURL string) interface{}, middleware ...RequestMiddleware) (*ManagedObject, *Response, error) {
 	// Upload file
 	binary, resp, err := s.client.Inventory.CreateBinary(ctx, binaryFile, middleware...)

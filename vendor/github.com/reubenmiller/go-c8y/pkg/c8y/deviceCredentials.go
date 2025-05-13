@@ -133,7 +133,7 @@ func (s *DeviceCredentialsService) CreateDeviceCredentials(ctx context.Context, 
 	return data, resp, err
 }
 
-// PollNewDeviceRequest continuously polls a device request for a specified id at defined intervales. The func will wait until the device request has been set to ACCEPTED.
+// PollNewDeviceRequest continuously polls a device request for a specified id at defined intervals. The func will wait until the device request has been set to ACCEPTED.
 // If the device request does not reach the ACCEPTED state in the defined timeout period, then an error will be returned.
 func (s *DeviceCredentialsService) PollNewDeviceRequest(ctx context.Context, deviceID string, interval time.Duration, timeout time.Duration) (<-chan struct{}, <-chan error) {
 	ticker := time.NewTicker(interval)

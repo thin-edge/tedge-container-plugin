@@ -10,7 +10,7 @@ import (
 // IdentityService does something
 type IdentityService service
 
-// IdentityOptions Identity parameters required when creating a new externalid
+// IdentityOptions Identity parameters required when creating a new external id
 type IdentityOptions struct {
 	ExternalID string `json:"externalId"`
 	Type       string `json:"type"`

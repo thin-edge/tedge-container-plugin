@@ -6,6 +6,11 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+const (
+	CertificateStatusEnabled  = "ENABLED"
+	CertificateStatusDisabled = "DISABLED"
+)
+
 // DeviceCertificateService interacts with the trusted device certificates in the platform
 type DeviceCertificateService service
 
@@ -24,21 +29,46 @@ type DeviceCertificateCollection struct {
 	Items []gjson.Result `json:"-"`
 }
 
+func NewCertificate() *Certificate {
+	return &Certificate{}
+}
+
 // Certificate properties
 type Certificate struct {
-	AlgorithmName           string `json:"algorithmName"`
-	CertInPemFormat         string `json:"certInPemFormat"`
-	Fingerprint             string `json:"fingerprint"`
-	Issuer                  string `json:"issuer"`
-	Name                    string `json:"name"`
-	NotAfter                string `json:"notAfter"`
-	NotBefore               string `json:"notBefore"`
-	Self                    string `json:"self"`
-	SerialNumber            string `json:"serialNumber"`
-	Status                  string `json:"status"`
-	Subject                 string `json:"subject"`
-	AutoRegistrationEnabled bool   `json:"autoRegistrationEnabled"`
-	Version                 int    `json:"version"`
+	AlgorithmName              string `json:"algorithmName,omitempty"`
+	CertInPemFormat            string `json:"certInPemFormat,omitempty"`
+	Fingerprint                string `json:"fingerprint,omitempty"`
+	Issuer                     string `json:"issuer,omitempty"`
+	Name                       string `json:"name,omitempty"`
+	NotAfter                   string `json:"notAfter,omitempty"`
+	NotBefore                  string `json:"notBefore,omitempty"`
+	Self                       string `json:"self,omitempty"`
+	SerialNumber               string `json:"serialNumber,omitempty"`
+	Status                     string `json:"status,omitempty"`
+	Subject                    string `json:"subject,omitempty"`
+	AutoRegistrationEnabled    *bool  `json:"autoRegistrationEnabled,omitempty"`
+	TenantCertificateAuthority bool   `json:"tenantCertificateAuthority,omitempty"`
+	Version                    int    `json:"version,omitempty"`
+}
+
+// Check if auto registration is enabled or not
+func (c *Certificate) IsAutoRegistrationEnabled() bool {
+	if c.AutoRegistrationEnabled == nil {
+		return false
+	}
+	return *c.AutoRegistrationEnabled
+}
+
+// Set the certificate status, ENABLED or DISABLED
+func (c *Certificate) WithStatus(v string) *Certificate {
+	c.Status = v
+	return c
+}
+
+// Set the auto registration status
+func (c *Certificate) WithAutoRegistration(enabled bool) *Certificate {
+	c.AutoRegistrationEnabled = &enabled
+	return c
 }
 
 // GetCertificates returns collection of certificates
