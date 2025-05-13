@@ -217,17 +217,17 @@ type EventBinary struct {
 
 // UpdateBinary updates an existing binary associated with an event
 func (s *EventService) UpdateBinary(ctx context.Context, ID, filename string) (*EventBinary, *Response, error) {
-	binarydata, err := os.Open(filename)
+	binaryData, err := os.Open(filename)
 	if err != nil {
 		Logger.Fatal(err)
 	}
-	defer binarydata.Close()
+	defer binaryData.Close()
 
 	data := new(EventBinary)
 	resp, err := s.client.SendRequest(ctx, RequestOptions{
 		Method:       "PUT",
 		Path:         "event/events/" + ID + "/binaries",
-		Body:         binarydata,
+		Body:         binaryData,
 		ResponseData: data,
 	})
 	return data, resp, err

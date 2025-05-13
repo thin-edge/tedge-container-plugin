@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/go-querystring/query"
 	"github.com/reubenmiller/go-c8y/pkg/jsonUtilities"
 )
@@ -56,10 +56,20 @@ func GetContextAuthTokenKey() ContextAuthTokenKey {
 // ContextCommonOptionsKey todo
 type ContextCommonOptionsKey string
 
-// GetContextCommonOptionsKey common optinos key used to override request options for a single request
+// GetContextCommonOptionsKey common options key used to override request options for a single request
 func GetContextCommonOptionsKey() ContextCommonOptionsKey {
 	return ContextCommonOptionsKey("commonOptions")
 }
+
+// ContextAuthFuncKey auth function key
+type ContextAuthFuncKey string
+
+// GetContextServiceUser server user
+func GetContextAuthFuncKey() ContextAuthFuncKey {
+	return ContextAuthFuncKey("authFunc")
+}
+
+type AuthFunc func(r *http.Request) (string, error)
 
 // DefaultRequestOptions default request options which are added to each outgoing request
 type DefaultRequestOptions struct {
@@ -70,6 +80,12 @@ type DefaultRequestOptions struct {
 
 	// DryRunHandler called when a request should be called
 	DryRunHandler func(options *RequestOptions, req *http.Request)
+}
+
+// FromAuthFuncContext returns the AuthFunc value stored in ctx, if any.
+func FromAuthFuncContext(ctx context.Context) (AuthFunc, bool) {
+	u, ok := ctx.Value(GetContextAuthFuncKey()).(AuthFunc)
+	return u, ok
 }
 
 type service struct {
@@ -128,28 +144,30 @@ type Client struct {
 	common service // Reuse a single struct instead of allocating one for each service on the heap.
 
 	// Services used for talking to different parts of the Cumulocity API.
-	Context             *ContextService
-	Alarm               *AlarmService
-	Audit               *AuditService
-	DeviceCredentials   *DeviceCredentialsService
-	Measurement         *MeasurementService
-	Operation           *OperationService
-	Tenant              *TenantService
-	Event               *EventService
-	Inventory           *InventoryService
-	Application         *ApplicationService
-	UIExtension         *UIExtensionService
-	ApplicationVersions *ApplicationVersionsService
-	Identity            *IdentityService
-	Microservice        *MicroserviceService
-	Notification2       *Notification2Service
-	RemoteAccess        *RemoteAccessService
-	Retention           *RetentionRuleService
-	TenantOptions       *TenantOptionsService
-	Software            *InventorySoftwareService
-	Firmware            *InventoryFirmwareService
-	User                *UserService
-	DeviceCertificate   *DeviceCertificateService
+	Context              *ContextService
+	Alarm                *AlarmService
+	Audit                *AuditService
+	DeviceCredentials    *DeviceCredentialsService
+	Measurement          *MeasurementService
+	Operation            *OperationService
+	Tenant               *TenantService
+	Event                *EventService
+	Inventory            *InventoryService
+	Application          *ApplicationService
+	UIExtension          *UIExtensionService
+	ApplicationVersions  *ApplicationVersionsService
+	Identity             *IdentityService
+	Microservice         *MicroserviceService
+	Notification2        *Notification2Service
+	RemoteAccess         *RemoteAccessService
+	Retention            *RetentionRuleService
+	TenantOptions        *TenantOptionsService
+	Software             *InventorySoftwareService
+	Firmware             *InventoryFirmwareService
+	User                 *UserService
+	DeviceCertificate    *DeviceCertificateService
+	CertificateAuthority *CertificateAuthorityService
+	Features             *FeaturesService
 }
 
 const (
@@ -157,7 +175,7 @@ const (
 )
 
 var (
-	// EnvVarLoggerHideSensitive environment variable name used to control whethere sensitive session information is logged or not. When set to "true", then the tenant, username, password, base 64 passwords will be obfuscated from the log messages
+	// EnvVarLoggerHideSensitive environment variable name used to control whether sensitive session information is logged or not. When set to "true", then the tenant, username, password, base 64 passwords will be obfuscated from the log messages
 	EnvVarLoggerHideSensitive = "C8Y_LOGGER_HIDE_SENSITIVE"
 )
 
@@ -171,6 +189,26 @@ const (
 	// AuthMethodNone no authentication
 	AuthMethodNone = "NONE"
 )
+
+var (
+	ErrInvalidAuthMethod = errors.New("invalid authorization method")
+)
+
+// Parse the authorization method and select as default if no value options are found
+// It returns the selected method, and if the input was valid or not
+func ParseAuthMethod(v string) (string, error) {
+	v = strings.ToUpper(v)
+	switch v {
+	case AuthMethodBasic:
+		return AuthMethodBasic, nil
+	case AuthMethodNone:
+		return AuthMethodNone, nil
+	case AuthMethodOAuth2Internal:
+		return AuthMethodOAuth2Internal, nil
+	default:
+		return "", ErrInvalidAuthMethod
+	}
+}
 
 // DecodeJSONBytes decodes json preserving number formatting (especially large integers and scientific notation floats)
 func DecodeJSONBytes(v []byte, dst interface{}) error {
@@ -278,6 +316,20 @@ func (tr funcTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	return tr.roundTrip(req)
 }
 
+// Format the base url to ensure it is normalized for cases where the
+// scheme can be missing, and the trailing slash (which affects the default path used in calls)
+func FormatBaseURL(v string) string {
+	// add a default scheme if missing
+	if !strings.Contains(v, "://") {
+		v = "https://" + v
+	}
+
+	if strings.HasSuffix(v, "/") {
+		return v
+	}
+	return v + "/"
+}
+
 // NewClient returns a new Cumulocity API client. If a nil httpClient is
 // provided, http.DefaultClient will be used. To use API methods which require
 // authentication, provide an http.Client that will perform the authentication
@@ -303,12 +355,7 @@ func NewClient(httpClient *http.Client, baseURL string, tenant string, username 
 		}
 	}
 
-	var fmtURL string
-	if !strings.HasSuffix(baseURL, "/") {
-		fmtURL = baseURL + "/"
-	} else {
-		fmtURL = baseURL
-	}
+	fmtURL := FormatBaseURL(baseURL)
 	targetBaseURL, _ := url.Parse(fmtURL)
 
 	var realtimeClient *RealtimeClient
@@ -352,6 +399,8 @@ func NewClient(httpClient *http.Client, baseURL string, tenant string, username 
 	c.Software = (*InventorySoftwareService)(&c.common)
 	c.Firmware = (*InventoryFirmwareService)(&c.common)
 	c.User = (*UserService)(&c.common)
+	c.Features = (*FeaturesService)(&c.common)
+	c.CertificateAuthority = (*CertificateAuthorityService)(&c.common)
 	return c
 }
 
@@ -826,13 +875,13 @@ func (c *Client) NewRequest(method, path string, query string, body interface{})
 		case io.Reader:
 			buf = v
 		default:
-			jsonbuf := new(bytes.Buffer)
-			err := json.NewEncoder(jsonbuf).Encode(body)
+			jsonBuf := new(bytes.Buffer)
+			err := json.NewEncoder(jsonBuf).Encode(body)
 
 			if err != nil {
 				return nil, err
 			}
-			buf = NewStringReader(jsonbuf.String())
+			buf = NewStringReader(jsonBuf.String())
 		}
 	}
 	req, err := http.NewRequest(method, u.String(), buf)
@@ -894,13 +943,13 @@ func (c *Client) NewRequestWithoutAuth(method, path string, query string, body i
 		case io.Reader:
 			buf = v
 		default:
-			jsonbuf := new(bytes.Buffer)
-			err := json.NewEncoder(jsonbuf).Encode(body)
+			jsonBuf := new(bytes.Buffer)
+			err := json.NewEncoder(jsonBuf).Encode(body)
 
 			if err != nil {
 				return nil, err
 			}
-			buf = NewStringReader(jsonbuf.String())
+			buf = NewStringReader(jsonBuf.String())
 		}
 	}
 	req, err := http.NewRequest(method, u.String(), buf)
@@ -1010,7 +1059,12 @@ func (c *Client) addOAuth2ToRequest(req *http.Request) {
 	}
 }
 
-// LoginUsingOAuth2 login to Cumulocity using OAuth2 and save the cookies from the response
+// OAuthTokenResponse OAuth Token Response
+type OAuthTokenResponse struct {
+	AccessToken string `json:"access_token,omitempty"`
+}
+
+// LoginUsingOAuth2 login to Cumulocity using OAuth2
 func (c *Client) LoginUsingOAuth2(ctx context.Context, initRequest ...string) error {
 
 	data := url.Values{}
@@ -1026,14 +1080,16 @@ func (c *Client) LoginUsingOAuth2(ctx context.Context, initRequest ...string) er
 	headers := http.Header{}
 	headers.Add("Content-Length", strconv.Itoa(len(data.Encode())))
 
+	responseData := new(OAuthTokenResponse)
 	options := &RequestOptions{
-		Method:      "POST",
-		Path:        "/tenant/oauth",
-		Query:       fmt.Sprintf("tenant_id=%s", c.TenantName),
-		Accept:      "*/*",
-		Header:      headers,
-		ContentType: "application/x-www-form-urlencoded;charset=UTF-8",
-		Body:        data.Encode(),
+		Method:       "POST",
+		Path:         "/tenant/oauth/token",
+		Query:        fmt.Sprintf("tenant_id=%s", c.TenantName),
+		Accept:       "application/json",
+		Header:       headers,
+		ContentType:  "application/x-www-form-urlencoded;charset=UTF-8",
+		Body:         data.Encode(),
+		ResponseData: responseData,
 	}
 
 	if len(initRequest) > 0 && initRequest[0] != "" {
@@ -1060,6 +1116,78 @@ func (c *Client) LoginUsingOAuth2(ctx context.Context, initRequest ...string) er
 			c.SetToken(cookie.Value)
 			break
 		}
+	}
+
+	if responseData.AccessToken != "" {
+		c.SetToken(responseData.AccessToken)
+	}
+
+	// test
+	c.AuthorizationMethod = AuthMethodOAuth2Internal
+	tenant, _, err := c.Tenant.GetCurrentTenant(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Get Cumulocity system version, but don't fail if it does not work
+	if version, err := c.TenantOptions.GetVersion(ctx); err == nil {
+		c.Version = version
+	}
+
+	c.TenantName = tenant.Name
+	return nil
+}
+
+// LoginUsingOAuth2External login to Cumulocity using an external OAuth2 code
+func (c *Client) LoginUsingOAuth2External(ctx context.Context, code string, initRequest ...string) error {
+
+	data := url.Values{}
+	data.Set("grant_type", "AUTHORIZATION_CODE")
+	data.Set("code", code)
+
+	headers := http.Header{}
+	headers.Add("Content-Length", strconv.Itoa(len(data.Encode())))
+
+	responseData := new(OAuthTokenResponse)
+	options := &RequestOptions{
+		Method:       "POST",
+		Path:         "/tenant/oauth/token",
+		Query:        fmt.Sprintf("tenant_id=%s", c.TenantName),
+		Accept:       "application/json",
+		Header:       headers,
+		ContentType:  "application/x-www-form-urlencoded;charset=UTF-8",
+		Body:         data.Encode(),
+		ResponseData: responseData,
+	}
+
+	if len(initRequest) > 0 && initRequest[0] != "" {
+		if v, err := url.Parse(initRequest[0]); err == nil {
+			options.Path = v.Path
+			options.Query = v.RawQuery
+		}
+	}
+
+	resp, err := c.SendRequest(
+		ctx,
+		*options,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	c.SetCookies(resp.Cookies())
+
+	// read authorization token from cookies
+	for _, cookie := range resp.Cookies() {
+		if strings.EqualFold(cookie.Name, "authorization") {
+			c.SetToken(cookie.Value)
+			break
+		}
+	}
+
+	if responseData.AccessToken != "" {
+		c.SetToken(responseData.AccessToken)
 	}
 
 	// test
@@ -1100,9 +1228,18 @@ func withContext(ctx context.Context, req *http.Request) *http.Request {
 func (c *Client) Do(ctx context.Context, req *http.Request, v interface{}, middleware ...RequestMiddleware) (*Response, error) {
 	req = withContext(ctx, req)
 
-	// Check if an authorization key is provided in the context, if so then override the c8y authentication
-	if authToken := ctx.Value(GetContextAuthTokenKey()); authToken != nil {
-		Logger.Infof("Overriding basic auth provided in the context")
+	// Check if custom auth function is provided
+	if ctxAuthFunc, ok := FromAuthFuncContext(ctx); ok {
+		auth, authErr := ctxAuthFunc(req)
+		if authErr != nil {
+			Logger.Infof("Authorization function returned an error. %s", authErr)
+		} else if auth != "" {
+			Logger.Infof("Using authorization provided by an auth function")
+			req.Header.Set("Authorization", auth)
+		}
+	} else if authToken := ctx.Value(GetContextAuthTokenKey()); authToken != nil {
+		// Check if an authorization key is provided in the context, if so then override the c8y authentication
+		Logger.Infof("Using authorization provided in the context")
 		req.Header.Set("Authorization", authToken.(string))
 	}
 
@@ -1256,10 +1393,10 @@ func (e *Error) Error() string {
 An ErrorResponse reports one or more errors caused by an API request.
 */
 type ErrorResponse struct {
-	Response  *http.Response `json:"-"`                 // HTTP response that caused this error
-	ErrorType string         `json:"error,omitempty"`   // Error type formatted as "<<resource type>>/<<error name>>"". For example, an object not found in the inventory is reported as "inventory/notFound".
-	Message   string         `json:"message,omitempty"` // error message
-	Info      string         `json:"info,omitempty"`    // URL to an error description on the Internet.
+	Response  *Response `json:"-"`                 // HTTP response that caused this error
+	ErrorType string    `json:"error,omitempty"`   // Error type formatted as "<<resource type>>/<<error name>>"". For example, an object not found in the inventory is reported as "inventory/notFound".
+	Message   string    `json:"message,omitempty"` // error message
+	Info      string    `json:"info,omitempty"`    // URL to an error description on the Internet.
 
 	// Error details. Only available in DEBUG mode.
 	Details *struct {
@@ -1271,8 +1408,8 @@ type ErrorResponse struct {
 
 func (r *ErrorResponse) Error() string {
 	return fmt.Sprintf("%v %v: %d %v %v",
-		r.Response.Request.Method, sanitizeURL(r.Response.Request.URL),
-		r.Response.StatusCode, r.ErrorType, r.Message)
+		r.Response.Response.Request.Method, sanitizeURL(r.Response.Response.Request.URL),
+		r.Response.StatusCode(), r.ErrorType, r.Message)
 }
 
 // CheckResponse checks the API response for errors, and returns them if
@@ -1285,8 +1422,12 @@ func CheckResponse(r *http.Response) error {
 	if c := r.StatusCode; 200 <= c && c <= 299 {
 		return nil
 	}
-	errorResponse := &ErrorResponse{Response: r}
+
+	errorResponse := &ErrorResponse{Response: newResponse(r, 0)}
 	data, err := io.ReadAll(r.Body)
+
+	// Store copy of response as error messages are short anyway
+	errorResponse.Response.SetBody(data)
 
 	if err == nil && data != nil {
 		DecodeJSONBytes(data, errorResponse)
@@ -1374,7 +1515,7 @@ func (c *Client) DefaultDryRunHandler(options *RequestOptions, req *http.Request
 	if len(options.FormData) > 0 {
 		message += "\nForm Data:\n"
 
-		// Sort formdata keys
+		// Sort form data keys
 		keys := make([]string, 0, len(options.FormData))
 		for key := range options.FormData {
 			keys = append(keys, key)

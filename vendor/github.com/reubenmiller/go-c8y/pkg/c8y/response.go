@@ -149,7 +149,7 @@ func (r *Response) ReceivedAt() time.Time {
 }
 
 // Size method returns the HTTP response size in bytes. Ya, you can relay on HTTP `Content-Length` header,
-// however it won't be good for chucked transfer/compressed response. Since Resty calculates response size
+// however it won't be good for chucked transfer/compressed response. Since the client calculates response size
 // at the client end. You will get actual size of the http response.
 func (r *Response) Size() int64 {
 	return r.size
@@ -159,7 +159,7 @@ func (r *Response) Size() int64 {
 // option otherwise you get an error as `read err: http: read on closed response body`.
 //
 // Do not forget to close the body, otherwise you might get into connection leaks, no connection reuse.
-// Basically you have taken over the control of response parsing from `Resty`.
+// Basically you have taken over the control of response parsing.
 func (r *Response) RawBody() io.ReadCloser {
 	if r.Response == nil {
 		return nil

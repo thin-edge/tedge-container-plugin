@@ -11,7 +11,7 @@ type OperationBuilder struct {
 
 // NewOperationBuilder returns a new Custom Operation with the specified device id
 // The operation requires at least one custom fragment before it is sent to Cumulocity
-// i.e. b.Set("my_CustomOperation", map[string]string{"myprop": "one"})
+// i.e. b.Set("my_CustomOperation", map[string]string{"myProp": "one"})
 func NewOperationBuilder(deviceID string) *OperationBuilder {
 	b := &OperationBuilder{
 		data: map[string]interface{}{},

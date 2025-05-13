@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/reubenmiller/go-c8y/pkg/c8y/notification2"
 	"github.com/tidwall/gjson"
 )
@@ -29,6 +29,9 @@ type Notification2TokenOptions struct {
 	// The subscriber name which the client wishes to be identified with
 	Subscriber string `json:"subscriber,omitempty"`
 
+	// Default subscriber to use if a token is not provided by the user or an explicit subscriber value
+	DefaultSubscriber string `json:"-"`
+
 	// The subscription name. This value must match the same that was used when the subscription was created
 	Subscription string `json:"subscription,omitempty"`
 
@@ -36,7 +39,14 @@ type Notification2TokenOptions struct {
 	Shared bool `json:"shared,omitempty"`
 }
 
-// Notificatioin2Subscription notification subscription object
+func (nt *Notification2TokenOptions) GetDefaultSubscriber() string {
+	if nt.DefaultSubscriber != "" {
+		return nt.DefaultSubscriber
+	}
+	return "goc8y"
+}
+
+// Notification2Subscription notification subscription object
 type Notification2Subscription struct {
 	ID                 string                          `json:"id,omitempty"`
 	Self               string                          `json:"self,omitempty"`
@@ -50,7 +60,7 @@ type Notification2Subscription struct {
 	Item gjson.Result `json:"-"`
 }
 
-// Notificatioin2Subscription collection options
+// Notification2SubscriptionCollectionOptions collection options
 type Notification2SubscriptionCollectionOptions struct {
 	Context string `url:"context,omitempty"`
 	Source  string `url:"source,omitempty"`
@@ -119,6 +129,11 @@ func (s *Notification2Service) GetSubscriptions(ctx context.Context, opt *Notifi
 // Create token
 func (s *Notification2Service) CreateToken(ctx context.Context, options Notification2TokenOptions) (*Notification2Token, *Response, error) {
 	data := new(Notification2Token)
+
+	// Set a default subscriber if necessary
+	if options.Subscriber == "" {
+		options.Subscriber = options.GetDefaultSubscriber()
+	}
 	resp, err := s.client.SendRequest(ctx, RequestOptions{
 		Method:       "POST",
 		Path:         "notification2/token",
@@ -203,8 +218,9 @@ func (c *Notification2TokenClaim) Subscription() string {
 }
 
 func (c *Notification2TokenClaim) HasExpired() bool {
-	now := time.Now()
-	return !(c.VerifyIssuedAt(now, true) && c.VerifyExpiresAt(now, true))
+	var v = jwt.NewValidator(jwt.WithLeeway(5 * time.Second))
+	err := v.Validate(c)
+	return err != nil
 }
 
 func (s *Notification2Service) ParseToken(tokenString string) (*Notification2TokenClaim, error) {
@@ -240,12 +256,12 @@ func (s *Notification2Service) RenewToken(ctx context.Context, opt Notification2
 		if err != nil {
 			Logger.Infof("Token is invalid. %s", err)
 			isValid = false
-		} else if err := token.Claims.Valid(); err != nil {
+		} else if err := jwt.NewValidator(jwt.WithLeeway(5 * time.Second)).Validate(token.Claims); err != nil {
 			Logger.Infof("Token is invalid. %s", err)
 			isValid = false
 		}
 
-		Logger.Infof("Existing token: alg=%s, valid=%v, expired=%v, issuedAt: %v, expiresAt: %v, subscription=%s, subscriber=%s, shared=%v, tenant=%s", token.Method.Alg(), claims.Valid() == nil, claims.HasExpired(), claims.IssuedAt, claims.ExpiresAt, claims.Subscription(), claims.Subscriber, claims.IsShared(), claims.Tenant())
+		Logger.Infof("Existing token: alg=%s, valid=%v, expired=%v, issuedAt: %v, expiresAt: %v, subscription=%s, subscriber=%s, shared=%v, tenant=%s", token.Method.Alg(), isValid, claims.HasExpired(), claims.IssuedAt, claims.ExpiresAt, claims.Subscription(), claims.Subscriber, claims.IsShared(), claims.Tenant())
 
 		if opt.Options.Subscription != "" {
 			if claims.Subscription() != opt.Options.Subscription {
@@ -285,10 +301,11 @@ func (s *Notification2Service) RenewToken(ctx context.Context, opt Notification2
 
 	Logger.Infof("Creating new token")
 	updatedToken, _, err := s.CreateToken(ctx, Notification2TokenOptions{
-		ExpiresInMinutes: expiresInMinutes,
-		Subscription:     subscription,
-		Subscriber:       subscriber,
-		Shared:           shared,
+		ExpiresInMinutes:  expiresInMinutes,
+		Subscription:      subscription,
+		Subscriber:        subscriber,
+		DefaultSubscriber: opt.Options.DefaultSubscriber,
+		Shared:            shared,
 	})
 	if err != nil {
 		return "", err
@@ -302,7 +319,7 @@ func (s *Notification2Service) RenewToken(ctx context.Context, opt Notification2
 //
 // ```
 //
-//	notifClient, err := client.Notification2.CreateClient(context.Background(), c8y.Notification2ClientOptions{
+//	notificationsClient, err := client.Notification2.CreateClient(context.Background(), c8y.Notification2ClientOptions{
 //	    Token:    os.Getenv("NOTIFICATION2_TOKEN"),
 //	    Consumer: *consumer,
 //	    Options: &c8y.Notification2TokenOptions{
@@ -317,7 +334,7 @@ func (s *Notification2Service) RenewToken(ctx context.Context, opt Notification2
 //	}
 //
 // messagesCh := make(chan notifications2.Message)
-// notifClient.Register("*", messagesCh)
+// notificationsClient.Register("*", messagesCh)
 // signalCh := make(chan os.Signal, 1)
 // signal.Notify(signalCh, os.Interrupt)
 //
@@ -325,7 +342,7 @@ func (s *Notification2Service) RenewToken(ctx context.Context, opt Notification2
 //	  select {
 //	  case msg := <-messagesCh:
 //		      log.Printf("Received message. %s", msg.Payload)
-//	       notifClient.SendMessageAck(msg.Identifier)
+//	       notificationsClient.SendMessageAck(msg.Identifier)
 //
 //	  case <-signalCh:
 //	  	// Enable ctrl-c to stop

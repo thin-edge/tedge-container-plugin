@@ -1,6 +1,9 @@
 package c8y
 
-import "os"
+import (
+	"fmt"
+	"os"
+)
 
 // MicroserviceService api
 type MicroserviceService service
@@ -58,4 +61,14 @@ func (s *MicroserviceService) GetServiceUsers() (*ApplicationSubscriptions, erro
 	ctx := s.client.Context.BootstrapUserFromEnvironment()
 	resp, _, err := s.client.Application.GetCurrentApplicationSubscriptions(ctx)
 	return resp, err
+}
+
+// GetServiceAuth returns the authorization string for the given tenant
+func (s *MicroserviceService) GetServiceAuth(tenant string) (string, error) {
+	for _, user := range s.client.ServiceUsers {
+		if tenant == user.Tenant || tenant == "" {
+			return NewBasicAuthString(user.Tenant, user.Username, user.Password), nil
+		}
+	}
+	return "", fmt.Errorf("service user not found. %w", ErrNotFound)
 }
