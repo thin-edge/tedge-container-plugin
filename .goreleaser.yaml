@@ -38,7 +38,7 @@ builds:
 
 archives:
   - id: nix
-    builds: [linux]
+    ids: [linux]
     <<: &archive_defaults
       name_template: '{{ .ProjectName }}_{{ .Version }}_{{- if eq .Os "darwin" }}macOS{{- else }}{{ .Os }}{{ end }}_{{ .Arch }}{{- if ne .Arm "" }}_v{{ .Arm }}{{ end }}'
     wrap_in_directory: "true"
@@ -47,7 +47,7 @@ archives:
       - LICENSE
 
   - id: homebrew
-    builds: [macOS]
+    ids: [macOS]
     <<: *archive_defaults
     wrap_in_directory: "true"
     formats: [tar.gz]
@@ -55,7 +55,7 @@ archives:
       - LICENSE
 
   - id: windows
-    builds: [windows]
+    ids: [windows]
     <<: *archive_defaults
     wrap_in_directory: "false"
     formats: [zip]
@@ -63,7 +63,7 @@ archives:
       - LICENSE
   
   - id: plainBinaries
-    builds: [macOS, linux, windows]
+    ids: [macOS, linux, windows]
     # Don't include the binary version in the filename so it is easier to download the latest
     <<: &archive_defaults
       name_template: '{{ .ProjectName }}_{{- if eq .Os "darwin" }}macOS{{- else }}{{ .Os }}{{ end }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
