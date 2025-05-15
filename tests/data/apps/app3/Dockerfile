@@ -1,2 +1,2 @@
-FROM docker.io/library/alpine:3.18
+FROM docker.io/library/alpine:latest
 ENTRYPOINT [ "/bin/sleep", "infinity" ]
