@@ -85,6 +85,17 @@ nfpms:
       - rpm
       - apk
 
+    overrides:
+      # Dependency on the Entity HTTP API which was only added in tedge >= 1.5.0
+      # Note: Don't add explicit dependency for apk (Alpine Linux)
+      # as generally only the tedge is just installed via a binary and not the apk package
+      deb:
+        dependencies:
+          - tedge (>= 1.5.0)
+      rpm:
+        dependencies:
+          - tedge >= 1.5.0-1
+
     # FIXME: Remove for official release, as the package can be called "tedge-container-plugin" instead of "tedge-container-plugin-ng"
     replaces:
       - tedge-container-plugin
