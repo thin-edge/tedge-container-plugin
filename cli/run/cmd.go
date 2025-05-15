@@ -50,6 +50,8 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 				DeleteFromCloud:    cliContext.DeleteFromCloud(),
 				EnableEngineEvents: cliContext.EngineEventsEnabled(),
 
+				HTTPHost:       cliContext.GetHTTPHost(),
+				HTTPPort:       cliContext.GetHTTPPort(),
 				MQTTHost:       cliContext.GetMQTTHost(),
 				MQTTPort:       cliContext.GetMQTTPort(),
 				CumulocityHost: cliContext.GetCumulocityHost(),
@@ -158,6 +160,8 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 	viper.SetDefault("delete_from_cloud.enabled", true)
 
 	// thin-edge.io services
+	viper.SetDefault("client.http.host", "127.0.0.1")
+	viper.SetDefault("client.http.port", 8000)
 	viper.SetDefault("client.mqtt.host", "127.0.0.1")
 	// client.mqtt.port: 0 = auto-detection, where 8883 is used when the cert files exist, or 1883 otherwise
 	viper.SetDefault("client.mqtt.port", 0)

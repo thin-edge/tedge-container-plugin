@@ -5,10 +5,14 @@ import (
 	"strings"
 )
 
+var EntityTypeService = "service"
+var EntityTypeChildDevice = "child-device"
+
 type Target struct {
 	RootPrefix    string
 	TopicID       string
 	CloudIdentity string
+	Name          string
 }
 
 func (t *Target) ExternalID() string {
@@ -25,6 +29,7 @@ func (t *Target) Topic() string {
 func (t *Target) Service(name string) *Target {
 	target := NewTarget(t.RootPrefix, strings.Join(strings.Split(t.TopicID, "/")[0:2], "/")+"/service/"+name)
 	target.CloudIdentity = t.CloudIdentity
+	target.Name = name
 	return target
 }
 

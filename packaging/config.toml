@@ -30,6 +30,11 @@ labels = [ "tedge.ignore" ]
 key = "/etc/tedge/device-certs/local-tedge.key"
 # Certificate file used to connect to local thin-edge.io services (only used if the file exists)
 cert_file = "/etc/tedge/device-certs/local-tedge.crt"
+  [client.http]
+  # thin-edge.io HTTP host operated by the tedge-agent on the main device
+  host = "127.0.0.1"
+  # thin-edge.io HTTP port operated by the tedge-agent on the main device
+  port = 8000
 
   [client.mqtt]
   # thin-edge.io MQTT host

@@ -1,6 +1,7 @@
 package tedge
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -10,6 +11,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,6 +51,7 @@ type Client struct {
 	Client           mqtt.Client
 	Target           Target
 	CumulocityClient *c8y.Client
+	TedgeAPI         *TedgeAPIClient
 
 	Entities map[string]any
 	mutex    sync.RWMutex
@@ -103,6 +107,9 @@ func NewTLSConfig(keyFile string, certFile string, caFile string) *tls.Config {
 }
 
 type ClientConfig struct {
+	HTTPHost string
+	HTTPPort uint16
+
 	MqttHost string
 	MqttPort uint16
 
@@ -155,35 +162,20 @@ func NewClient(parent Target, target Target, serviceName string, config *ClientC
 	opts.SetOnConnectHandler(func(c mqtt.Client) {
 		slog.Info("MQTT Client is connected")
 
-		payload, err := PayloadRegistration(map[string]any{}, serviceName, "service", parent.TopicID)
-		if err != nil {
-			slog.Error("Could not convert payload.", "err", err)
-			return
-		}
-		tok := c.Publish(GetTopicRegistration(target), 1, true, payload)
-		<-tok.Done()
-		if err := tok.Error(); err != nil {
-			slog.Error("Failed to publish registration topic.", "err", err)
-			return
-		}
-		slog.Info("Registered service", "topic", GetTopicRegistration(target))
-
 		// Configure subscriptions
 		subscriptions := make(map[string]byte)
 		subscriptions[target.RootPrefix+"/+/+/+/+"] = 1
 		subscriptions[GetTopic(*target.Service("+"), "cmd", "health", "check")] = 1
 		slog.Info("Subscribing to topics.", "topics", subscriptions)
-		tok = c.SubscribeMultiple(subscriptions, nil)
+		tok := c.SubscribeMultiple(subscriptions, nil)
 		tok.Wait()
 
-		// Delay before publishing health status
-		// FIXME: This can be removed once thin-edge.io supports a registration API
-		time.Sleep(1000 * time.Millisecond)
-		payload, err = PayloadHealthStatus(map[string]any{}, StatusUp)
+		payload, err := PayloadHealthStatus(map[string]any{}, StatusUp)
 		if err != nil {
 			return
 		}
 		topic := GetHealthTopic(target)
+		slog.Info("Updating health topic.", "topic", topic)
 		tok = c.Publish(topic, 1, true, payload)
 		<-tok.Done()
 		if err := tok.Error(); err != nil {
@@ -204,6 +196,7 @@ func NewClient(parent Target, target Target, serviceName string, config *ClientC
 		Parent:           parent,
 		Target:           target,
 		CumulocityClient: c8yclient,
+		TedgeAPI:         NewTedgeAPIClient(useCerts, config),
 		Entities:         make(map[string]any),
 	}
 
@@ -263,6 +256,7 @@ func (c *Client) DeleteCumulocityManagedObject(target Target) (bool, error) {
 
 // Publish an MQTT message
 func (c *Client) Publish(topic string, qos byte, retained bool, payload any) error {
+	slog.Info("Publishing MQTT Message.", "topic", topic, "payload", payload, "qos", qos, "retained", retained)
 	tok := c.Client.Publish(topic, 1, retained, payload)
 	if !tok.WaitTimeout(100 * time.Millisecond) {
 		return fmt.Errorf("timed out")
@@ -273,25 +267,8 @@ func (c *Client) Publish(topic string, qos byte, retained bool, payload any) err
 // Deregister a thin-edge.io entity
 // Clear the status health topic as well as the registration topic
 func (c *Client) DeregisterEntity(target Target, retainedTopicPartials ...string) error {
-	delay := 500 * time.Millisecond
-	// Clear any additional topics with retained messages before deregistering
-	for _, topicPartial := range retainedTopicPartials {
-		if err := c.Publish(GetTopic(target, topicPartial), 1, true, ""); err != nil {
-			return err
-		}
-		time.Sleep(delay)
-	}
-
-	if err := c.Publish(GetTopic(target, "status", "health"), 1, true, ""); err != nil {
-		return err
-	}
-	time.Sleep(delay)
-
-	if err := c.Publish(GetTopic(target), 1, true, ""); err != nil {
-		return err
-	}
-
-	return nil
+	_, err := c.TedgeAPI.DeleteEntity(context.Background(), target)
+	return err
 }
 
 // Get the thin-edge.io entities that have already been registered (as retained messages)
@@ -299,4 +276,176 @@ func (c *Client) GetEntities() (map[string]any, error) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	return c.Entities, nil
+}
+
+type TedgeAPIClient struct {
+	Client  *http.Client
+	BaseURL string
+}
+
+func NewTedgeAPIClient(useCerts bool, config *ClientConfig) *TedgeAPIClient {
+	tr := &http.Transport{
+		TLSClientConfig: nil,
+	}
+
+	if useCerts {
+		tr = &http.Transport{
+			TLSClientConfig: NewTLSConfig(config.KeyFile, config.CertFile, config.CAFile),
+		}
+	}
+	client := &http.Client{
+		Transport: tr,
+	}
+
+	scheme := "http"
+	if useCerts {
+		scheme = "https"
+	}
+	baseURL := fmt.Sprintf("%s://%s:%d", scheme, config.HTTPHost, config.HTTPPort)
+
+	return &TedgeAPIClient{
+		Client:  client,
+		BaseURL: baseURL,
+	}
+}
+
+type Entity struct {
+	TedgeID       string `json:"@id,omitempty"`
+	TedgeType     string `json:"@type,omitempty"`
+	TedgeTopicID  string `json:"@topic-id,omitempty"`
+	TedgeParentID string `json:"@parent,omitempty"`
+	Name          string `json:"name,omitempty"`
+	Type          string `json:"type,omitempty"`
+}
+
+type Responder func(*Response, error) (*Response, error)
+
+func OkResponder(allowedCodes ...int) Responder {
+	return func(r *Response, err error) (*Response, error) {
+		if r.IsError() {
+			if !slices.Contains(allowedCodes, r.StatusCode()) {
+				return r, nil
+			}
+			return r, fmt.Errorf("invalid api response. status_code=%d", r.StatusCode())
+		}
+		return r, nil
+	}
+}
+
+func (c *TedgeAPIClient) Do(req *http.Request, responders ...Responder) (*Response, error) {
+	resp, err := c.Client.Do(req)
+	wrappedResponse := NewResponse(resp)
+
+	if err == nil {
+		for _, responder := range responders {
+			wrappedResponse, err = responder(wrappedResponse, err)
+			if err != nil {
+				break
+			}
+		}
+	}
+
+	return wrappedResponse, err
+}
+
+func (c *TedgeAPIClient) GetURL(partials ...string) string {
+	parts := make([]string, 0, 1+len(partials))
+	parts = append(parts, c.BaseURL)
+	parts = append(parts, partials...)
+	return strings.Join(parts, "/")
+}
+
+func (c *TedgeAPIClient) CreateEntity(ctx context.Context, entity Entity) (*Response, error) {
+	b, err := json.Marshal(entity)
+	if err != nil {
+		return nil, err
+	}
+	slog.Info("Registering device by http api.", "body", b)
+	reqURL := c.GetURL("te/v1/entities")
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	return c.Do(req, OkResponder(201, 409))
+}
+
+func (c *TedgeAPIClient) PatchEntity(ctx context.Context, entity Entity, data any) (*Response, error) {
+	b, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	slog.Info("Patching entity by http api.", "body", b)
+	reqURL := c.GetURL("te/v1/entities", entity.TedgeTopicID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, reqURL, bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	return c.Do(req, OkResponder(200))
+}
+
+func (c *TedgeAPIClient) UpdateTwin(ctx context.Context, entity Entity, name string, data any) (*Response, error) {
+	b, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	slog.Info("Updating twin by http api.", "body", b)
+	reqURL := c.GetURL("te/v1/entities", entity.TedgeTopicID, "twin", name)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, reqURL, bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	return c.Do(req, OkResponder(200))
+}
+
+func (c *TedgeAPIClient) DeleteEntity(ctx context.Context, target Target) (*Response, error) {
+	reqURL := c.GetURL("te/v1/entities", target.TopicID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	return c.Do(req, OkResponder(200, 204))
+}
+
+func (c *TedgeAPIClient) GetEntity(ctx context.Context, target Target) (*Response, error) {
+	reqURL := c.GetURL("te/v1/entities", target.TopicID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	return c.Do(req, OkResponder(200))
+}
+
+type Response struct {
+	RawResponse *http.Response
+}
+
+func NewResponse(r *http.Response) *Response {
+	return &Response{
+		RawResponse: r,
+	}
+}
+
+// IsSuccess method returns true if HTTP status `code >= 200 and <= 299` otherwise false.
+func (r *Response) IsSuccess() bool {
+	return r.StatusCode() > 199 && r.StatusCode() < 300
+}
+
+// IsError method returns true if HTTP status `code >= 400` otherwise false.
+func (r *Response) IsError() bool {
+	return r.StatusCode() > 399
+}
+
+func (r *Response) StatusCode() int {
+	if r.RawResponse == nil {
+		return 0
+	}
+	return r.RawResponse.StatusCode
 }
