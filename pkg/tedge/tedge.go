@@ -13,7 +13,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -54,7 +53,6 @@ type Client struct {
 	TedgeAPI         *TedgeAPIClient
 
 	Entities map[string]any
-	mutex    sync.RWMutex
 }
 
 func fileExists(filePath string) bool {
@@ -200,29 +198,7 @@ func NewClient(parent Target, target Target, serviceName string, config *ClientC
 		Entities:         make(map[string]any),
 	}
 
-	registrationTopics := GetTopic(*target.Service("+"))
-	slog.Info("Subscribing to registration topics.", "topic", registrationTopics)
-	c.Client.AddRoute(GetTopic(*target.Service("+")), func(mqttc mqtt.Client, m mqtt.Message) {
-		go c.handleRegistrationMessage(mqttc, m)
-	})
 	return c
-}
-
-func (c *Client) handleRegistrationMessage(_ mqtt.Client, m mqtt.Message) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	if len(m.Payload()) > 0 {
-		payload := make(map[string]any)
-		if err := json.Unmarshal(m.Payload(), &payload); err != nil {
-			slog.Warn("Could not unmarshal registration message", "err", err)
-		} else {
-			c.Entities[m.Topic()] = payload
-		}
-	} else {
-		slog.Info("Removing entity from store.", "topic", m.Topic())
-		delete(c.Entities, m.Topic())
-	}
 }
 
 // Connect the MQTT client to the thin-edge.io broker
@@ -272,10 +248,30 @@ func (c *Client) DeregisterEntity(target Target, retainedTopicPartials ...string
 }
 
 // Get the thin-edge.io entities that have already been registered (as retained messages)
-func (c *Client) GetEntities() (map[string]any, error) {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-	return c.Entities, nil
+func (c *Client) GetEntities() (map[string]Entity, error) {
+	resp, err := c.TedgeAPI.GetEntities(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	values := make([]Entity, 0)
+	if err := resp.Decode(&values); err != nil {
+		return nil, err
+	}
+
+	data := make(map[string]Entity)
+	for _, v := range values {
+		resp, err := c.TedgeAPI.GetEntityTwin(context.Background(), Target{TopicID: v.TedgeTopicID})
+		if err == nil && resp.StatusCode() == 200 {
+			ev := &Entity{}
+			if err := resp.Decode(&ev); err == nil {
+				v.Type = ev.Type
+			}
+			data[v.TedgeTopicID] = v
+		}
+	}
+
+	return data, nil
 }
 
 type TedgeAPIClient struct {
@@ -412,8 +408,30 @@ func (c *TedgeAPIClient) DeleteEntity(ctx context.Context, target Target) (*Resp
 	return c.Do(req, OkResponder(200, 204))
 }
 
+func (c *TedgeAPIClient) GetEntities(ctx context.Context) (*Response, error) {
+	reqURL := c.GetURL("te/v1/entities")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	return c.Do(req, OkResponder(200))
+}
+
 func (c *TedgeAPIClient) GetEntity(ctx context.Context, target Target) (*Response, error) {
 	reqURL := c.GetURL("te/v1/entities", target.TopicID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	return c.Do(req, OkResponder(200))
+}
+
+func (c *TedgeAPIClient) GetEntityTwin(ctx context.Context, target Target, name ...string) (*Response, error) {
+	reqURL := c.GetURL("te/v1/entities", target.TopicID, "twin")
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, err
@@ -431,6 +449,11 @@ func NewResponse(r *http.Response) *Response {
 	return &Response{
 		RawResponse: r,
 	}
+}
+
+func (r *Response) Decode(v any) error {
+	defer r.RawResponse.Body.Close()
+	return json.NewDecoder(r.RawResponse.Body).Decode(v)
 }
 
 // IsSuccess method returns true if HTTP status `code >= 200 and <= 299` otherwise false.
