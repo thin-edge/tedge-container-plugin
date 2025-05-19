@@ -319,7 +319,8 @@ type Responder func(*Response, error) (*Response, error)
 func OkResponder(allowedCodes ...int) Responder {
 	return func(r *Response, err error) (*Response, error) {
 		if r.IsError() {
-			if !slices.Contains(allowedCodes, r.StatusCode()) {
+			if slices.Contains(allowedCodes, r.StatusCode()) {
+				slog.Debug("Ok response.", "status_code", r.StatusCode(), "ok_status_codes", allowedCodes)
 				return r, nil
 			}
 			return r, fmt.Errorf("invalid api response. status_code=%d", r.StatusCode())
