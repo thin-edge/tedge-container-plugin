@@ -243,6 +243,14 @@ func (c *Client) Publish(topic string, qos byte, retained bool, payload any) err
 // Deregister a thin-edge.io entity
 // Clear the status health topic as well as the registration topic
 func (c *Client) DeregisterEntity(target Target, retainedTopicPartials ...string) error {
+	// FIXME: Remove once thin-edge.io also deletes any related health topics
+	// As of tedge 1.5.1, deleting a topic can still leave the /status/health message
+	healthTopic := GetHealthTopic(target)
+	if pubErr := c.Publish(healthTopic, 1, true, ""); pubErr != nil {
+		slog.Warn("Could not clear health topic.", "err", pubErr, "topic", healthTopic)
+	}
+	time.Sleep(250 * time.Millisecond)
+
 	_, err := c.TedgeAPI.DeleteEntity(context.Background(), target)
 	return err
 }
