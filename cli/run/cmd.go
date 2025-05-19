@@ -48,6 +48,7 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 				ServiceName:        cliContext.GetServiceName(),
 				EnableMetrics:      cliContext.MetricsEnabled(),
 				DeleteFromCloud:    cliContext.DeleteFromCloud(),
+				DeleteOrphans:      cliContext.DeleteOrphans(),
 				EnableEngineEvents: cliContext.EngineEventsEnabled(),
 
 				HTTPHost:       cliContext.GetHTTPHost(),
@@ -158,6 +159,7 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 	// Feature flags
 	viper.SetDefault("events.enabled", true)
 	viper.SetDefault("delete_from_cloud.enabled", true)
+	viper.SetDefault("delete_from_cloud.orphans", true)
 
 	// thin-edge.io services
 	viper.SetDefault("client.http.host", "127.0.0.1")
