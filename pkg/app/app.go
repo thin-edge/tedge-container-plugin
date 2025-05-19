@@ -440,15 +440,16 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 	removeStaleServices := filterOptions.IsEmpty()
 
 	// Record all registered services
+	// The entities store lookup is keyed by the topic_id (not topic!)
 	existingServices := make(map[string]struct{})
 	for k, v := range entities {
-		if v.(map[string]any)["type"] == container.ContainerType || v.(map[string]any)["type"] == container.ContainerGroupType {
+		if v.Type == container.ContainerType || v.Type == container.ContainerGroupType {
 			existingServices[k] = struct{}{}
 		}
 	}
 	slog.Info("Found entities.", "total", len(entities))
-	for key := range entities {
-		slog.Debug("Entity store.", "key", key)
+	for key, value := range entities {
+		slog.Debug("Entity store.", "key", key, "value", value)
 	}
 
 	slog.Info("Reading containers")
@@ -461,14 +462,7 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 	slog.Info("Registering containers")
 	for _, item := range items {
 		target := a.Device.Service(item.Name)
-
-		// Skip registration message if it already exists
-		// if _, ok := existingServices[target.Topic()]; ok {
-		// 	slog.Info("Container is already registered", "topic", target.Topic())
-		// 	delete(existingServices, target.Topic())
-		// 	continue
-		// }
-		delete(existingServices, target.Topic())
+		delete(existingServices, target.TopicID)
 
 		// Register using HTTP API
 		resp, err := tedgeClient.TedgeAPI.CreateEntity(context.Background(), tedge.Entity{
@@ -529,14 +523,9 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 	markedForDeletion := make([]tedge.Target, 0)
 	if removeStaleServices {
 		slog.Info("Checking for any stale services")
-		for staleTopic := range existingServices {
-			slog.Info("Removing stale service", "topic", staleTopic)
-			target, err := tedge.NewTargetFromTopic(staleTopic)
-			if err != nil {
-				slog.Warn("Invalid topic structure", "err", err)
-				continue
-			}
-
+		for staleTopicID := range existingServices {
+			slog.Info("Removing stale service.", "topic-id", staleTopicID)
+			target := tedge.NewTarget(a.Device.RootPrefix, staleTopicID)
 			if err := tedgeClient.DeregisterEntity(*target); err != nil {
 				slog.Warn("Failed to deregister entity.", "err", err)
 			}
