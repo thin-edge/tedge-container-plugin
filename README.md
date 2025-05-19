@@ -154,7 +154,7 @@ To build the project use the following steps:
 
 1. Checkout the project
 
-2. Install [goreleaser]https://goreleaser.com/install/)
+2. Install [goreleaser](https://goreleaser.com/install/)
 
     **Note**
 
