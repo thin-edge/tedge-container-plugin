@@ -72,6 +72,8 @@ enabled = true
 [delete_from_cloud]
 # Enable/Disable the deletion of services from the cloud (using REST API) when a container is removed
 enabled = true
+# delete orphaned services (related to containers) from the cloud
+orphans = true
 
 [registry]
 # Path to the file containing container registry credentials

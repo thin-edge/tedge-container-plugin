@@ -129,6 +129,32 @@ Manual container created and then killed
     Cumulocity.Should Have Services    name=manualapp3    service_type=container    min_count=0    max_count=0    timeout=10
 
 
+Remove Orphaned Cloud Services
+    [Documentation]    Orphaned cloud services can occur if entities are deregistered manually when the tedge-container-plugin
+    ...    service is not running.
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run -d --name manualapp4 busybox sh -c 'exec sleep infinity'
+    Operation Should Be SUCCESSFUL    ${operation}    timeout=60
+    Cumulocity.Should Have Services    name=manualapp4    service_type=container    status=up
+
+    Stop Service    tedge-container-plugin
+
+    # Uninstall
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker rm manualapp4 --force
+    Operation Should Be SUCCESSFUL    ${operation}
+
+    # Clear container service locally
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge mqtt pub -r 'te/device/main/service/manualapp4' ''; sleep 1; sudo tedge http delete '/te/v1/entities/device/main/service/manualapp4'
+    Operation Should Be SUCCESSFUL    ${operation}
+
+    # Confirm that the cloud's service status has not changed
+    # Note: This could change once thin-edge.io supports deleting the cloud entities
+    Sleep    1s
+    Cumulocity.Should Have Services    name=manualapp4    service_type=container    status=up
+
+    # Start the service, and check that the service has been removed (without the explicit service type defined)
+    Start Service    tedge-container-plugin
+    Cumulocity.Should Have Services    name=manualapp4    min_count=0    max_count=0    timeout=10
+
 *** Keywords ***
 
 Suite Setup

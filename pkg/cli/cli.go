@@ -155,6 +155,10 @@ func (c *Cli) DeleteFromCloud() bool {
 	return viper.GetBool("delete_from_cloud.enabled")
 }
 
+func (c *Cli) DeleteOrphans() bool {
+	return viper.GetBool("delete_from_cloud.orphans")
+}
+
 func (c *Cli) GetHTTPHost() string {
 	return viper.GetString("client.http.host")
 }

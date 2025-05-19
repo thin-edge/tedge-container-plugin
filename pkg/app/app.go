@@ -13,6 +13,7 @@ import (
 
 	"github.com/docker/docker/api/types/events"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/reubenmiller/go-c8y/pkg/c8y"
 	"github.com/thin-edge/tedge-container-plugin/pkg/container"
 	"github.com/thin-edge/tedge-container-plugin/pkg/tedge"
 )
@@ -68,6 +69,7 @@ type Config struct {
 	EnableMetrics      bool
 	EnableEngineEvents bool
 	DeleteFromCloud    bool
+	DeleteOrphans      bool
 
 	HTTPHost string
 	HTTPPort uint16
@@ -165,6 +167,42 @@ func (a *App) DeleteLegacyService(deleteFromCloud bool) {
 			slog.Warn("Failed to delete managed object.", "err", err)
 		}
 	}
+}
+
+// Delete any unclaimed/orphaned cloud services which haven't been registered with
+func (a *App) DeleteOrphanedCloudServices(tedgeEntities map[string]tedge.Entity) error {
+	extID, _, err := a.client.CumulocityClient.Identity.GetExternalID(context.Background(), "c8y_Serial", a.Device.ExternalID())
+	if err != nil {
+		slog.Warn("Could not lookup device's managed object by its external id.", "err", err, "externalId", a.Device.ExternalID())
+	}
+
+	mos, _, err := a.client.CumulocityClient.Inventory.GetChildAdditions(context.Background(), extID.ManagedObject.ID, &c8y.ManagedObjectOptions{
+		Query:             fmt.Sprintf("type eq 'c8y_Service' and (serviceType eq '%s' or serviceType eq '%s')", container.ContainerType, container.ContainerGroupType),
+		PaginationOptions: *c8y.NewPaginationOptions(100),
+	})
+	if err != nil {
+		return err
+	}
+
+	slog.Info("Found cloud services.", "count", len(mos.References))
+
+	for _, ref := range mos.References {
+		target := a.client.Target.Service(ref.ManagedObject.Name)
+		slog.Info("Check if service is registered locally.", "topic-id", target.TopicID)
+
+		if _, found := tedgeEntities[target.TopicID]; !found {
+			slog.Info("Found orphaned cloud service.", "service", ref.ManagedObject.Name, "type", ref.ManagedObject.Type, "moID", ref.ManagedObject.ID)
+
+			if _, respErr := a.client.CumulocityClient.Inventory.Delete(context.Background(), ref.ManagedObject.ID); respErr != nil {
+				slog.Warn("Could not delete orphaned cloud service.", "err", respErr)
+			} else {
+				slog.Info("Successfully deleted orphaned cloud service.", "moID", ref.ManagedObject.ID)
+			}
+		} else {
+			slog.Info("Service is registered locally.", "topic-id", target.TopicID)
+		}
+	}
+	return nil
 }
 
 func (a *App) Subscribe() error {
@@ -465,19 +503,23 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 		delete(existingServices, target.TopicID)
 
 		// Register using HTTP API
-		resp, err := tedgeClient.TedgeAPI.CreateEntity(context.Background(), tedge.Entity{
+		entity := tedge.Entity{
 			TedgeType:     tedge.EntityTypeService,
 			TedgeTopicID:  target.TopicID,
 			Name:          item.Name,
 			Type:          item.ServiceType,
 			TedgeParentID: tedgeClient.Parent.TopicID,
-		})
+		}
+		resp, err := tedgeClient.TedgeAPI.CreateEntity(context.Background(), entity)
 
 		if err == nil {
 			slog.Info("Registered container.", "topic", target.Topic(), "url", resp.RawResponse.Request.URL.String(), "status_code", resp.RawResponse.Status)
 		} else {
 			slog.Error("Failed to register container.", "topic", target.Topic(), "err", err)
 		}
+
+		// Manually add to entities store for re-use later without having to fetch a new list of entities
+		entities[entity.TedgeTopicID] = entity
 	}
 
 	// Publish health messages
@@ -530,6 +572,9 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 				slog.Warn("Failed to deregister entity.", "err", err)
 			}
 
+			// Update entities map
+			delete(entities, staleTopicID)
+
 			// mark targets for deletion from the cloud, but don't delete them yet to give time
 			// for thin-edge.io to process the status updates
 			markedForDeletion = append(markedForDeletion, *target)
@@ -553,6 +598,13 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 					}
 				}
 			}
+		}
+	}
+
+	// Delete orphaned cloud services
+	if a.config.DeleteFromCloud && a.config.DeleteOrphans {
+		if err := a.DeleteOrphanedCloudServices(entities); err != nil {
+			slog.Warn("Could not delete orphaned cloud services.", "err", err)
 		}
 	}
 
