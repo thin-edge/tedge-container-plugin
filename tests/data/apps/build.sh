@@ -16,4 +16,6 @@ fi
 
 (cd app4 && tar czvf ../app4.tar.gz docker-compose.yaml Dockerfile)
 
+(cd app5 && tar czvf ../app5.tar.gz docker-compose.yaml htdocs)
+
 popd ||:

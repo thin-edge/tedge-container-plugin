@@ -1,0 +1,8 @@
+services:
+  httpd:
+    image: docker.io/library/httpd:latest
+    volumes:
+      - ./htdocs:/var/www/html
+    ports:
+      - 9082:80
+    restart: always
