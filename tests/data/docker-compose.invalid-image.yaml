@@ -1,0 +1,14 @@
+version: "3"
+services:
+  nginx:
+    image: example.com/doesnotexist
+    hostname: nginx
+    networks:
+      - tedge
+    ports:
+      - 8080:80
+
+networks:
+  tedge:
+    name: tedge
+    external: true

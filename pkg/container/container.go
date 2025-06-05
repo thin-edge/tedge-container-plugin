@@ -711,12 +711,13 @@ func (c *ContainerClient) DockerCommand(args ...string) (string, []string, error
 }
 
 func (c *ContainerClient) ComposeUp(ctx context.Context, w io.Writer, projectName string, workingDir string, extraArgs ...string) error {
-	slog.Info("Starting compose project.", "name", projectName, "dir", workingDir)
+	slog.Info("Preparing compose command.", "name", projectName, "dir", workingDir)
 	command, args, err := prepareComposeCommand("up", "--detach", "--remove-orphans")
 	if err != nil {
 		return err
 	}
 	args = append(args, extraArgs...)
+	slog.Info("Starting compose project.", "name", projectName, "dir", workingDir, "command", command, "args", strings.Join(args, " "))
 	prog := exec.Command(command, args...)
 	prog.Dir = workingDir
 	out, err := prog.CombinedOutput()

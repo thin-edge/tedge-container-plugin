@@ -7,56 +7,104 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/hashicorp/go-version"
+	"github.com/thin-edge/tedge-container-plugin/pkg/cmdbuilder"
+
 	composeCli "github.com/compose-spec/compose-go/v2/cli"
 )
 
-func detectCompose() (command string, args []string, err error) {
-	composeBackends := [][]string{
-		{"docker", "compose"},
-		{"docker-compose"},
-		{"podman-compose"},
+// execCommand is a variable to enable mocking of exec.Command
+var execCommand = exec.Command
+
+// detectComposeFunc is a variable to enable mocking of detectCompose
+var detectComposeFunc = detectCompose
+
+func parseValueWithPrefix(in string, prefix string) string {
+	for _, line := range strings.Split(in, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return strings.Split(strings.TrimPrefix(line, prefix), ",")[0]
+		}
+	}
+	return ""
+}
+
+func parsePodmanComposeVersion(in string) string {
+	return parseValueWithPrefix(in, "podman-compose version ")
+}
+
+func parseDockerComposeVersion(in string) string {
+	if v := parseValueWithPrefix(in, "Docker Compose version "); v != "" {
+		return v
+	}
+	return parseValueWithPrefix(in, "docker-compose version ")
+}
+
+func detectCompose() (*cmdbuilder.Command, error) {
+	composeBackends := []struct {
+		Command     cmdbuilder.BaseCommand
+		VersionFunc func(string) string
+	}{
+		{
+			Command:     cmdbuilder.NewBaseCommand("docker", "compose"),
+			VersionFunc: parseDockerComposeVersion,
+		},
+		{
+			Command:     cmdbuilder.NewBaseCommand("docker-compose"),
+			VersionFunc: parseDockerComposeVersion,
+		},
+		{
+			Command:     cmdbuilder.NewBaseCommand("podman-compose"),
+			VersionFunc: parsePodmanComposeVersion,
+		},
 	}
 
 	for _, backend := range composeBackends {
-		command := append(backend, "version")
-		output, err := exec.Command(command[0], command[1:]...).CombinedOutput()
+		output, err := execCommand(backend.Command.Name(), backend.Command.Args("version")...).CombinedOutput()
 		if err == nil {
-			if len(command) == 1 {
-				return command[0], []string{}, nil
+			ver, verErr := version.NewVersion(backend.VersionFunc(string(output)))
+			if verErr != nil {
+				ver, _ = version.NewVersion("0.0.0")
 			}
-			return command[0], command[1 : len(command)-1], nil
+			composeCommand := &cmdbuilder.Command{
+				Base:    backend.Command,
+				Args:    []string{},
+				Version: ver,
+			}
+			return composeCommand, nil
 		}
-		slog.Info("command failed.", "command", strings.Join(backend, " "), "output", output)
+		slog.Info("command failed.", "command", backend.Command.Name(), "output", output)
 	}
 
-	return "", nil, fmt.Errorf("compose cli not found")
+	return nil, fmt.Errorf("compose cli not found")
 }
 
-func prepareComposeCommand(commandArgs ...string) (command string, args []string, err error) {
-	command, args, err = detectCompose()
+func prepareComposeCommand(args ...string) (string, []string, error) {
+	command, err := detectComposeFunc()
 	if err != nil {
-		return
+		return "", []string{}, err
+	}
+
+	command.Args = append(command.Args, args...)
+
+	subcommand := ""
+	if len(args) > 0 {
+		subcommand = args[0]
 	}
 
 	// Normalized differences between the commands
-	if command == "podman-compose" && len(commandArgs) > 0 && commandArgs[0] == "down" {
-		// Note: podman-compose down does not support "--remove-orphans" argument, so strip it out
-		commandArgs = filter(commandArgs, func(s string) bool {
-			return s != "--remove-orphans"
-		})
-	}
+	err = cmdbuilder.WithConditionalFlags(
+		command,
+		subcommand,
+		// podman-compose down does not support "--remove-orphans" argument, so strip it out
+		cmdbuilder.RemoveFlag("podman-compose", "down", "--remove-orphans", nil),
 
-	args = append(args, commandArgs...)
-	return command, args, nil
-}
+		// Due to a bug in podman-compose where it swallows the exit code, the output is parsed
+		// to check of any errors, however in newer podman versions, e.g. podman 5.2
+		// https://github.com/thin-edge/tedge-container-plugin/issues/70
+		cmdbuilder.PrependFlag("podman-compose", "up", "--verbose", cmdbuilder.MustVersionConstraint(">=1.1.0")),
+	)
 
-func filter(ss []string, test func(string) bool) (ret []string) {
-	for _, s := range ss {
-		if test(s) {
-			ret = append(ret, s)
-		}
-	}
-	return
+	return command.Base.Name(), command.Base.Args(command.Args...), err
 }
 
 func ReadImages(ctx context.Context, paths []string, workingDir string) ([]string, error) {
