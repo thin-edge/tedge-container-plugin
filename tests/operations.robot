@@ -159,6 +159,16 @@ Remove Orphaned Cloud Services
     Start Service    tedge-container-plugin
     Cumulocity.Should Have Services    name=manualapp4    min_count=0    max_count=0    timeout=10
 
+Install container group that uses host volume mount
+    # Install container-group
+    Install container-group application    app5    1.0.0    app5    ${CURDIR}/data/apps/app5.tar.gz
+    Device Should Have Installed Software    {"name": "app5", "version": "1.0.0", "softwareType": "container-group"}
+    Cumulocity.Should Have Services    name=app5@httpd    service_type=container-group    status=up
+
+    ${operation}=    Cumulocity.Execute Shell Command    text=curl -sf http://127.0.0.1:9082
+    ${operation}=    Operation Should Be SUCCESSFUL    ${operation}
+    Should Contain    ${operation["c8y_Command"]["result"]}    It works
+
 *** Keywords ***
 
 Suite Setup
@@ -186,3 +196,10 @@ Install container-group file
     Operation Should Be SUCCESSFUL    ${operation}
     Should Contain    ${operation.to_json()["c8y_Command"]["result"]}    My Custom Web Application
     Cumulocity.Should Have Services    name=${package_name}@${service_name}    service_type=container-group    status=up
+
+Install container-group application
+    [Documentation]    Install a container-group and let the user do follow up tests
+    [Arguments]    ${package_name}    ${package_version}    ${service_name}    ${file}
+    ${binary_url}=    Cumulocity.Create Inventory Binary    ${package_name}    container-group    file=${file}
+    ${operation}=    Cumulocity.Install Software    {"name": "${package_name}", "version": "${package_version}", "softwareType": "container-group", "url": "${binary_url}"}
+    Operation Should Be SUCCESSFUL    ${operation}    timeout=300
