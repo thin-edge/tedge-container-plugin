@@ -1467,7 +1467,7 @@ func FilterEnvVariables(l []string, exclude []string) []string {
 		ignore := false
 		for _, excludePattern := range exclude {
 			if strings.HasPrefix(envItem, excludePattern) {
-				ignore = false
+				ignore = true
 				break
 			}
 		}
