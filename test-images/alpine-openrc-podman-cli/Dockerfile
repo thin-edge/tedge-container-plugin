@@ -16,7 +16,9 @@ RUN apk add --no-cache \
         # see https://github.com/containers/buildah/issues/3666
         fuse-overlayfs \
     && wget -O - thin-edge.io/install.sh | sh -s \
-    && apk add tedge-command-plugin
+    && apk add \
+        tedge-apk-plugin \
+        tedge-command-plugin
 
 ADD https://raw.githubusercontent.com/thin-edge/tedge-demo-container/refs/heads/main/images/common/bootstrap.sh /usr/bin/
 RUN chmod 755 /usr/bin/bootstrap.sh
