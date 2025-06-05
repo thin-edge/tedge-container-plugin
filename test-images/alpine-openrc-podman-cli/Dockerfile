@@ -1,4 +1,4 @@
-FROM docker.io/alpine:latest
+FROM docker.io/alpine:3.20
 ARG TARGETPLATFORM
 
 RUN apk add --no-cache \
