@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -339,14 +340,15 @@ func OkResponder(allowedCodes ...int) Responder {
 
 func (c *TedgeAPIClient) Do(req *http.Request, responders ...Responder) (*Response, error) {
 	resp, err := c.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
 	wrappedResponse := NewResponse(resp)
 
-	if err == nil {
-		for _, responder := range responders {
-			wrappedResponse, err = responder(wrappedResponse, err)
-			if err != nil {
-				break
-			}
+	for _, responder := range responders {
+		wrappedResponse, err = responder(wrappedResponse, err)
+		if err != nil {
+			break
 		}
 	}
 
@@ -452,17 +454,26 @@ func (c *TedgeAPIClient) GetEntityTwin(ctx context.Context, target Target, name 
 
 type Response struct {
 	RawResponse *http.Response
+	Body        []byte
 }
 
 func NewResponse(r *http.Response) *Response {
+	var body []byte
+	if r != nil && r.Body != nil {
+		body, _ = io.ReadAll(r.Body)
+		_ = r.Body.Close()
+	}
 	return &Response{
 		RawResponse: r,
+		Body:        body,
 	}
 }
 
 func (r *Response) Decode(v any) error {
-	defer r.RawResponse.Body.Close()
-	return json.NewDecoder(r.RawResponse.Body).Decode(v)
+	if len(r.Body) == 0 {
+		return fmt.Errorf("response body is empty")
+	}
+	return json.Unmarshal(r.Body, v)
 }
 
 // IsSuccess method returns true if HTTP status `code >= 200 and <= 299` otherwise false.
