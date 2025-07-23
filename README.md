@@ -97,13 +97,13 @@ Checkout the [TELEMETRY](./docs/TELEMETRY.md) docs for details on what is includ
 
 The tedge-container-plugin can be configured with the following properties.
 
-A default configuration is provided in the package, [tedge-container-plugin/config.toml](./packaging/config.toml) and it include a description of each property.
+A default configuration is provided in the package, [tedge-container-plugin.toml](./packaging/config.toml) and it include a description of each property.
 
 
 **Default Configuration file location**
 
 ```sh
-/etc/tedge-container-plugin/config.toml
+/etc/tedge/plugins/tedge-container-plugin.toml
 ```
 
 **Note**
