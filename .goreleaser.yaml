@@ -121,6 +121,7 @@ nfpms:
       # Config
       - src: ./packaging/config.toml
         dst: /etc/tedge/plugins/tedge-container-plugin.toml
+        type: config
         file_info:
           mode: 0644
           owner: tedge
