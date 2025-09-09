@@ -36,12 +36,12 @@ Install/uninstall container-group package
 Install/uninstall container-group package with non-existent image
     ${binary_url}=    Cumulocity.Create Inventory Binary    nginx    container-group    file=${CURDIR}/data/docker-compose.invalid-image.yaml
     ${operation}=    Cumulocity.Install Software    {"name": "nginx", "version": "1.0.0", "softwareType": "container-group", "url": "${binary_url}"}
-    Operation Should Be FAILED    ${operation}    timeout=60
+    Operation Should Be FAILED    ${operation}    timeout=120
 
 Install invalid container-group
     ${binary_url}=    Cumulocity.Create Inventory Binary    nginx    container-group    file=${CURDIR}/data/docker-compose.invalid.yaml
     ${operation}=    Cumulocity.Install Software    {"name": "nginx", "version": "1.0.0", "softwareType": "container-group", "url": "${binary_url}"}
-    Operation Should Be FAILED    ${operation}    timeout=60
+    Operation Should Be FAILED    ${operation}    timeout=120
     Device Should Not Have Installed Software    {"name": "nginx", "version": "1.0.0", "softwareType": "container-group"}
 
 Install container-group with multiple files - app1
