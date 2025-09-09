@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types"
+	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
@@ -27,7 +27,6 @@ import (
 	"github.com/docker/docker/api/types/strslice"
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/errdefs"
 	"github.com/docker/go-connections/nat"
 	"github.com/docker/go-units"
 	"github.com/thin-edge/tedge-container-plugin/pkg/utils"
@@ -116,7 +115,7 @@ type Container struct {
 	Labels map[string]string `json:"-"`
 }
 
-func NewContainerFromDockerContainer(item *types.Container) TedgeContainer {
+func NewContainerFromDockerContainer(item *container.Summary) TedgeContainer {
 	container := Container{
 		Id:          item.ID,
 		Name:        ConvertName(item.Names),
@@ -186,7 +185,7 @@ func ConvertToTedgeStatus(v string) string {
 	}
 }
 
-func FormatPorts(values []types.Port) string {
+func FormatPorts(values []container.Port) string {
 	formatted := make([]string, 0, len(values))
 	for _, port := range values {
 		if port.PublicPort == 0 {
@@ -574,11 +573,11 @@ func NormalizeImageRef(imageRef string) string {
 // Use credentials function to generate initial credentials
 // and call again if the credentials fail which gives the credentials
 // helper to invalid its own cache
-func (c *ContainerClient) ImagePullWithRetries(ctx context.Context, imageRef string, alwaysPull bool, opts ImagePullOptions) (*types.ImageInspect, error) {
+func (c *ContainerClient) ImagePullWithRetries(ctx context.Context, imageRef string, alwaysPull bool, opts ImagePullOptions) (*image.InspectResponse, error) {
 	// Check if image exists
 	// Use ImageInspectWithRaw over ImageList as inspect is able to look up images either with or without
 	// the repository details making it more compatible between docker and podman
-	if imageInspect, _, err := c.Client.ImageInspectWithRaw(ctx, imageRef); err != nil {
+	if imageInspect, err := c.Client.ImageInspect(ctx, imageRef); err != nil {
 		// Don't fail, just log it and continue
 		slog.Info("Image does not already exist, trying to pull image.", "response", err)
 	} else if !alwaysPull {
@@ -636,7 +635,7 @@ func (c *ContainerClient) ImagePullWithRetries(ctx context.Context, imageRef str
 
 		//
 		// Check if image is not present
-		imageInspect, _, imageErr := c.Client.ImageInspectWithRaw(ctx, imageRef)
+		imageInspect, imageErr := c.Client.ImageInspect(ctx, imageRef)
 		if imageErr != nil {
 			slog.Error("No image found after pulling.", "err", imageErr)
 			return nil, imageErr
@@ -648,7 +647,7 @@ func (c *ContainerClient) ImagePullWithRetries(ctx context.Context, imageRef str
 	if err != nil {
 		return nil, err
 	}
-	return result.(*types.ImageInspect), err
+	return result.(*image.InspectResponse), err
 }
 
 //nolint:all
@@ -995,7 +994,7 @@ func (c *ContainerClient) WaitForStop(ctx context.Context, containerID string) e
 	}
 }
 
-func (c *ContainerClient) UpdateRequired(ctx context.Context, containerID string, newImage string) (bool, types.ContainerJSON, error) {
+func (c *ContainerClient) UpdateRequired(ctx context.Context, containerID string, newImage string) (bool, container.InspectResponse, error) {
 	prevContainer, err := c.Client.ContainerInspect(ctx, containerID)
 	if err != nil {
 		return false, prevContainer, err
@@ -1232,10 +1231,10 @@ func (c *ContainerClient) CloneContainer(ctx context.Context, containerID string
 //     2.1 Check container ID file (if the file exists)
 //     2.2 Check HOSTNAME env variable (e.g. HOSTNAME={hostname})
 //     2.3 Check HostConfig.Hostname value
-func (c *ContainerClient) Self(ctx context.Context) (types.ContainerJSON, error) {
+func (c *ContainerClient) Self(ctx context.Context) (container.InspectResponse, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
-		return types.ContainerJSON{}, err
+		return container.InspectResponse{}, err
 	}
 
 	envHostname := fmt.Sprintf("HOSTNAME=%s", hostname)
@@ -1257,7 +1256,7 @@ func (c *ContainerClient) Self(ctx context.Context) (types.ContainerJSON, error)
 		All: false,
 	})
 	if err != nil {
-		return types.ContainerJSON{}, err
+		return container.InspectResponse{}, err
 	}
 	for _, conItem := range conList {
 		if con, err := c.Client.ContainerInspect(ctx, conItem.ID); err == nil {
@@ -1287,7 +1286,7 @@ func (c *ContainerClient) Self(ctx context.Context) (types.ContainerJSON, error)
 			}
 		}
 	}
-	return types.ContainerJSON{}, errdefs.NotFound(fmt.Errorf("could not find container by hostname"))
+	return container.InspectResponse{}, fmt.Errorf("%w. could not find container by hostname", errdefs.ErrNotFound)
 }
 
 // Prune both unused and dangling images
@@ -1316,7 +1315,7 @@ func (c *ContainerClient) ImagesPruneUnused(ctx context.Context) (image.PruneRep
 	return report, nil
 }
 
-func (c *ContainerClient) Fork(ctx context.Context, currentContainer types.ContainerJSON, cloneOptions CloneOptions) error {
+func (c *ContainerClient) Fork(ctx context.Context, currentContainer container.InspectResponse, cloneOptions CloneOptions) error {
 	if cloneOptions.Image == "" {
 		cloneOptions.Image = currentContainer.Config.Image
 	}
@@ -1466,7 +1465,7 @@ func CloneHostConfig(ref *container.HostConfig, opts CloneOptions) *container.Ho
 
 // Clone network settings, but only clone the network ids that the container is part of
 // don't clone everything as it leads to incompatibilities between engine versions
-func CloneNetworkConfig(ref *types.NetworkSettings) *network.NetworkingConfig {
+func CloneNetworkConfig(ref *container.NetworkSettings) *network.NetworkingConfig {
 	networkConfig := &network.NetworkingConfig{
 		EndpointsConfig: map[string]*network.EndpointSettings{},
 	}

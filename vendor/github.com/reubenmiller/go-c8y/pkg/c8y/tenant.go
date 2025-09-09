@@ -2,7 +2,16 @@ package c8y
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"os"
+
+	"github.com/reubenmiller/go-c8y/pkg/oauth/api"
+	"github.com/reubenmiller/go-c8y/pkg/oauth/device"
 )
+
+var ErrSSOInvalidConfiguration = errors.New("invalid sso configuration")
 
 // TenantService does something
 type TenantService service
@@ -118,10 +127,10 @@ func (s *TenantService) GetTenantStatisticsSummary(ctx context.Context, opt *Ten
 func (s *TenantService) GetLoginOptions(ctx context.Context) (*TenantLoginOptions, *Response, error) {
 	data := new(TenantLoginOptions)
 	resp, err := s.client.SendRequest(ctx, RequestOptions{
-		Method:           "GET",
-		Path:             "tenant/loginOptions",
-		NoAuthentication: true,
-		ResponseData:     data,
+		Method:       "GET",
+		Path:         "tenant/loginOptions",
+		AuthFunc:     WithNoAuthorization(),
+		ResponseData: data,
 	})
 	return data, resp, err
 }
@@ -306,4 +315,159 @@ func (s *TenantService) DeleteApplicationReference(ctx context.Context, tenantID
 		Method: "DELETE",
 		Path:   "tenant/tenants/" + tenantID + "/applications/" + applicationID,
 	})
+}
+
+// GetLoginOptions returns the login options available for the tenant
+func getAuthorizationRequest(ctx context.Context, client *http.Client, oauthUrl string) (*api.AuthorizationRequest, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", oauthUrl, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	// Disable redirects so we can capture the first redirect location
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		location, err := resp.Location()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get redirect location: %w", err)
+		}
+
+		endpoint := &api.AuthorizationRequest{
+			URL: location,
+		}
+
+		for k, v := range location.Query() {
+			switch k {
+			case "client_id":
+				if len(v) > 0 {
+					endpoint.ClientID = v[0]
+				}
+			case "audience":
+				if len(v) > 0 {
+					endpoint.Audience = v[0]
+				}
+			case "scope":
+				endpoint.Scopes = v
+			}
+
+		}
+
+		return endpoint, nil
+	}
+
+	return &api.AuthorizationRequest{}, fmt.Errorf("not found")
+}
+
+// HasExternalAuthProvider checks if there is an external OAUTH2 provider is configured in the tenant
+// Note: This does not require the client to be authenticated
+func (s *TenantService) HasExternalAuthProvider(ctx context.Context) (loginOption *TenantLoginOption, found bool, err error) {
+	loginOptions, _, err := s.client.Tenant.GetLoginOptions(ctx)
+	if err != nil {
+		return nil, found, err
+	}
+
+	for _, option := range loginOptions.LoginOptions {
+		if option.Type == LoginTypeOAuth2 {
+			loginOption = &option
+			found = true
+			break
+		}
+	}
+	return
+}
+
+// AuthorizeWithDeviceFlow authorize the client using the OAuth2 Device Authorization Flow (the Auth provider must support it)
+func (s *TenantService) AuthorizeWithDeviceFlow(ctx context.Context, initRequest string, auth_endpoints api.AuthEndpoints, displayFunc device.DeviceCodeFunc) (*api.AccessToken, error) {
+	// Create a new client which uses the given certificate
+	// Use similar setting as the main client for consistency
+	skipVerify := false
+	if s.client.client.Transport.(*http.Transport).TLSClientConfig != nil {
+		skipVerify = s.client.client.Transport.(*http.Transport).TLSClientConfig.InsecureSkipVerify
+	}
+
+	httpClient := NewHTTPClient(
+		WithInsecureSkipVerify(skipVerify),
+		WithRequestDebugLogger(Logger),
+	)
+	endpoint, err := getAuthorizationRequest(ctx, httpClient, initRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	scopes := make([]string, 0, len(auth_endpoints.Scopes))
+	scopes = append(scopes, auth_endpoints.Scopes...)
+	if len(scopes) == 0 {
+		scopes = append(scopes, endpoint.Scopes...)
+	}
+
+	if auth_endpoints.TokenURL == "" || auth_endpoints.DeviceAuthorizationURL == "" {
+		// Try detecting the endpoints via the open-id configuration endpoint
+		openIDConfig := &api.OpenIDConfiguration{}
+
+		if auth_endpoints.OpenIDConfigurationURL == "" {
+			auth_endpoints.OpenIDConfigurationURL = api.GetOpenIDConnectConfigurationURL(endpoint.URL)
+		}
+
+		if err := api.GetOpenIDConfiguration(ctx, httpClient, endpoint.URL, auth_endpoints.OpenIDConfigurationURL, openIDConfig); err != nil {
+			return nil, fmt.Errorf("%w. %w", ErrSSOInvalidConfiguration, err)
+		} else {
+			Logger.Infof("Found OpenID Connect configuration. url=%s, config=%#v", auth_endpoints.OpenIDConfigurationURL, openIDConfig)
+			if auth_endpoints.TokenURL == "" {
+				auth_endpoints.TokenURL = openIDConfig.TokenEndpoint
+			}
+			if auth_endpoints.DeviceAuthorizationURL == "" {
+				auth_endpoints.DeviceAuthorizationURL = openIDConfig.DeviceAuthorizationEndpoint
+			}
+		}
+
+		// Add default scope if none are defined, as microsoft generally requires at least one scope
+		if len(scopes) == 0 && len(openIDConfig.ScopesSupported) > 0 {
+			Logger.Infof("Adding default scope. value=%s", openIDConfig.ScopesSupported[0])
+			scopes = append(scopes, openIDConfig.ScopesSupported[0])
+		}
+	}
+
+	deviceCodeURL := api.GetEndpointUrl(endpoint.URL, auth_endpoints.DeviceAuthorizationURL)
+	requestCodeOptions := append([]api.AuthRequestEditorFn{}, auth_endpoints.AuthRequestOptions...)
+	requestCodeOptions = append(requestCodeOptions, api.WithAudience(endpoint.Audience))
+	Logger.Infof("Requesting device code. url=%s, client_id=%s, scopes=%v", deviceCodeURL, endpoint.ClientID, scopes)
+	code, err := device.RequestCode(httpClient, deviceCodeURL, endpoint.ClientID, scopes, requestCodeOptions...)
+	if err != nil {
+		return nil, err
+	}
+
+	if displayFunc == nil {
+		displayFunc = device.DeviceCodeOnConsole(os.Stderr)
+	}
+
+	if displayErr := displayFunc(code); displayErr != nil {
+		return nil, displayErr
+	}
+
+	accessToken, err := device.Wait(context.TODO(), httpClient, api.GetEndpointUrl(endpoint.URL, auth_endpoints.TokenURL), device.WaitOptions{
+		ClientID:   endpoint.ClientID,
+		DeviceCode: code,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Update client auth
+	Logger.Info("Using token from device flow")
+	s.client.SetToken(accessToken.Token)
+
+	return accessToken, nil
 }

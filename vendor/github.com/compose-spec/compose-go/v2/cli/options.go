@@ -18,7 +18,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -26,10 +25,10 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/compose-spec/compose-go/v2/consts"
 	"github.com/compose-spec/compose-go/v2/dotenv"
-	"github.com/compose-spec/compose-go/v2/errdefs"
 	"github.com/compose-spec/compose-go/v2/loader"
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/compose-spec/compose-go/v2/utils"
@@ -82,6 +81,8 @@ type ProjectOptions struct {
 	// Callbacks to retrieve metadata information during parse defined before
 	// creating the project
 	Listeners []loader.Listener
+	// ResourceLoaders manages support for remote resources
+	ResourceLoaders []loader.ResourceLoader
 }
 
 type ProjectOptionsFn func(*ProjectOptions) error
@@ -348,8 +349,9 @@ func WithResolvedPaths(resolve bool) ProjectOptionsFn {
 // WithResourceLoader register support for ResourceLoader to manage remote resources
 func WithResourceLoader(r loader.ResourceLoader) ProjectOptionsFn {
 	return func(o *ProjectOptions) error {
+		o.ResourceLoaders = append(o.ResourceLoaders, r)
 		o.loadOptions = append(o.loadOptions, func(options *loader.Options) {
-			options.ResourceLoaders = append(options.ResourceLoaders, r)
+			options.ResourceLoaders = o.ResourceLoaders
 		})
 		return nil
 	}
@@ -391,8 +393,14 @@ func (o *ProjectOptions) GetWorkingDir() (string, error) {
 	if o.WorkingDir != "" {
 		return filepath.Abs(o.WorkingDir)
 	}
+PATH:
 	for _, path := range o.ConfigPaths {
 		if path != "-" {
+			for _, l := range o.ResourceLoaders {
+				if l.Accept(path) {
+					break PATH
+				}
+			}
 			absPath, err := filepath.Abs(path)
 			if err != nil {
 				return "", err
@@ -482,8 +490,27 @@ func (o *ProjectOptions) prepare(ctx context.Context) (*types.ConfigDetails, err
 		return configDetails, err
 	}
 
+	isNamed := false
+	if o.Name == "" {
+		type named struct {
+			Name string `yaml:"name,omitempty"`
+		}
+		// if any of the compose file is named, this is equivalent to user passing --project-name
+		for _, cfg := range configDetails.ConfigFiles {
+			var n named
+			err = yaml.Unmarshal(cfg.Content, &n)
+			if err != nil {
+				return nil, err
+			}
+			if n.Name != "" {
+				isNamed = true
+				break
+			}
+		}
+	}
+
 	o.loadOptions = append(o.loadOptions,
-		withNamePrecedenceLoad(defaultDir, o),
+		withNamePrecedenceLoad(defaultDir, isNamed, o),
 		withConvertWindowsPaths(o),
 		withListeners(o))
 
@@ -496,13 +523,13 @@ func ProjectFromOptions(ctx context.Context, options *ProjectOptions) (*types.Pr
 	return options.LoadProject(ctx)
 }
 
-func withNamePrecedenceLoad(absWorkingDir string, options *ProjectOptions) func(*loader.Options) {
+func withNamePrecedenceLoad(absWorkingDir string, namedInYaml bool, options *ProjectOptions) func(*loader.Options) {
 	return func(opts *loader.Options) {
 		if options.Name != "" {
 			opts.SetProjectName(options.Name, true)
 		} else if nameFromEnv, ok := options.Environment[consts.ComposeProjectName]; ok && nameFromEnv != "" {
 			opts.SetProjectName(nameFromEnv, true)
-		} else {
+		} else if !namedInYaml {
 			dirname := filepath.Base(absWorkingDir)
 			symlink, err := filepath.EvalSymlinks(absWorkingDir)
 			if err == nil && filepath.Base(symlink) != dirname {
@@ -529,14 +556,6 @@ func withListeners(options *ProjectOptions) func(*loader.Options) {
 	return func(opts *loader.Options) {
 		opts.Listeners = append(opts.Listeners, options.Listeners...)
 	}
-}
-
-// getConfigPaths retrieves the config files for project based on project options
-func (o *ProjectOptions) getConfigPaths() ([]string, error) {
-	if len(o.ConfigPaths) != 0 {
-		return absolutePaths(o.ConfigPaths)
-	}
-	return nil, fmt.Errorf("no configuration file provided: %w", errdefs.ErrNotFound)
 }
 
 func findFiles(names []string, pwd string) []string {

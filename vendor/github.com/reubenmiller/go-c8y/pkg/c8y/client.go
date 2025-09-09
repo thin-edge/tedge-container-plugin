@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"os"
 	"path"
@@ -24,6 +25,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/go-querystring/query"
 	"github.com/reubenmiller/go-c8y/pkg/jsonUtilities"
+	"github.com/reubenmiller/go-c8y/pkg/logger"
 )
 
 var ErrNotFound = errors.New("item: not found")
@@ -88,6 +90,30 @@ func FromAuthFuncContext(ctx context.Context) (AuthFunc, bool) {
 	return u, ok
 }
 
+// contextSilentLogKey disables logging for a request
+type contextSilentLogKey string
+
+// getSilentLoggerContextKey get the silent log context key
+func getSilentLoggerContextKey() contextSilentLogKey {
+	return contextSilentLogKey("silentLog")
+}
+
+func getSilentLogContextValue(ctx context.Context) (bool, bool) {
+	disabled, ok := ctx.Value(getSilentLoggerContextKey()).(bool)
+	return disabled, ok
+}
+
+func NewSilentLoggerContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, getSilentLoggerContextKey(), true)
+}
+
+func NewLoggerFromContext(ctx context.Context) logger.Logger {
+	if disabled, ok := getSilentLogContextValue(ctx); ok && disabled {
+		return logger.NewDummyLogger("silent")
+	}
+	return Logger
+}
+
 type service struct {
 	client *Client
 }
@@ -96,6 +122,9 @@ type service struct {
 type Client struct {
 	clientMu sync.Mutex   // clientMu protects the client during calls that modify the CheckRedirect func.
 	client   *http.Client // HTTP client used to communicate with the API.
+
+	// Show sensitive information
+	showSensitive bool
 
 	Realtime *RealtimeClient
 
@@ -128,8 +157,8 @@ type Client struct {
 	// TFACode (Two Factor Authentication) code.
 	TFACode string
 
-	// Authorization method
-	AuthorizationMethod string
+	// Authorization type
+	AuthorizationType AuthType
 
 	Cookies []*http.Cookie
 
@@ -166,6 +195,7 @@ type Client struct {
 	Firmware             *InventoryFirmwareService
 	User                 *UserService
 	DeviceCertificate    *DeviceCertificateService
+	DeviceEnrollment     *DeviceEnrollmentService
 	CertificateAuthority *CertificateAuthorityService
 	Features             *FeaturesService
 }
@@ -180,33 +210,69 @@ var (
 )
 
 const (
-	// AuthMethodOAuth2Internal OAuth2 internal mode
-	AuthMethodOAuth2Internal = "OAUTH2_INTERNAL"
+	// LoginTypeOAuth2Internal OAuth2 internal mode
+	LoginTypeOAuth2Internal = "OAUTH2_INTERNAL"
 
-	// AuthMethodBasic Basic authentication
-	AuthMethodBasic = "BASIC"
+	// LoginTypeOAuth2 OAuth2 external provider
+	LoginTypeOAuth2 = "OAUTH2"
 
-	// AuthMethodNone no authentication
-	AuthMethodNone = "NONE"
+	// LoginTypeBasic Basic authentication
+	LoginTypeBasic = "BASIC"
+
+	// LoginTypeNone no authentication
+	LoginTypeNone = "NONE"
 )
+
+// AuthType request authorization type
+type AuthType int
+
+const (
+	// AuthTypeUnset no auth type set
+	AuthTypeUnset AuthType = 0
+
+	// AuthTypeNone don't use an Authorization
+	AuthTypeNone AuthType = 1
+
+	// AuthTypeBasic Basic Authorization
+	AuthTypeBasic AuthType = 2
+
+	// AuthTypeBearer Bearer Authorization
+	AuthTypeBearer AuthType = 3
+)
+
+func (a AuthType) String() string {
+	switch a {
+	case AuthTypeUnset:
+		return "UNSET"
+	case AuthTypeNone:
+		return "NONE"
+	case AuthTypeBasic:
+		return "BASIC"
+	case AuthTypeBearer:
+		return "BEARER"
+	}
+	return "UNKNOWN"
+}
 
 var (
-	ErrInvalidAuthMethod = errors.New("invalid authorization method")
+	ErrInvalidLoginType = errors.New("invalid login type")
 )
 
-// Parse the authorization method and select as default if no value options are found
+// Parse the login type and select as default if no value options are found
 // It returns the selected method, and if the input was valid or not
-func ParseAuthMethod(v string) (string, error) {
+func ParseLoginType(v string) (string, error) {
 	v = strings.ToUpper(v)
 	switch v {
-	case AuthMethodBasic:
-		return AuthMethodBasic, nil
-	case AuthMethodNone:
-		return AuthMethodNone, nil
-	case AuthMethodOAuth2Internal:
-		return AuthMethodOAuth2Internal, nil
+	case LoginTypeBasic:
+		return LoginTypeBasic, nil
+	case LoginTypeNone:
+		return LoginTypeNone, nil
+	case LoginTypeOAuth2Internal:
+		return LoginTypeOAuth2Internal, nil
+	case LoginTypeOAuth2:
+		return LoginTypeOAuth2, nil
 	default:
-		return "", ErrInvalidAuthMethod
+		return "", ErrInvalidLoginType
 	}
 }
 
@@ -260,6 +326,15 @@ func (c *Client) NewRealtimeClientFromServiceUser(tenant string) *RealtimeClient
 	return nil
 }
 
+func GetEnvValue(key ...string) string {
+	for _, k := range key {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 // NewClientFromEnvironment returns a new c8y client configured from environment variables
 //
 // Environment Variables
@@ -268,7 +343,7 @@ func (c *Client) NewRealtimeClientFromServiceUser(tenant string) *RealtimeClient
 // C8Y_USER - Username e.g. myuser@mycompany.com
 // C8Y_PASSWORD - Password
 func NewClientFromEnvironment(httpClient *http.Client, skipRealtimeClient bool) *Client {
-	baseURL := os.Getenv("C8Y_HOST")
+	baseURL := GetEnvValue("C8Y_HOST", EnvironmentBaseURL)
 	tenant, username, password := GetServiceUserFromEnvironment()
 	return NewClient(httpClient, baseURL, tenant, username, password, skipRealtimeClient)
 }
@@ -303,8 +378,34 @@ func ReplaceTripper(tr http.RoundTripper) ClientOption {
 // can trust the server, otherwise just leave verify enabled.
 func WithInsecureSkipVerify(skipVerify bool) ClientOption {
 	return func(tr http.RoundTripper) http.RoundTripper {
-		tr.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: skipVerify}
+		if tr.(*http.Transport).TLSClientConfig == nil {
+			tr.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: skipVerify}
+		} else {
+			tr.(*http.Transport).TLSClientConfig.InsecureSkipVerify = skipVerify
+		}
 		return tr
+	}
+}
+
+// WithClientCertificate uses the given x509 client certificate for cert-based auth when doing requests
+func WithClientCertificate(cert tls.Certificate) ClientOption {
+	return func(tr http.RoundTripper) http.RoundTripper {
+		if tr.(*http.Transport).TLSClientConfig == nil {
+			tr.(*http.Transport).TLSClientConfig = &tls.Config{
+				Certificates: []tls.Certificate{cert},
+			}
+		} else {
+			tr.(*http.Transport).TLSClientConfig.Certificates = []tls.Certificate{cert}
+		}
+		return tr
+	}
+}
+
+func WithRequestDebugLogger(l logger.Logger) ClientOption {
+	return func(tr http.RoundTripper) http.RoundTripper {
+		return &LoggingTransport{
+			Logger: l,
+		}
 	}
 }
 
@@ -314,6 +415,19 @@ type funcTripper struct {
 
 func (tr funcTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	return tr.roundTrip(req)
+}
+
+type LoggingTransport struct {
+	Logger logger.Logger
+}
+
+func (t *LoggingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	reqInfo, _ := httputil.DumpRequestOut(r, true)
+	if t.Logger != nil {
+		t.Logger.Debugf("Sending request. %s", reqInfo)
+	}
+	resp, err := http.DefaultTransport.RoundTrip(r)
+	return resp, err
 }
 
 // Format the base url to ensure it is normalized for cases where the
@@ -330,11 +444,33 @@ func FormatBaseURL(v string) string {
 	return v + "/"
 }
 
+// Client options
+type ClientOptions struct {
+	BaseURL string
+
+	// Username / Password Auth
+	Tenant   string
+	Username string
+	Password string
+
+	// Token Auth
+	Token string
+
+	// Auth preference (to control which credentials are used when more than 1 value is provided)
+	AuthType AuthType
+
+	// Create a realtime client
+	Realtime bool
+
+	// Show sensitive information in the logs
+	ShowSensitive bool
+}
+
 // NewClient returns a new Cumulocity API client. If a nil httpClient is
 // provided, http.DefaultClient will be used. To use API methods which require
 // authentication, provide an http.Client that will perform the authentication
 // for you (such as that provided by the golang.org/x/oauth2 library).
-func NewClient(httpClient *http.Client, baseURL string, tenant string, username string, password string, skipRealtimeClient bool) *Client {
+func NewClientFromOptions(httpClient *http.Client, opts ClientOptions) *Client {
 	if httpClient == nil {
 		// Default client ignores self signed certificates (to enable compatibility to the edge which uses self signed certs)
 		defaultTransport := http.DefaultTransport.(*http.Transport)
@@ -355,13 +491,21 @@ func NewClient(httpClient *http.Client, baseURL string, tenant string, username 
 		}
 	}
 
-	fmtURL := FormatBaseURL(baseURL)
+	fmtURL := FormatBaseURL(opts.BaseURL)
 	targetBaseURL, _ := url.Parse(fmtURL)
 
 	var realtimeClient *RealtimeClient
-	if !skipRealtimeClient {
-		Logger.Infof("Creating realtime client %s", fmtURL)
-		realtimeClient = NewRealtimeClient(fmtURL, nil, tenant, username, password)
+	if opts.Realtime {
+		realtimeClient = NewRealtimeClient(fmtURL, nil, opts.Tenant, opts.Username, opts.Password)
+	}
+
+	authType := opts.AuthType
+	if authType == AuthTypeUnset {
+		if opts.Token != "" {
+			authType = AuthTypeBearer
+		} else if opts.Username != "" && opts.Password != "" {
+			authType = AuthTypeBasic
+		}
 	}
 
 	userAgent := defaultUserAgent
@@ -371,10 +515,13 @@ func NewClient(httpClient *http.Client, baseURL string, tenant string, username 
 		BaseURL:             targetBaseURL,
 		UserAgent:           userAgent,
 		Realtime:            realtimeClient,
-		Username:            username,
-		Password:            password,
-		TenantName:          tenant,
+		Username:            opts.Username,
+		Password:            opts.Password,
+		Token:               opts.Token,
+		TenantName:          opts.Tenant,
 		UseTenantInUsername: true,
+		AuthorizationType:   authType,
+		showSensitive:       opts.ShowSensitive,
 	}
 	c.common.client = c
 	c.Alarm = (*AlarmService)(&c.common)
@@ -386,6 +533,7 @@ func NewClient(httpClient *http.Client, baseURL string, tenant string, username 
 	c.Tenant = (*TenantService)(&c.common)
 	c.Event = (*EventService)(&c.common)
 	c.Inventory = (*InventoryService)(&c.common)
+	c.DeviceEnrollment = (*DeviceEnrollmentService)(&c.common)
 	c.Application = (*ApplicationService)(&c.common)
 	c.ApplicationVersions = (*ApplicationVersionsService)(&c.common)
 	c.UIExtension = (*UIExtensionService)(&c.common)
@@ -402,6 +550,33 @@ func NewClient(httpClient *http.Client, baseURL string, tenant string, username 
 	c.Features = (*FeaturesService)(&c.common)
 	c.CertificateAuthority = (*CertificateAuthorityService)(&c.common)
 	return c
+}
+
+// NewClient returns a new Cumulocity API client. If a nil httpClient is
+// provided, http.DefaultClient will be used. To use API methods which require
+// authentication, provide an http.Client that will perform the authentication
+// for you (such as that provided by the golang.org/x/oauth2 library).
+func NewClient(httpClient *http.Client, baseURL string, tenant string, username string, password string, skipRealtimeClient bool) *Client {
+	return NewClientFromOptions(httpClient, ClientOptions{
+		BaseURL:  baseURL,
+		Tenant:   tenant,
+		Username: username,
+		Password: password,
+		Realtime: !skipRealtimeClient,
+	})
+}
+
+// SetBaseURL changes the base url used by the REST client
+func (c *Client) SetBaseURL(v string) error {
+	fmtURL := FormatBaseURL(v)
+	targetBaseURL, err := url.Parse(fmtURL)
+	if err != nil {
+		return err
+	}
+	c.clientMu.Lock()
+	defer c.clientMu.Unlock()
+	c.BaseURL = targetBaseURL
+	return nil
 }
 
 // addOptions adds the parameters in opt as URL query parameters to s. opt
@@ -515,10 +690,33 @@ func NewAuthorizationContext(tenant, username, password string) context.Context 
 	return context.WithValue(context.Background(), GetContextAuthTokenKey(), auth)
 }
 
+// NewBasicAuthAuthorizationContext returns a new basic authorization context
+func NewBasicAuthAuthorizationContext(ctx context.Context, tenant, username, password string) context.Context {
+	auth := NewBasicAuthString(tenant, username, password)
+	return context.WithValue(ctx, GetContextAuthTokenKey(), auth)
+}
+
+// NewBearerAuthAuthorizationContext returns a new bearer authorization context
+func NewBearerAuthAuthorizationContext(ctx context.Context, token string) context.Context {
+	auth := NewBearerAuthString(token)
+	return context.WithValue(ctx, GetContextAuthTokenKey(), auth)
+}
+
 // NewBasicAuthString returns a Basic Authorization key used for rest requests
 func NewBasicAuthString(tenant, username, password string) string {
-	auth := fmt.Sprintf("%s/%s:%s", tenant, username, password)
+	var auth string
+	if tenant == "" {
+		auth = fmt.Sprintf("%s:%s", username, password)
+	} else {
+		auth = fmt.Sprintf("%s/%s:%s", tenant, username, password)
+	}
+
 	return "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
+}
+
+// NewBearerAuthString returns a Bearer Authorization key used for rest requests
+func NewBearerAuthString(token string) string {
+	return "Bearer " + token
 }
 
 // Request validator function to be used to check if the outgoing request is properly formulated
@@ -526,22 +724,22 @@ type RequestValidator func(*http.Request) error
 
 // RequestOptions struct which contains the options to be used with the SendRequest function
 type RequestOptions struct {
-	Method           string
-	Host             string
-	Path             string
-	Accept           string
-	ContentType      string
-	Query            interface{} // Use string if you want
-	Body             interface{}
-	ResponseData     interface{}
-	FormData         map[string]io.Reader
-	Header           http.Header
-	IgnoreAccept     bool
-	NoAuthentication bool
-	DryRun           bool
-	DryRunResponse   bool
-	ValidateFuncs    []RequestValidator
-	PrepareRequest   func(*http.Request) (*http.Request, error)
+	Method         string
+	Host           string
+	Path           string
+	Accept         string
+	ContentType    string
+	Query          interface{} // Use string if you want
+	Body           interface{}
+	ResponseData   interface{}
+	FormData       map[string]io.Reader
+	Header         http.Header
+	IgnoreAccept   bool
+	AuthFunc       RequestAuthFunc
+	DryRun         bool
+	DryRunResponse bool
+	ValidateFuncs  []RequestValidator
+	PrepareRequest func(*http.Request) (*http.Request, error)
 
 	PrepareRequestOnDryRun bool
 }
@@ -616,7 +814,7 @@ func (r *RequestOptions) GetQuery() (string, error) {
 // SendRequest creates and sends a request
 func (c *Client) SendRequest(ctx context.Context, options RequestOptions) (*Response, error) {
 
-	localLogger := Logger
+	localLogger := NewLoggerFromContext(ctx)
 	var err error
 
 	currentPath, err := options.GetPath()
@@ -642,16 +840,29 @@ func (c *Client) SendRequest(ctx context.Context, options RequestOptions) (*Resp
 		if err != nil {
 			return nil, err
 		}
-		if !options.NoAuthentication {
+		if options.AuthFunc != nil {
+			if _, err := options.AuthFunc(req); err != nil {
+				return nil, err
+			}
+		} else {
 			c.SetAuthorization(req)
 		}
 		c.SetHostHeader(req)
 	} else {
-		// Normal request
-		if options.NoAuthentication {
-			req, err = c.NewRequestWithoutAuth(options.Method, currentPath, currentQuery, options.Body)
-		} else {
+		if options.AuthFunc == nil {
+			// Use default auth
 			req, err = c.NewRequest(options.Method, currentPath, currentQuery, options.Body)
+		} else {
+			req, err = c.NewRequestWithoutAuth(options.Method, currentPath, currentQuery, options.Body)
+			if err != nil {
+				return nil, err
+			}
+
+			if options.AuthFunc != nil {
+				if _, err := options.AuthFunc(req); err != nil {
+					return nil, err
+				}
+			}
 		}
 	}
 
@@ -715,7 +926,7 @@ func (c *Client) SendRequest(ctx context.Context, options RequestOptions) (*Resp
 	if ctxOptions := ctx.Value(GetContextCommonOptionsKey()); ctxOptions != nil {
 		if ctxOptions, ok := ctxOptions.(CommonOptions); ok {
 
-			Logger.Debugf(
+			localLogger.Debugf(
 				"Overriding common options provided in the context. dryRun=%s",
 				strconv.FormatBool(ctxOptions.DryRun),
 			)
@@ -752,14 +963,16 @@ func (c *Client) SendRequest(ctx context.Context, options RequestOptions) (*Resp
 			c.DefaultDryRunHandler(&options, req)
 		}
 
-		if options.DryRunResponse || c.requestOptions.DryRunResponse {
-			return &Response{
-				Response: &http.Response{
-					Request: req,
-				},
-			}, dryRunErr
+		resp := &Response{
+			dryRun: dryRun,
+			Response: &http.Response{
+				Request: req,
+			},
 		}
-		return nil, dryRunErr
+		if options.DryRunResponse || c.requestOptions.DryRunResponse {
+			return resp, dryRunErr
+		}
+		return resp, dryRunErr
 	}
 
 	localLogger.Info(c.HideSensitiveInformationIfActive(fmt.Sprintf("Headers: %v", req.Header)))
@@ -845,6 +1058,21 @@ func (c *Client) SetJSONItems(resp *Response, v interface{}) error {
 	case *UserCollection:
 		t.Items = resp.JSON("users").Array()
 
+	// Managed object references
+	case *ChildDevices:
+		t.Items = resp.JSON("references").Array()
+	case *ParentDevices:
+		t.Items = resp.JSON("references").Array()
+	case *AdditionParents:
+		t.Items = resp.JSON("references").Array()
+	case *AssetParents:
+		t.Items = resp.JSON("references").Array()
+	case *ChildAssets:
+		t.Items = resp.JSON("references").Array()
+	case *ChildAdditions:
+		t.Items = resp.JSON("references").Array()
+	case *ManagedObjectReferencesCollection:
+		t.Items = resp.JSON("references").Array()
 	}
 
 	return nil
@@ -977,36 +1205,40 @@ func (c *Client) SetHostHeader(req *http.Request) {
 	}
 }
 
-// SetBasicAuthorization sets the configured authorization to the given request. By default it will set the Basic Authorization header
-func (c *Client) SetBasicAuthorization(req *http.Request) {
-	var headerUsername string
-	if c.UseTenantInUsername && c.TenantName != "" {
-		headerUsername = fmt.Sprintf("%s/%s", c.TenantName, c.Username)
-	} else {
-		headerUsername = c.Username
+// SetAuthorization sets the configured authorization to the given request. By default it will set the Basic Authorization header
+func (c *Client) SetAuthorization(req *http.Request, authTypeFunc ...RequestAuthFunc) (bool, error) {
+	if len(authTypeFunc) > 0 {
+		return authTypeFunc[0](req)
 	}
 
-	if headerUsername != "" && c.Password != "" {
-		Logger.Infof("Current username: %s", c.HideSensitiveInformationIfActive(headerUsername))
-		req.SetBasicAuth(headerUsername, c.Password)
-	} else {
-		Logger.Debug("Ignoring basic authorization header as either username or password is empty")
+	authType := c.AuthorizationType
+	if authType == AuthTypeUnset {
+		if c.Token != "" {
+			authType = AuthTypeBearer
+		} else if c.Username != "" && c.Password != "" {
+			authType = AuthTypeBasic
+		}
 	}
+
+	switch authType {
+	case AuthTypeNone:
+		return WithNoAuthorization()(req)
+	case AuthTypeBearer:
+		c.addCookiesToRequest(req)
+		return WithToken(c.Token)(req)
+	case AuthTypeBasic:
+		if c.UseTenantInUsername {
+			return WithTenantUsernamePassword(c.TenantName, c.Username, c.Password)(req)
+		} else {
+			return WithTenantUsernamePassword("", c.Username, c.Password)(req)
+		}
+	}
+	return false, nil
 }
 
-// SetAuthorization sets the configured authorization to the given request. By default it will set the Basic Authorization header
-func (c *Client) SetAuthorization(req *http.Request) {
-	switch c.AuthorizationMethod {
-	case AuthMethodOAuth2Internal:
-		c.SetBearerAuthorization(req)
-		c.addOAuth2ToRequest(req)
-	case AuthMethodNone:
-		break
-	case AuthMethodBasic:
-		fallthrough
-	default:
-		c.SetBasicAuthorization(req)
-	}
+// HideSensitive checks if sensitive information should be hidden in the logs
+func (c *Client) HideSensitive() bool {
+	return !c.showSensitive
 }
 
 // GetXSRFToken returns the XSRF Token if found in the configured cookies
@@ -1026,21 +1258,66 @@ func (c *Client) SetCookies(cookies []*http.Cookie) {
 	c.Cookies = cookies
 }
 
+// SetAuthorizationType set the authorization type to use to add to outgoing requests
+func (c *Client) SetAuthorizationType(authType AuthType) {
+	c.clientMu.Lock()
+	defer c.clientMu.Unlock()
+	c.AuthorizationType = authType
+}
+
+// SetTenantUsernamePassword sets the tenant/username/password to use for all rest requests
+func (c *Client) SetTenantUsernamePassword(tenant string, username string, password string) {
+	c.clientMu.Lock()
+	defer c.clientMu.Unlock()
+	c.TenantName = tenant
+	c.Username = username
+	c.Password = password
+	c.AuthorizationType = AuthTypeBasic
+}
+
+// SetUsernamePassword sets the username/password to use for all rest requests
+// If the username is in the format of {tenant}/{username}, then the tenant
+// name will also be set with the given value
+func (c *Client) SetUsernamePassword(username string, password string) {
+	c.clientMu.Lock()
+	defer c.clientMu.Unlock()
+
+	if tenant, user, found := strings.Cut(username, "/"); found {
+		username = user
+		c.TenantName = tenant
+		c.UseTenantInUsername = true
+	}
+
+	c.Username = username
+	c.Password = password
+	c.AuthorizationType = AuthTypeBasic
+}
+
+// ClearTenantUsernamePassword removes any tenant, username and password set on the client
+func (c *Client) ClearTenantUsernamePassword() {
+	c.clientMu.Lock()
+	defer c.clientMu.Unlock()
+	c.TenantName = ""
+	c.Username = ""
+	c.Password = ""
+}
+
 // SetToken sets the Bearer auth token to use for all rest requests
 func (c *Client) SetToken(v string) {
 	c.clientMu.Lock()
 	defer c.clientMu.Unlock()
 	c.Token = v
+	c.AuthorizationType = AuthTypeBearer
 }
 
-// SetBearerAuthorization set bearer authorization header
-func (c *Client) SetBearerAuthorization(req *http.Request) {
-	if c.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.Token)
-	}
+// Clear an existing token
+func (c *Client) ClearToken() {
+	c.clientMu.Lock()
+	defer c.clientMu.Unlock()
+	c.Token = ""
 }
 
-func (c *Client) addOAuth2ToRequest(req *http.Request) {
+func (c *Client) addCookiesToRequest(req *http.Request) {
 	if c.Cookies == nil {
 		return
 	}
@@ -1123,7 +1400,6 @@ func (c *Client) LoginUsingOAuth2(ctx context.Context, initRequest ...string) er
 	}
 
 	// test
-	c.AuthorizationMethod = AuthMethodOAuth2Internal
 	tenant, _, err := c.Tenant.GetCurrentTenant(ctx)
 	if err != nil {
 		return err
@@ -1191,7 +1467,7 @@ func (c *Client) LoginUsingOAuth2External(ctx context.Context, code string, init
 	}
 
 	// test
-	c.AuthorizationMethod = AuthMethodOAuth2Internal
+	c.AuthorizationType = AuthTypeBearer
 	tenant, _, err := c.Tenant.GetCurrentTenant(ctx)
 	if err != nil {
 		return err
@@ -1228,23 +1504,26 @@ func withContext(ctx context.Context, req *http.Request) *http.Request {
 func (c *Client) Do(ctx context.Context, req *http.Request, v interface{}, middleware ...RequestMiddleware) (*Response, error) {
 	req = withContext(ctx, req)
 
+	// Set local logger
+	localLogger := NewLoggerFromContext(ctx)
+
 	// Check if custom auth function is provided
 	if ctxAuthFunc, ok := FromAuthFuncContext(ctx); ok {
 		auth, authErr := ctxAuthFunc(req)
 		if authErr != nil {
-			Logger.Infof("Authorization function returned an error. %s", authErr)
+			localLogger.Infof("Authorization function returned an error. %s", authErr)
 		} else if auth != "" {
-			Logger.Infof("Using authorization provided by an auth function")
+			localLogger.Infof("Using authorization provided by an auth function")
 			req.Header.Set("Authorization", auth)
 		}
 	} else if authToken := ctx.Value(GetContextAuthTokenKey()); authToken != nil {
 		// Check if an authorization key is provided in the context, if so then override the c8y authentication
-		Logger.Infof("Using authorization provided in the context")
+		localLogger.Infof("Using authorization provided in the context")
 		req.Header.Set("Authorization", authToken.(string))
 	}
 
 	if req != nil {
-		Logger.Infof("Sending request: %s %s", req.Method, c.HideSensitiveInformationIfActive(req.URL.String()))
+		localLogger.Infof("Sending request: %s %s", req.Method, c.HideSensitiveInformationIfActive(req.URL.String()))
 	}
 
 	// Log the body (if applicable)
@@ -1252,9 +1531,9 @@ func (c *Client) Do(ctx context.Context, req *http.Request, v interface{}, middl
 		switch v := req.Body.(type) {
 		case *os.File:
 			// Only log the file name
-			Logger.Infof("Body (file): %s", v.Name())
+			localLogger.Infof("Body (file): %s", v.Name())
 		case *ProxyReader:
-			Logger.Infof("Body: %s", v.GetValue())
+			localLogger.Infof("Body: %s", v.GetValue())
 		default:
 			// Don't print out multi part forms, but everything else is fine.
 			if !strings.Contains(req.Header.Get("Content-Type"), "multipart/form-data") {
@@ -1262,7 +1541,7 @@ func (c *Client) Do(ctx context.Context, req *http.Request, v interface{}, middl
 				bodyBytes, _ := io.ReadAll(v)
 				req.Body.Close() //  must close
 				req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-				Logger.Infof("Body: %s", bytes.TrimSpace(bodyBytes))
+				localLogger.Infof("Body: %s", bytes.TrimSpace(bodyBytes))
 			}
 		}
 	}
@@ -1281,7 +1560,7 @@ func (c *Client) Do(ctx context.Context, req *http.Request, v interface{}, middl
 	if err != nil {
 		// If we got an error, and the context has been canceled,
 		// the context's error is probably more useful.
-		Logger.Infof("ERROR: Request failed. %s", err)
+		localLogger.Infof("ERROR: Request failed. %s", err)
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -1305,7 +1584,7 @@ func (c *Client) Do(ctx context.Context, req *http.Request, v interface{}, middl
 	if err != nil {
 		// even though there was an error, we still return the response
 		// in case the caller wants to inspect it further
-		Logger.Infof("Invalid response received from server. %s", err)
+		localLogger.Infof("Invalid response received from server. %s", err)
 		return response, err
 	}
 
@@ -1329,7 +1608,7 @@ func (c *Client) Do(ctx context.Context, req *http.Request, v interface{}, middl
 			if jsonUtilities.IsValidJSON(buf) {
 				err = response.DecodeJSON(v)
 				if err == io.EOF {
-					Logger.Infof("Error decoding body. %s", err)
+					localLogger.Infof("Error decoding body. %s", err)
 					err = nil // ignore EOF errors caused by empty response body
 				}
 			}
@@ -1340,7 +1619,7 @@ func (c *Client) Do(ctx context.Context, req *http.Request, v interface{}, middl
 		response.body = buf
 	}
 
-	Logger.Info(fmt.Sprintf("Status code: %v", response.StatusCode()))
+	localLogger.Info(fmt.Sprintf("Status code: %v", response.StatusCode()))
 
 	return response, err
 }
@@ -1436,8 +1715,12 @@ func CheckResponse(r *http.Response) error {
 }
 
 func (c *Client) HideSensitiveInformationIfActive(message string) string {
-
-	if strings.ToLower(os.Getenv(EnvVarLoggerHideSensitive)) != "true" {
+	// Default to hiding the information
+	hideSensitive := c.HideSensitive()
+	if v, err := strconv.ParseBool(os.Getenv(EnvVarLoggerHideSensitive)); err == nil {
+		hideSensitive = v
+	}
+	if !hideSensitive {
 		return message
 	}
 

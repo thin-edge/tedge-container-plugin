@@ -21,18 +21,31 @@ import (
 	"io"
 )
 
-var formats = map[string]Parser{}
+const DotEnv = ".env"
 
-type Parser func(r io.Reader, filename string, lookup func(key string) (string, bool)) (map[string]string, error)
+var formats = map[string]Parser{
+	DotEnv: func(r io.Reader, filename string, vars map[string]string, lookup func(key string) (string, bool)) error {
+		err := parseWithLookup(r, vars, lookup)
+		if err != nil {
+			return fmt.Errorf("failed to read %s: %w", filename, err)
+		}
+		return nil
+	},
+}
+
+type Parser func(r io.Reader, filename string, vars map[string]string, lookup func(key string) (string, bool)) error
 
 func RegisterFormat(format string, p Parser) {
 	formats[format] = p
 }
 
-func ParseWithFormat(r io.Reader, filename string, resolve LookupFn, format string) (map[string]string, error) {
-	parser, ok := formats[format]
-	if !ok {
-		return nil, fmt.Errorf("unsupported env_file format %q", format)
+func ParseWithFormat(r io.Reader, filename string, vars map[string]string, resolve LookupFn, format string) error {
+	if format == "" {
+		format = DotEnv
 	}
-	return parser(r, filename, resolve)
+	fn, ok := formats[format]
+	if !ok {
+		return fmt.Errorf("unsupported env_file format %q", format)
+	}
+	return fn(r, filename, vars, resolve)
 }

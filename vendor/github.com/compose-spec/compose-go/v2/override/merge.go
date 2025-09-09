@@ -19,10 +19,9 @@ package override
 import (
 	"cmp"
 	"fmt"
-	"strings"
+	"slices"
 
 	"github.com/compose-spec/compose-go/v2/tree"
-	"golang.org/x/exp/slices"
 )
 
 // Merge applies overrides to a config model
@@ -57,11 +56,14 @@ func init() {
 	mergeSpecials["services.*.dns_search"] = mergeToSequence
 	mergeSpecials["services.*.entrypoint"] = override
 	mergeSpecials["services.*.env_file"] = mergeToSequence
+	mergeSpecials["services.*.label_file"] = mergeToSequence
 	mergeSpecials["services.*.environment"] = mergeToSequence
 	mergeSpecials["services.*.extra_hosts"] = mergeExtraHosts
 	mergeSpecials["services.*.healthcheck.test"] = override
 	mergeSpecials["services.*.labels"] = mergeToSequence
+	mergeSpecials["services.*.volumes.*.volume.labels"] = mergeToSequence
 	mergeSpecials["services.*.logging"] = mergeLogging
+	mergeSpecials["services.*.models"] = mergeModels
 	mergeSpecials["services.*.networks"] = mergeNetworks
 	mergeSpecials["services.*.sysctls"] = mergeToSequence
 	mergeSpecials["services.*.tmpfs"] = mergeToSequence
@@ -103,7 +105,7 @@ func mergeYaml(e any, o any, p tree.Path) (any, error) {
 func mergeMappings(mapping map[string]any, other map[string]any, p tree.Path) (map[string]any, error) {
 	for k, v := range other {
 		e, ok := mapping[k]
-		if !ok || strings.HasPrefix(k, "x-") {
+		if !ok {
 			mapping[k] = v
 			continue
 		}
@@ -154,6 +156,12 @@ func mergeDependsOn(c any, o any, path tree.Path) (any, error) {
 		"condition": "service_started",
 		"required":  true,
 	})
+	return mergeMappings(right, left, path)
+}
+
+func mergeModels(c any, o any, path tree.Path) (any, error) {
+	right := convertIntoMapping(c, nil)
+	left := convertIntoMapping(o, nil)
 	return mergeMappings(right, left, path)
 }
 
@@ -226,9 +234,17 @@ func mergeUlimit(_ any, o any, p tree.Path) (any, error) {
 
 func mergeIPAMConfig(c any, o any, path tree.Path) (any, error) {
 	var ipamConfigs []any
-	for _, original := range c.([]any) {
+	configs, ok := c.([]any)
+	if !ok {
+		return o, fmt.Errorf("%s: unexpected type %T", path, c)
+	}
+	overrides, ok := o.([]any)
+	if !ok {
+		return o, fmt.Errorf("%s: unexpected type %T", path, c)
+	}
+	for _, original := range configs {
 		right := convertIntoMapping(original, nil)
-		for _, override := range o.([]any) {
+		for _, override := range overrides {
 			left := convertIntoMapping(override, nil)
 			if left["subnet"] != right["subnet"] {
 				// check if left is already in ipamConfigs, add it if not and continue with the next config

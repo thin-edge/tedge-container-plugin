@@ -3,6 +3,8 @@ package c8y
 import (
 	"encoding/base64"
 	"errors"
+	"fmt"
+	"net/http"
 	"strings"
 )
 
@@ -50,4 +52,56 @@ func DecodeBasicAuth(auth string, host string) (*ServiceUser, error) {
 		Password: password,
 	}
 	return user, nil
+}
+
+type RequestAuthFunc func(req *http.Request) (bool, error)
+
+// WithAuthSequence applies multiple given authorization functions and
+// stops after the first one that sets a value
+func WithAuthSequence(authFuncs ...RequestAuthFunc) RequestAuthFunc {
+	return func(req *http.Request) (bool, error) {
+		for _, authFunc := range authFuncs {
+			ok, err := authFunc(req)
+			if ok || err != nil {
+				return ok, err
+			}
+		}
+		return false, nil
+	}
+}
+
+// WithNoAuthorization don't use any authorization
+func WithNoAuthorization() RequestAuthFunc {
+	return func(req *http.Request) (bool, error) {
+		return true, nil
+	}
+}
+
+// WithTenantUsernamePassword set tenant/username and password basic authorization
+func WithTenantUsernamePassword(tenant, username, password string) RequestAuthFunc {
+	return func(req *http.Request) (bool, error) {
+		var headerUsername string
+		if tenant != "" {
+			headerUsername = fmt.Sprintf("%s/%s", tenant, username)
+		} else {
+			headerUsername = username
+		}
+
+		if headerUsername != "" && password != "" {
+			req.SetBasicAuth(headerUsername, password)
+			return true, nil
+		}
+		return false, nil
+	}
+}
+
+// WithToken set bearer authorization (if a the token is not empty)
+func WithToken(token string) RequestAuthFunc {
+	return func(req *http.Request) (bool, error) {
+		if token == "" {
+			return false, nil
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		return true, nil
+	}
 }

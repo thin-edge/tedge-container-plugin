@@ -20,6 +20,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/obeattie/ohmyglob"
+	"github.com/reubenmiller/go-c8y/pkg/wsurl"
 	"github.com/tidwall/gjson"
 	"golang.org/x/net/publicsuffix"
 	tomb "gopkg.in/tomb.v2"
@@ -180,15 +181,11 @@ func getC8yExtensionFromXSRFToken(token string) c8yExtensionMessage {
 }
 
 func getRealtimeURL(host string) *url.URL {
-	c8yHost, _ := url.Parse(host)
-
-	if c8yHost.Scheme == "http" {
-		c8yHost.Scheme = "ws"
-	} else {
-		c8yHost.Scheme = "wss"
+	c8yHost, err := wsurl.GetWebsocketURL(host, "cep/realtime")
+	if err != nil {
+		Logger.Fatalf("Invalid websocket url. %s", err)
 	}
-
-	return c8yHost.ResolveReference(&url.URL{Path: "cep/realtime"})
+	return c8yHost
 }
 
 // NewRealtimeClient initializes a new Bayeux client. By default `http.DefaultClient`
