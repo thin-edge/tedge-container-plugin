@@ -851,10 +851,10 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 				// non critical error
 				slog.Warn("Failed to remove project directory.", "err", removeErr)
 			}
+		} else {
+			errs = append(errs, err)
+			slog.Warn("compose failed.", "err", err)
 		}
-
-		errs = append(errs, err)
-		slog.Warn("compose failed.", "err", err)
 	} else {
 		errs = append(errs, fmt.Errorf("compose project working directory does not exist. dir=%s", workingDir))
 	}
