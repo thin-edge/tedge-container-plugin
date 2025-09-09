@@ -10,7 +10,7 @@ error_log="${LOGFILE:-/var/log/${RC_SVCNAME}.log}"
 
 start_pre()
 {
-    checkpath --file --owner "root" "$error_log"
+    checkpath --file --owner "$command_user" "$error_log"
 }
 
 depend() {

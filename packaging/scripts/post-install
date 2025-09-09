@@ -43,9 +43,6 @@ cleanInstall() {
             # OpenRC
             printf "\033[32m Installing open-rc service\033[0m\n"
 
-            ln -sf /usr/share/tedge-container-plugin/services/openrc/init.d/tedge-container-plugin /etc/init.d/tedge-container-plugin ||:
-            ln -sf /usr/share/tedge-container-plugin/services/openrc/conf.d/tedge-container-plugin /etc/conf.d/tedge-container-plugin ||:
-
             rc-update add "$SERVICE_NAME" ||:
             rc-service "$SERVICE_NAME" restart ||:
         else
