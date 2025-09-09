@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	containerSDK "github.com/docker/docker/api/types/container"
 	"github.com/spf13/cobra"
 	"github.com/thin-edge/tedge-container-plugin/pkg/cli"
@@ -67,10 +66,10 @@ func (c *ContainerRunInContextCommand) RunE(cmd *cobra.Command, args []string) e
 
 	ctx := context.Background()
 
-	currentContainer := types.ContainerJSON{
+	currentContainer := containerSDK.InspectResponse{
 		Config:            &containerSDK.Config{},
-		ContainerJSONBase: &types.ContainerJSONBase{},
-		NetworkSettings:   &types.NetworkSettings{},
+		ContainerJSONBase: &containerSDK.ContainerJSONBase{},
+		NetworkSettings:   &containerSDK.NetworkSettings{},
 	}
 
 	if c.ContainerID == "" {

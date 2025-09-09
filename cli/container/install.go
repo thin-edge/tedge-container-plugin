@@ -15,6 +15,7 @@ import (
 
 	containerSDK "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/client"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/thin-edge/tedge-container-plugin/pkg/cli"
@@ -89,7 +90,7 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 		}
 		defer file.Close()
 
-		imageResp, err := cli.Client.ImageLoad(ctx, file, true)
+		imageResp, err := cli.Client.ImageLoad(ctx, file, client.ImageLoadWithQuiet(true))
 		if err != nil {
 			return err
 		}
