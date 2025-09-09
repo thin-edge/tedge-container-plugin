@@ -178,6 +178,7 @@ nfpms:
 
       - src: ./packaging/services/openrc/tedge-container-plugin.conf
         dst: /usr/share/tedge-container-plugin/services/openrc/conf.d/tedge-container-plugin
+        type: config
         file_info:
           mode: 0644
           owner: root
