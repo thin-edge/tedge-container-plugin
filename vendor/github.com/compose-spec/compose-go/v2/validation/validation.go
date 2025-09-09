@@ -18,6 +18,7 @@ package validation
 
 import (
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/compose-spec/compose-go/v2/tree"
@@ -29,6 +30,7 @@ var checks = map[tree.Path]checkerFunc{
 	"volumes.*":                       checkVolume,
 	"configs.*":                       checkFileObject("file", "environment", "content"),
 	"secrets.*":                       checkFileObject("file", "environment"),
+	"services.*.ports.*":              checkIPAddress,
 	"services.*.develop.watch.*.path": checkPath,
 	"services.*.deploy.resources.reservations.devices.*": checkDeviceRequest,
 	"services.*.gpus.*": checkDeviceRequest,
@@ -65,7 +67,6 @@ func check(value any, p tree.Path) error {
 
 func checkFileObject(keys ...string) checkerFunc {
 	return func(value any, p tree.Path) error {
-
 		v := value.(map[string]any)
 		count := 0
 		for _, s := range keys {
@@ -100,9 +101,19 @@ func checkPath(value any, p tree.Path) error {
 func checkDeviceRequest(value any, p tree.Path) error {
 	v := value.(map[string]any)
 	_, hasCount := v["count"]
-	_, hasIds := v["device_ids"]
-	if hasCount && hasIds {
+	_, hasIDs := v["device_ids"]
+	if hasCount && hasIDs {
 		return fmt.Errorf(`%s: "count" and "device_ids" attributes are exclusive`, p)
+	}
+	return nil
+}
+
+func checkIPAddress(value any, p tree.Path) error {
+	if v, ok := value.(map[string]any); ok {
+		ip, ok := v["host_ip"]
+		if ok && net.ParseIP(ip.(string)) == nil {
+			return fmt.Errorf("%s: invalid ip address: %s", p, ip)
+		}
 	}
 	return nil
 }

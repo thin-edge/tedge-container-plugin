@@ -243,7 +243,7 @@ func (s *Notification2Service) RenewToken(ctx context.Context, opt Notification2
 	claimMatch := true // default to true in case if the user does not provide any expected information
 
 	subscription := opt.Options.Subscription
-	subscriber := opt.Options.Subscriber
+	subscriber := s.NormalizedConsumer(opt.Options.Subscriber)
 	expiresInMinutes := opt.Options.ExpiresInMinutes
 	shared := opt.Options.Shared
 
@@ -299,7 +299,7 @@ func (s *Notification2Service) RenewToken(ctx context.Context, opt Notification2
 		expiresInMinutes = MinTokenMinutes
 	}
 
-	Logger.Infof("Creating new token")
+	Logger.Infof("Creating new notification2 token")
 	updatedToken, _, err := s.CreateToken(ctx, Notification2TokenOptions{
 		ExpiresInMinutes:  expiresInMinutes,
 		Subscription:      subscription,
@@ -365,8 +365,18 @@ func (s *Notification2Service) CreateClient(ctx context.Context, opt Notificatio
 				Token: v,
 			})
 		},
-		Consumer: opt.Consumer,
+		Consumer: s.NormalizedConsumer(opt.Consumer),
 		Token:    token,
 	}, opt.ConnectionOptions)
 	return client, nil
+}
+
+func (s *Notification2Service) NormalizedConsumer(v string) string {
+	result := make([]rune, 0, len(v))
+	for _, r := range v {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			result = append(result, r)
+		}
+	}
+	return string(result)
 }

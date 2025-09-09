@@ -36,7 +36,9 @@ func ResolveRelativePaths(project map[string]any, base string, remotes []RemoteR
 	r.resolvers = map[tree.Path]resolver{
 		"services.*.build.context":               r.absContextPath,
 		"services.*.build.additional_contexts.*": r.absContextPath,
+		"services.*.build.ssh.*":                 r.maybeUnixPath,
 		"services.*.env_file.*.path":             r.absPath,
+		"services.*.label_file.*":                r.absPath,
 		"services.*.extends.file":                r.absExtendsPath,
 		"services.*.develop.watch.*.path":        r.absSymbolicLink,
 		"services.*.volumes.*":                   r.absVolumeMount,

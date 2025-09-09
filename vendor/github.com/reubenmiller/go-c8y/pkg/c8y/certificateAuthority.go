@@ -44,6 +44,10 @@ func (s *CertificateAuthorityService) Create(ctx context.Context, opts Certifica
 	}
 
 	if resp == nil {
+		return nil, nil
+	}
+
+	if resp.IsDryRun() {
 		// Dry run
 		return nil, nil
 	}

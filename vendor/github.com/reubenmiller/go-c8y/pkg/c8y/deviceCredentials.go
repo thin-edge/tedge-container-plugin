@@ -2,9 +2,13 @@ package c8y
 
 import (
 	"context"
+	"encoding/csv"
 	"errors"
+	"fmt"
+	"io"
 	"time"
 
+	"github.com/reubenmiller/go-c8y/pkg/password"
 	"github.com/tidwall/gjson"
 )
 
@@ -171,4 +175,173 @@ func (s *DeviceCredentialsService) PollNewDeviceRequest(ctx context.Context, dev
 	}()
 
 	return done, err
+}
+
+//
+// Bulk Registration
+//
+
+// BulkNewDeviceRequest response which details the results of the bulk registration
+type BulkNewDeviceRequest struct {
+	NumberOfAll        int64 `json:"numberOfAll,omitempty"`
+	NumberOfCreated    int64 `json:"numberOfCreated,omitempty"`
+	NumberOfFailed     int64 `json:"numberOfFailed,omitempty"`
+	NumberOfSuccessful int64 `json:"numberOfSuccessful,omitempty"`
+
+	CredentialUpdatedList []BulkNewDeviceRequestDetails `json:"credentialUpdatedList,omitempty"`
+	FailedCreationList    []BulkNewDeviceRequestDetails `json:"failedCreationList,omitempty"`
+
+	Item gjson.Result `json:"-"`
+}
+
+type BulkNewDeviceRequestDetails struct {
+	BulkNewDeviceStatus string `json:"bulkNewDeviceStatus,omitempty"`
+	DeviceID            string `json:"deviceId,omitempty"`
+
+	FailureReason string `json:"failureReason,omitempty"`
+	Line          string `json:"line,omitempty"`
+}
+
+// CreateBulk allows multiple devices to be registered in one request
+func (s *DeviceCredentialsService) CreateBulk(ctx context.Context, csvContents io.Reader) (*BulkNewDeviceRequest, *Response, error) {
+	formData := make(map[string]io.Reader)
+	formData["file"] = csvContents
+
+	data := new(BulkNewDeviceRequest)
+	resp, err := s.client.SendRequest(ctx, RequestOptions{
+		Method:       "POST",
+		Path:         "devicecontrol/bulkNewDeviceRequests",
+		FormData:     formData,
+		ResponseData: data,
+	})
+
+	if err != nil {
+		return nil, resp, err
+	}
+	return data, resp, err
+}
+
+// GeneratePassword generates a device password with the recommended password length by default
+// and uses symbols which are compatible with the Bulk Registration API.
+func (s *DeviceCredentialsService) GeneratePassword(opts ...password.PasswordOption) (string, error) {
+	defaults := []password.PasswordOption{
+		// enforce min/max that the api supports
+		password.WithLengthConstraints(8, 32),
+
+		// use max length
+		password.WithLength(32),
+
+		// use all available symbols to increase complexity
+		password.WithSymbols(2),
+	}
+	defaults = append(defaults, opts...)
+	return password.NewRandomPassword(defaults...)
+}
+
+const (
+	// BulkRegistrationAuthTypeBasic Basic Authorization
+	BulkRegistrationAuthTypeBasic string = "BASIC"
+
+	// BulkRegistrationAuthTypeCertificates Certificate Authorization
+	BulkRegistrationAuthTypeCertificates string = "CERTIFICATES"
+)
+
+type BulkRegistrationRecord struct {
+	// External ID
+	ID string `json:"externalId,omitempty"`
+
+	// External Id Type
+	IDType string `json:"externalType,omitempty"`
+
+	// Authorization Type, BASIC, CERTIFICATES
+	AuthType string `json:"authType,omitempty"`
+
+	// Basic Auth credentials
+	Credentials string `json:"password,omitempty"`
+
+	// Enrollment one-time password
+	EnrollmentOTP string `json:"enrollmentOTP,omitempty"`
+
+	// Name
+	Name string `json:"name,omitempty"`
+
+	// Type
+	Type string `json:"type,omitempty"`
+
+	// ICCID
+	ICCID string `json:"iccid,omitempty"`
+
+	// Tenant
+	Tenant string `json:"tenant,omitempty"`
+
+	// Path / Group hierarchy
+	Path string `json:"group,omitempty"`
+
+	// Is the device an agent
+	IsAgent bool `json:"isAgent,omitempty"`
+}
+
+// SetBasicAuth sets the record for basic authentication
+func (r *BulkRegistrationRecord) SetBasicAuth(v string) {
+	r.AuthType = BulkRegistrationAuthTypeBasic
+	r.Credentials = v
+	r.IsAgent = true
+}
+
+// SetCertificateAuth set certificate authentication (for externally issued certificates)
+func (r *BulkRegistrationRecord) SetCertificateAuth() {
+	r.AuthType = BulkRegistrationAuthTypeCertificates
+	r.Credentials = ""
+	r.IsAgent = true
+}
+
+// SetEnrollmentPassword set certificate authentication with a one-time password for the Cumulocity certificate authority
+func (r *BulkRegistrationRecord) SetEnrollmentPassword(v string) {
+	r.AuthType = BulkRegistrationAuthTypeCertificates
+	r.EnrollmentOTP = v
+	r.Credentials = ""
+	r.IsAgent = true
+}
+
+// BulkRegistrationColumns bulk registration CSV columns
+var BulkRegistrationColumns = []string{
+	"ID",             // External ID
+	"AUTH_TYPE",      // Authorization type
+	"CREDENTIALS",    // Basic Auth
+	"ENROLLMENT_OTP", // One-time password for EST enrollment
+	"NAME",           // Device name
+	"TYPE",           // Device type
+	"IDTYPE",         // External ID Type
+	"ICCID",          // ICCID
+	"TENANT",         // Tenant
+	"PATH",           // Path / group
+	"com_cumulocity_model_Agent.active",
+}
+
+// WriteCSV the records to the give writer
+func BulkRegistrationRecordWriter(w io.Writer, records ...BulkRegistrationRecord) error {
+	csvWriter := csv.NewWriter(w)
+	csvWriter.Comma = '\t'
+	if err := csvWriter.Write(BulkRegistrationColumns); err != nil {
+		return err
+	}
+	for _, item := range records {
+		if err := csvWriter.Write([]string{
+			item.ID,
+			item.AuthType,
+			item.Credentials,
+			item.EnrollmentOTP,
+			item.Name,
+			item.Type,
+			item.IDType,
+			item.ICCID,
+			item.Tenant,
+			item.Path,
+			fmt.Sprintf("%v", item.IsAgent),
+		}); err != nil {
+			return err
+		}
+	}
+	csvWriter.Flush()
+	return csvWriter.Error()
 }

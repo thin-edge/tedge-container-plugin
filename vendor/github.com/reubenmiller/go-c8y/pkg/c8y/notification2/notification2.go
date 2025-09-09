@@ -7,12 +7,12 @@ import (
 	"math"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/reubenmiller/go-c8y/pkg/logger"
+	"github.com/reubenmiller/go-c8y/pkg/wsurl"
 	"github.com/tidwall/gjson"
 	tomb "gopkg.in/tomb.v2"
 )
@@ -124,15 +124,10 @@ func (m *Message) JSON() gjson.Result {
 }
 
 func getEndpoint(host string, subscription Subscription) *url.URL {
-	fullHost := "wss://" + host
-	if index := strings.Index(host, "://"); index > -1 {
-		fullHost = "wss" + host[index:]
-	}
-	tempUrl, err := url.Parse(fullHost)
+	c8yHost, err := wsurl.GetWebsocketURL(host, "notification2/consumer/")
 	if err != nil {
 		Logger.Fatalf("Invalid url. %s", err)
 	}
-	c8yHost := tempUrl.ResolveReference(&url.URL{Path: "notification2/consumer/"})
 	c8yHost.RawQuery = "token=" + subscription.Token
 
 	if subscription.Consumer != "" {
@@ -186,12 +181,23 @@ func (c *Notification2Client) Connect() error {
 }
 
 func (c *Notification2Client) Endpoint() string {
-	// TODO: Support hiding of sensitive information (same as the client)
 	return c.url.String()
 }
 
-func (c *Notification2Client) URL() string {
-	return getEndpoint(c.url.Host, c.Subscription).String()
+func (c *Notification2Client) URL(hideSensitive bool) string {
+	wsURL := getEndpoint(c.url.String(), c.Subscription).String()
+	if hideSensitive {
+		if u, err := url.Parse(wsURL); err == nil {
+			q := u.Query()
+			if q.Has("token") {
+				q.Set("token", "redacted")
+				u.RawQuery = q.Encode()
+				return u.String()
+			}
+		}
+		return wsURL
+	}
+	return wsURL
 }
 
 // IsConnected returns true if the websocket is connected
@@ -247,8 +253,8 @@ func (c *Notification2Client) createWebsocket() (*websocket.Conn, error) {
 		c.Subscription.Token = token
 	}
 
-	Logger.Debugf("Establishing connection to %s", c.Endpoint())
-	ws, _, err := c.dialer.Dial(c.URL(), nil)
+	Logger.Debugf("Establishing connection to %s", c.URL(true))
+	ws, _, err := c.dialer.Dial(c.URL(false), nil)
 
 	if err != nil {
 		Logger.Warnf("Failed to establish connection. %s", err)

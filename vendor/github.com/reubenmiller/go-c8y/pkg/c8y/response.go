@@ -29,6 +29,12 @@ type Response struct {
 	size       int64
 	receivedAt time.Time
 	duration   time.Duration
+	dryRun     bool
+}
+
+// IsDryRun return if the response is from a dry run
+func (r *Response) IsDryRun() bool {
+	return r.dryRun
 }
 
 func (r *Response) Duration() time.Duration {

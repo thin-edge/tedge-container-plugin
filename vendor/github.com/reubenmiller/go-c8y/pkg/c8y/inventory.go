@@ -158,44 +158,61 @@ type Kpi struct {
 	Fragment string `json:"fragment"`
 }
 
-// ChildDevices todo
+// ChildDevices managed object references
 type ChildDevices struct {
 	Self       string                   `json:"self"`
 	References []ManagedObjectReference `json:"references"`
+
+	Items []gjson.Result `json:"-"`
 }
 
-// ParentDevices todo
+// ParentDevices managed object references
 type ParentDevices struct {
 	Self       string                   `json:"self"`
 	References []ManagedObjectReference `json:"references"`
+
+	Items []gjson.Result `json:"-"`
 }
 
+// AdditionParents managed object references
 type AdditionParents struct {
 	Self       string                   `json:"self"`
 	References []ManagedObjectReference `json:"references"`
+
+	Items []gjson.Result `json:"-"`
 }
 
+// AssetParents managed object references
 type AssetParents struct {
 	Self       string                   `json:"self"`
 	References []ManagedObjectReference `json:"references"`
+
+	Items []gjson.Result `json:"-"`
 }
 
+// ChildAssets managed object references
 type ChildAssets struct {
 	Self       string                   `json:"self"`
 	References []ManagedObjectReference `json:"references"`
+
+	Items []gjson.Result `json:"-"`
 }
 
+// ChildAdditions managed object references
 type ChildAdditions struct {
 	Self       string                   `json:"self"`
 	References []ManagedObjectReference `json:"references"`
+
+	Items []gjson.Result `json:"-"`
 }
 
-// ManagedObjectCollection todo
+// ManagedObjectCollection collection of managed objects
 type ManagedObjectCollection struct {
 	*BaseResponse
 
 	ManagedObjects []ManagedObject `json:"managedObjects"`
-	Items          []gjson.Result
+
+	Items []gjson.Result `json:"-"`
 }
 
 // SupportedSeries is a list of the supported series in the format of <fragment>.<series>
@@ -212,6 +229,8 @@ type SupportedMeasurements struct {
 type ManagedObjectReferencesCollection struct {
 	*BaseResponse
 	References []ManagedObjectReference `json:"references"`
+
+	Items []gjson.Result `json:"-"`
 }
 
 // ManagedObjectReference Managed object reference
@@ -244,12 +263,6 @@ func (s *InventoryService) GetDevices(ctx context.Context, paging *PaginationOpt
 		ResponseData: data,
 	})
 	return data, resp, err
-}
-
-// All todo
-func (s *ManagedObjectCollection) All() error {
-	// TODO: Get All results
-	return nil
 }
 
 // GetManagedObject returns a managed object by its id
