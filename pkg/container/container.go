@@ -215,6 +215,19 @@ func socketExists(p string) bool {
 	return err == nil
 }
 
+func GetUserID() string {
+	userID := fmt.Sprintf("%d", os.Geteuid())
+
+	// If running as root user, then check the original user's id
+	// so that the process can still access the rootless api even when run via sudo
+	if userID == "0" {
+		if v := os.Getenv("SUDO_UID"); v != "" {
+			userID = v
+		}
+	}
+	return userID
+}
+
 func findContainerEngineSocket() (socketAddr string) {
 	// Check env variables to normalize differences
 	// between docker and podman
@@ -232,12 +245,29 @@ func findContainerEngineSocket() (socketAddr string) {
 		}
 	}
 
-	// docker
+	currentUserID := GetUserID()
+	slog.Info("Detected user id", "id", currentUserID)
+
+	// docker (rootless)
+	containerSockets = append(containerSockets, fmt.Sprintf("unix:///run/user/%s/docker.sock", currentUserID))
+
+	// podman (rootless)
+	if xdg_runtime_dir := os.Getenv("XDG_RUNTIME_DIR"); xdg_runtime_dir != "" {
+		containerSockets = append(
+			containerSockets,
+			fmt.Sprintf("unix://%s/podman/podman.sock", xdg_runtime_dir),
+		)
+	}
+	// podman (rootless) - alpine linux
+	containerSockets = append(containerSockets, fmt.Sprintf("unix:///tmp/storage-run-%s/podman/podman.sock", currentUserID))
+
+	// docker (rootful)
 	containerSockets = append(
 		containerSockets,
 		"unix:///var/run/docker.sock",
 	)
-	// podman
+
+	// podman (rootful)
 	containerSockets = append(
 		containerSockets,
 		"unix:///run/podman/podman.sock",
@@ -246,6 +276,7 @@ func findContainerEngineSocket() (socketAddr string) {
 
 	for _, addr := range containerSockets {
 		if strings.HasPrefix(addr, "unix://") {
+			slog.Debug("Checking socket address", "value", addr)
 			// Check if socket exists
 			if socketExists(addr) {
 				socketAddr = addr
@@ -391,6 +422,16 @@ func (c *ContainerClient) StopRemoveContainer(ctx context.Context, containerID s
 		}
 	}
 	return err
+}
+
+func (c *ContainerClient) StartContainer(ctx context.Context, containerID string) error {
+	slog.Info("Starting container.", "id", containerID)
+	return c.Client.ContainerStart(ctx, containerID, container.StartOptions{})
+}
+
+func (c *ContainerClient) StopContainer(ctx context.Context, containerID string) error {
+	slog.Info("Stopping container.", "id", containerID)
+	return c.Client.ContainerStop(ctx, containerID, container.StopOptions{})
 }
 
 // RestartContainer a container
