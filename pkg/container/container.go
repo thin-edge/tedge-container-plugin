@@ -245,7 +245,7 @@ func findContainerEngineSocket() (socketAddr string) {
 	}
 
 	currentUserID := GetUserID()
-	slog.Info("Detected user id", "id", currentUserID)
+	slog.Info("Current user", "id", currentUserID)
 
 	// docker (rootless)
 	containerSockets = append(containerSockets, fmt.Sprintf("unix:///run/user/%s/docker.sock", currentUserID))
