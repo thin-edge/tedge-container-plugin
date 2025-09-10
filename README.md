@@ -79,6 +79,14 @@ If your device is not finding the correct socket path for your container engine,
 host = "unix:///run/podman/podman.sock"
 ```
 
+### Rootless container engines
+
+Running a container engine in rootless mode requires some additional setup which can't be provided in the default package, however the following pages provide some hints on how to get it setup.
+
+* [podman (rootless)](./docs/PODMAN_ROOTLESS.md)
+
+If you run into any problems with the rootless setup, then please consult the relevant container engine's documentation for more up-to-date instructions (and feel free to submit a PR in this repository).
+
 ### Install/remove single containers
 
 Containers can be installed and removed via the Cumulocity Software Management interface in the Device Management Application.
