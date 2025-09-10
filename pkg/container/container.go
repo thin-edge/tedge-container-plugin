@@ -293,21 +293,32 @@ func findContainerEngineSocket() (socketAddr string) {
 func NewContainerClient() (*ContainerClient, error) {
 	// Find container socket
 	addr := findContainerEngineSocket()
-	if addr != "" {
-		if err := os.Setenv("DOCKER_HOST", addr); err != nil {
-			return nil, err
-		}
-		// Used by podman and podman-remote
-		if err := os.Setenv("CONTAINER_HOST", addr); err != nil {
-			return nil, err
-		}
-		slog.Info("Using container engine socket.", "value", addr)
-	}
-
+	slog.Info("Using container engine socket.", "value", addr)
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
 	}
+
+	if addr == "" {
+		return nil, fmt.Errorf("container engine socket was not found")
+	}
+
+	// Check if engine is functional
+	engineInfo, err := cli.Info(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	slog.Info("Found container engine", "name", engineInfo.Name, "version", engineInfo.ServerVersion, "os", engineInfo.OperatingSystem, "osVersion", engineInfo.OSVersion)
+
+	// Only set env variables after the engine has been verified
+	if err := os.Setenv("DOCKER_HOST", addr); err != nil {
+		return nil, err
+	}
+	// Used by podman and podman-remote
+	if err := os.Setenv("CONTAINER_HOST", addr); err != nil {
+		return nil, err
+	}
+
 	return &ContainerClient{
 		Client: cli,
 	}, nil
