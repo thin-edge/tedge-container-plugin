@@ -87,7 +87,7 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 		slog.Info("Custom args.", "args", containerCmd)
 	}
 
-	containerCli, err := container.NewContainerClient(context.TODO())
+	containerCli, err := container.NewContainerClient(context.TODO(), c.CommandContext.GetContainerClientOptions()...)
 	if err != nil {
 		return err
 	}

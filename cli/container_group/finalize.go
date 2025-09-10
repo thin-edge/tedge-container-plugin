@@ -13,18 +13,18 @@ import (
 	"github.com/thin-edge/tedge-container-plugin/pkg/container"
 )
 
-func NewFinalizeCommand(ctx cli.Cli) *cobra.Command {
+func NewFinalizeCommand(cliContext cli.Cli) *cobra.Command {
 	return &cobra.Command{
 		Use:   "finalize",
 		Short: "Finalize container install/remove operation",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			slog.Info("Executing", "cmd", cmd.CalledAs(), "args", args)
 
-			pruneImages := ctx.GetBool("container.pruneImages")
+			pruneImages := cliContext.GetBool("container.pruneImages")
 			if !pruneImages {
 				return nil
 			}
-			cli, err := container.NewContainerClient(context.TODO())
+			cli, err := container.NewContainerClient(context.TODO(), cliContext.GetContainerClientOptions()...)
 			if err != nil {
 				return err
 			}

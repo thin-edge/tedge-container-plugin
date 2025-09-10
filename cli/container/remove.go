@@ -19,7 +19,7 @@ type RemoveCommand struct {
 }
 
 // removeCmd represents the remove command
-func NewRemoveCommand(ctx cli.Cli) *cobra.Command {
+func NewRemoveCommand(cliContext cli.Cli) *cobra.Command {
 	command := &RemoveCommand{}
 	cmd := &cobra.Command{
 		Use:   "remove",
@@ -35,7 +35,7 @@ Example 1: Remove a container
 			ctx := context.Background()
 			containerName := args[0]
 
-			cli, err := container.NewContainerClient(ctx)
+			cli, err := container.NewContainerClient(ctx, cliContext.GetContainerClientOptions()...)
 			if err != nil {
 				return err
 			}

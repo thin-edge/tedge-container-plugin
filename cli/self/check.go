@@ -52,12 +52,15 @@ var SoftwareManagementActionRemove = "remove"
 type CheckCommand struct {
 	*cobra.Command
 
-	ContainerName string
+	CommandContext cli.Cli
+	ContainerName  string
 }
 
 // NewCheckCommand represents the check command
 func NewCheckCommand(ctx cli.Cli) *cobra.Command {
-	command := &CheckCommand{}
+	command := &CheckCommand{
+		CommandContext: ctx,
+	}
 	cmd := &cobra.Command{
 		Use:   "check",
 		Args:  cobra.ExactArgs(1),
@@ -78,7 +81,7 @@ func (c *CheckCommand) RunE(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check container self
-	containerCLI, err := container.NewContainerClient(context.TODO())
+	containerCLI, err := container.NewContainerClient(context.TODO(), c.CommandContext.GetContainerClientOptions()...)
 	if err != nil {
 		return err
 	}

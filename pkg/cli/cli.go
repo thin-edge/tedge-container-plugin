@@ -107,6 +107,19 @@ func (c *Cli) GetBool(key string) bool {
 	return viper.GetBool(key)
 }
 
+func (c *Cli) GetContainerClientOptions() []container.Opt {
+	options := make([]container.Opt, 0)
+	if v := c.GetContainerHost(); v != "" {
+		options = append(options, container.WithHost(v))
+	}
+	return options
+}
+
+// GetContainerHost get the container engine's host configuration (if manually defined by the user)
+func (c *Cli) GetContainerHost() string {
+	return viper.GetString("container.host")
+}
+
 func (c *Cli) PrintConfig() {
 	keys := viper.AllKeys()
 	sort.Strings(keys)
