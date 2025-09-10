@@ -49,6 +49,12 @@ cert_file = "/etc/tedge/device-certs/local-tedge.crt"
   port = 8001
 
 [container]
+# Custom container engine host. If missing or blank, then the host will be auto detected
+# Container engine host/socket address .e.g. unix:///run/podman/podman.sock.
+# If the value is missing or an empty string, then the socket will be auto detected.
+# If the auto detection mechanism is not working for you, then set the path to the expected socket address.
+#host = "unix:///run/podman/podman.sock"
+
 # Always try pulling the image without checking if a local image already exists or not
 alwayspull = false
 

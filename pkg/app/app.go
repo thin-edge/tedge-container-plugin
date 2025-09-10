@@ -58,6 +58,8 @@ type App struct {
 }
 
 type Config struct {
+	ContainerHost string
+
 	ServiceName string
 
 	// TLS
@@ -99,10 +101,18 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 	ctx, ctxCancel := context.WithTimeout(context.TODO(), 300*time.Second)
 	defer ctxCancel()
 
+	clientOptions := make([]container.Opt, 0)
+
+	// Use a time-based timeout instead of limiting number of retries
+	clientOptions = append(clientOptions, container.WithInfiniteRetries())
+
+	if config.ContainerHost != "" {
+		clientOptions = append(clientOptions, container.WithHost(config.ContainerHost))
+	}
+
 	containerClient, err := container.NewContainerClient(
 		ctx,
-		// Use a time-based timeout instead of limiting number of retries
-		container.WithInfiniteRetries(),
+		clientOptions...,
 	)
 	if err != nil {
 		return nil, err

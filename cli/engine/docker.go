@@ -15,11 +15,15 @@ import (
 
 type DockerCommand struct {
 	*cobra.Command
+
+	CommandContext cli.Cli
 }
 
 // NewRunCommand create a new run command
 func NewRunCommand(ctx cli.Cli) *cobra.Command {
-	command := &DockerCommand{}
+	command := &DockerCommand{
+		CommandContext: ctx,
+	}
 	cmd := &cobra.Command{
 		Use:                "docker",
 		Short:              "Run a command using the detected container engine",
@@ -34,7 +38,7 @@ func NewRunCommand(ctx cli.Cli) *cobra.Command {
 
 func (c *DockerCommand) RunE(cmd *cobra.Command, args []string) error {
 	slog.Debug("Executing", "cmd", cmd.CalledAs(), "args", args)
-	containerCli, err := container.NewContainerClient(context.TODO())
+	containerCli, err := container.NewContainerClient(context.TODO(), c.CommandContext.GetContainerClientOptions()...)
 	if err != nil {
 		return err
 	}

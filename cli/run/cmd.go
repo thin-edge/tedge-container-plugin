@@ -45,6 +45,7 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 
 			device := cliContext.GetDeviceTarget()
 			application, err := app.NewApp(device, app.Config{
+				ContainerHost:      cliContext.GetContainerHost(),
 				ServiceName:        cliContext.GetServiceName(),
 				EnableMetrics:      cliContext.MetricsEnabled(),
 				DeleteFromCloud:    cliContext.DeleteFromCloud(),
