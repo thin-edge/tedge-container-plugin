@@ -36,7 +36,7 @@ func NewListCommand(cliContext cli.Cli) *cobra.Command {
 			}
 
 			ctx := context.Background()
-			containerCli, err := container.NewContainerClient()
+			containerCli, err := container.NewContainerClient(context.TODO())
 			if err != nil {
 				return newNotSupportedErr(err)
 			}

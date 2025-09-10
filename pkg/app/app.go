@@ -96,7 +96,14 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 	}
 	tedgeClient := tedge.NewClient(device, *serviceTarget, config.ServiceName, tedgeOpts)
 
-	containerClient, err := container.NewContainerClient()
+	ctx, ctxCancel := context.WithTimeout(context.TODO(), 300*time.Second)
+	defer ctxCancel()
+
+	containerClient, err := container.NewContainerClient(
+		ctx,
+		// Use a time-based timeout instead of limiting number of retries
+		container.WithInfiniteRetries(),
+	)
 	if err != nil {
 		return nil, err
 	}

@@ -4,6 +4,7 @@ Copyright © 2024 thin-edge.io <info@thin-edge.io>
 package engine
 
 import (
+	"context"
 	"log/slog"
 	"os/exec"
 
@@ -33,7 +34,7 @@ func NewRunCommand(ctx cli.Cli) *cobra.Command {
 
 func (c *DockerCommand) RunE(cmd *cobra.Command, args []string) error {
 	slog.Debug("Executing", "cmd", cmd.CalledAs(), "args", args)
-	containerCli, err := container.NewContainerClient()
+	containerCli, err := container.NewContainerClient(context.TODO())
 	if err != nil {
 		return err
 	}

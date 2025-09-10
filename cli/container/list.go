@@ -22,7 +22,7 @@ func NewListCommand(cliContext cli.Cli) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			slog.Info("Executing", "cmd", cmd.CalledAs(), "args", args)
 			ctx := context.Background()
-			cli, err := container.NewContainerClient()
+			cli, err := container.NewContainerClient(ctx)
 			if err != nil {
 				return err
 			}
