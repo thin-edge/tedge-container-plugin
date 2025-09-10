@@ -61,8 +61,8 @@ func Test_FilterEnvVariables(t *testing.T) {
 	assert.Equal(t, out[1], "BAR=2")
 }
 
-func Test_PruneIMages(t *testing.T) {
-	client, err := NewContainerClient()
+func Test_PruneImages(t *testing.T) {
+	client, err := NewContainerClient(context.TODO())
 	if err != nil {
 		t.Fatal(err)
 	}

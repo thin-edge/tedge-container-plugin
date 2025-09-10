@@ -52,7 +52,7 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 	projectName := args[0]
 	stderr := cmd.ErrOrStderr()
 
-	cli, err := container.NewContainerClient()
+	cli, err := container.NewContainerClient(context.TODO())
 	if err != nil {
 		return err
 	}

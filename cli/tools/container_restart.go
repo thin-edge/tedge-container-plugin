@@ -40,7 +40,7 @@ func NewContainerRestartCommand(ctx cli.Cli) *cobra.Command {
 func (c *ContainerRestartCommand) RunE(cmd *cobra.Command, args []string) error {
 	slog.Debug("Executing", "cmd", cmd.CalledAs(), "args", args)
 
-	containerCli, err := container.NewContainerClient()
+	containerCli, err := container.NewContainerClient(context.TODO())
 	if err != nil {
 		return err
 	}

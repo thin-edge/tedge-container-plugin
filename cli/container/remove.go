@@ -35,7 +35,7 @@ Example 1: Remove a container
 			ctx := context.Background()
 			containerName := args[0]
 
-			cli, err := container.NewContainerClient()
+			cli, err := container.NewContainerClient(ctx)
 			if err != nil {
 				return err
 			}

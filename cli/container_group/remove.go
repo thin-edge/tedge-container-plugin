@@ -40,7 +40,7 @@ func (c *RemoveCommand) RunE(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	projectName := args[0]
 
-	cli, err := container.NewContainerClient()
+	cli, err := container.NewContainerClient(context.TODO())
 	if err != nil {
 		return err
 	}

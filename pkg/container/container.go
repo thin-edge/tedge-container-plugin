@@ -290,27 +290,120 @@ func findContainerEngineSocket() (socketAddr string) {
 	return socketAddr
 }
 
-func NewContainerClient() (*ContainerClient, error) {
-	// Find container socket
-	addr := findContainerEngineSocket()
-	if addr != "" {
-		if err := os.Setenv("DOCKER_HOST", addr); err != nil {
-			return nil, err
-		}
-		// Used by podman and podman-remote
-		if err := os.Setenv("CONTAINER_HOST", addr); err != nil {
-			return nil, err
-		}
-		slog.Info("Using container engine socket.", "value", addr)
-	}
+type Opt func(o *ClientOptions) error
 
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+type ClientOptions struct {
+	Attempts      int
+	Host          string
+	RetryInterval time.Duration
+}
+
+func WithAttempts(total int) Opt {
+	return func(o *ClientOptions) error {
+		o.Attempts = total
+		return nil
+	}
+}
+
+func WithInfiniteRetries() Opt {
+	return func(o *ClientOptions) error {
+		o.Attempts = -1
+		return nil
+	}
+}
+
+func WithHost(host string) Opt {
+	return func(o *ClientOptions) error {
+		o.Host = host
+		return nil
+	}
+}
+func WithRetryInterval(v time.Duration) Opt {
+	return func(o *ClientOptions) error {
+		o.RetryInterval = v
+		return nil
+	}
+}
+
+func newContainerClient(options *ClientOptions) (*ContainerClient, error) {
+	// Find container socket
+	if options.Host == "" {
+		options.Host = findContainerEngineSocket()
+	}
+	if options.Host == "" {
+		return nil, fmt.Errorf("container engine socket was not found")
+	}
+	slog.Info("Using container engine socket.", "value", options.Host)
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithHost(options.Host), client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
 	}
+
+	// Check if engine is functional
+	engineInfo, err := cli.Info(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	slog.Info("Found container engine", "name", engineInfo.Name, "version", engineInfo.ServerVersion, "os", engineInfo.OperatingSystem, "osVersion", engineInfo.OSVersion)
+
+	// Only set env variables after the engine has been verified
+	if err := os.Setenv("DOCKER_HOST", options.Host); err != nil {
+		return nil, err
+	}
+	// Used by podman and podman-remote
+	if err := os.Setenv("CONTAINER_HOST", options.Host); err != nil {
+		return nil, err
+	}
+
 	return &ContainerClient{
 		Client: cli,
 	}, nil
+}
+
+func NewContainerClient(ctx context.Context, opts ...Opt) (*ContainerClient, error) {
+	options := &ClientOptions{
+		Attempts:      5,
+		RetryInterval: 5 * time.Second,
+	}
+	for _, opt := range opts {
+		if err := opt(options); err != nil {
+			return nil, err
+		}
+	}
+
+	attempts := 0
+	var client *ContainerClient
+	var err error
+
+	for {
+		client, err = newContainerClient(options)
+		attempts += 1
+
+		if err == nil {
+			return client, nil
+		}
+		slog.Info("Could not create container engine client", "err", err)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		if options.Attempts != -1 && attempts >= options.Attempts {
+			return nil, fmt.Errorf("failed to create container engine client after %d attempts", attempts)
+		}
+
+		t := time.NewTimer(options.RetryInterval)
+		select {
+		case <-ctx.Done():
+			slog.Info("context expired")
+			t.Stop()
+			if ctx.Err() == nil {
+				return nil, fmt.Errorf("failed to create container engine client")
+			}
+			return nil, ctx.Err()
+		case <-t.C:
+			slog.Info("Retrying to create container engine client")
+		}
+	}
 }
 
 type ContainerTelemetryMessage struct {

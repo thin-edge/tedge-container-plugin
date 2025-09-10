@@ -78,7 +78,7 @@ func (c *CheckCommand) RunE(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check container self
-	containerCLI, err := container.NewContainerClient()
+	containerCLI, err := container.NewContainerClient(context.TODO())
 	if err != nil {
 		return err
 	}

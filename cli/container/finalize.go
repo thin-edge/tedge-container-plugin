@@ -24,7 +24,7 @@ func NewFinalizeCommand(ctx cli.Cli) *cobra.Command {
 			if !pruneImages {
 				return nil
 			}
-			cli, err := container.NewContainerClient()
+			cli, err := container.NewContainerClient(context.TODO())
 			if err != nil {
 				return err
 			}
