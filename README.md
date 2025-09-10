@@ -51,6 +51,34 @@ The following features are supported by the plugin:
 
 ## Documentation
 
+### Container Engine Detection
+
+The plugin primarily uses the unix socket to interact with the container engine.
+
+By default, the socket is auto detected by checking a list of known socket paths, and taking the first matching socket that exists. If no socket is found, then the application will repeat the socket detection and eventually giving up after a period of time.
+
+The following table shows the list container engine socket paths and the order of precedence (where the first existing socket is used).
+
+|Socket Path|Description|
+|-----------|-----------|
+|$DOCKER_HOST|Default Docker Environment variable|
+|$CONTAINER_HOST|Default Podman Environment variable|
+|unix:///run/user/{uid}/docker.sock|Docker rootless|
+|unix://$XDG_RUNTIME_DIR/podman/podman.sock|Podman rootless|
+|unix:///tmp/storage-run-{uid}/podman/podman.sock|Podman rootless|
+|unix:///var/run/docker.sock|Docker (rootful)|
+|unix:///run/podman/podman.sock|Podman (rootful)|
+|unix:///run/user/0/podman/podman.sock|Podman (rootful)|
+
+Where `{uid}` is either the value of the `SUDO_UID` environment variable (if present), or the process's effective user ID.
+
+If your device is not finding the correct socket path for your container engine, then you can explicitly set the socket path in the `tedge-container-plugin.toml` file. Below shows an example of such a snippet which forces the usage of the rootful podman api endpoint. You will need to restart the tedge-container-plugin service before the setting will take effect.
+
+```toml
+[container]
+host = "unix:///run/podman/podman.sock"
+```
+
 ### Install/remove single containers
 
 Containers can be installed and removed via the Cumulocity Software Management interface in the Device Management Application.
