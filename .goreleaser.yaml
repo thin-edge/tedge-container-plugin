@@ -105,6 +105,7 @@ nfpms:
       - tedge-container-plugin
 
     scripts:
+      preinstall: ./packaging/scripts/pre-install
       preremove: ./packaging/scripts/pre-remove
       postinstall: ./packaging/scripts/post-install
       postremove: ./packaging/scripts/post-remove

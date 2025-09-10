@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+
+echo "Running pre-install: $*"
+
+# remove old symlink which will be replaced by a normal file during installation
+if [ -L /etc/init.d/tedge-container-plugin ]; then
+    rm -f /etc/init.d/tedge-container-plugin
+fi
+if [ -L /etc/conf.d/tedge-container-plugin ]; then
+    rm -f /etc/conf.d/tedge-container-plugin
+fi
