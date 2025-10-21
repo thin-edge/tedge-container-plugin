@@ -22,6 +22,9 @@ RUN apt-get update \
     && tedge config unset mqtt.client.host \
     && tedge config unset http.client.host
 
+# install from main channel
+RUN wget -O - thin-edge.io/install.sh | sh -s -- --channel main
+
 RUN echo "tedge  ALL = (ALL) NOPASSWD: /usr/bin/tedge-container" | tee /etc/sudoers.d/tedge-containers \
     && echo "CONTAINER_METRICS_INTERVAL=60s" | tee -a /etc/tedge-container-plugin/env
 
