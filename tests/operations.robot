@@ -27,6 +27,11 @@ Install/uninstall container-group package
     Should Contain    ${operation.to_json()["c8y_Command"]["result"]}    Welcome to nginx
     Cumulocity.Should Have Services    name=nginx@nginx    service_type=container-group    status=up
 
+    # Check if you can request the logs for it
+    Cumulocity.Should Contain Supported Log Types    nginx@nginx::container-group
+    ${operation}=    Cumulocity.Get Log File    nginx@nginx::container-group
+    Operation Should Be SUCCESSFUL    ${operation}
+
     # Uninstall
     ${operation}=     Cumulocity.Uninstall Software    {"name": "nginx", "version": "1.0.0", "softwareType": "container-group"}
     Operation Should Be SUCCESSFUL    ${operation}

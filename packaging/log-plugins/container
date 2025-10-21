@@ -1,2 +1,2 @@
 #!/bin/sh
-exec tedge-container container-logs "$@"
+exec tedge-container log-plugins container "$@"
