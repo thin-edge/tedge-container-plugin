@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/thin-edge/tedge-container-plugin/cli/container"
 	"github.com/thin-edge/tedge-container-plugin/cli/container_group"
+	"github.com/thin-edge/tedge-container-plugin/cli/container_logs"
 	"github.com/thin-edge/tedge-container-plugin/cli/engine"
 	"github.com/thin-edge/tedge-container-plugin/cli/initcmd"
 	"github.com/thin-edge/tedge-container-plugin/cli/run"
@@ -92,6 +93,7 @@ func init() {
 		initcmd.NewInitCommand(cliConfig),
 		self.NewSoftwareManagementSelfCommand(cliConfig),
 		tools.NewToolsCommand(cliConfig),
+		container_logs.NewContainerLogsCommand(cliConfig),
 	)
 
 	rootCmd.PersistentFlags().String("log-level", "info", "Log level")
