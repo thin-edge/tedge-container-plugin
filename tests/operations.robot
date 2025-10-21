@@ -59,6 +59,11 @@ Install/uninstall container package
     Should Contain    ${operation.to_json()["c8y_Command"]["result"]}    It works!
     Cumulocity.Should Have Services    name=webserver    service_type=container    status=up
 
+    # Check if you can request the logs for it
+    Cumulocity.Should Contain Supported Log Types    webserver::container
+    ${operation}=    Cumulocity.Get Log File    webserver::container
+    Operation Should Be SUCCESSFUL    ${operation}
+
     # Uninstall
     ${operation}=     Cumulocity.Uninstall Software    {"name": "webserver", "version": "docker.io/library/httpd:2.4", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}

@@ -32,6 +32,17 @@ Get Container Logs with only last N lines
     Should Not Contain    ${output}    hello inside container stdout
     Should Contain    ${output}    hello inside container stderr
 
+Get Container Logs By Operation
+    # Run dummy container then exit
+    DeviceLibrary.Execute Command    cmd=tedge-container tools container-remove app14 ||: ; tedge-container engine docker run --name app14 httpd:2.4.61-alpine sh -c 'echo hello inside container stdout; echo hello inside container stderr >&2;'
+    
+    # FIXME: Remove once tedge-agent supports an official interface to reload the config
+    Execute Command    cmd=touch /usr/share/tedge/log-plugins/container
+
+    Cumulocity.Should Contain Supported Log Types    app14::container
+    ${operation}=    Cumulocity.Get Log File    app14::container
+    Operation Should Be SUCCESSFUL    ${operation}
+
 *** Keywords ***
 
 Suite Setup
