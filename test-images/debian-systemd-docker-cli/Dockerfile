@@ -41,3 +41,6 @@ RUN case ${TARGETPLATFORM} in \
     && mkdir -p /opt/packages \
     && cp /tmp/*${PKG_ARCH}*.deb /opt/packages/ \
     && rm -f /tmp/*.deb
+
+# disable services that aren't required
+RUN systemctl disable collectd.service
