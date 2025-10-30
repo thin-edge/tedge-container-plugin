@@ -1540,6 +1540,26 @@ func CloneHostConfig(ref *container.HostConfig, opts CloneOptions) *container.Ho
 		GroupAdd:        ref.GroupAdd,
 		Runtime:         ref.Runtime,
 		ContainerIDFile: ref.ContainerIDFile,
+		UsernsMode:      ref.UsernsMode,
+		Cgroup:          ref.Cgroup,
+		CgroupnsMode:    ref.CgroupnsMode,
+		UTSMode:         ref.UTSMode,
+		IpcMode:         ref.IpcMode,
+		PidMode:         ref.PidMode,
+		MaskedPaths:     ref.MaskedPaths,
+		Resources: container.Resources{
+			CPUShares:         ref.CPUShares,
+			Memory:            ref.Memory,
+			MemorySwap:        ref.MemorySwap,
+			NanoCPUs:          ref.NanoCPUs,
+			CpusetMems:        ref.CpusetMems,
+			CpusetCpus:        ref.CpusetCpus,
+			CPUPeriod:         ref.CPUPeriod,
+			MemoryReservation: ref.MemoryReservation,
+			OomKillDisable:    ref.OomKillDisable,
+		},
+		ShmSize: ref.ShmSize,
+		Sysctls: ref.Sysctls,
 	}
 
 	if opts.SkipNetwork {
