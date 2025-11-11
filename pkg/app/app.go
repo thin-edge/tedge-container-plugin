@@ -625,5 +625,10 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 		}
 	}
 
+	// Update tedge-agent log types
+	if err := a.client.SyncLogTypes(tedgeClient.Target); err != nil {
+		slog.Warn("Failed to send tedge-agent sync request to update the log types", "err", err)
+	}
+
 	return nil
 }

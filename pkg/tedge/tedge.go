@@ -241,6 +241,13 @@ func (c *Client) Publish(topic string, qos byte, retained bool, payload any) err
 	return tok.Error()
 }
 
+// SyncLogTypes sends a signal to the tedge-agent to refresh the list of log types
+// so that it will include any new containers which may of been added
+func (c *Client) SyncLogTypes(target Target) error {
+	topic := GetTopic(*c.Target.Service("tedge-agent"), "signal", "sync_log_upload")
+	return c.Publish(topic, 0, false, "{}")
+}
+
 // Deregister a thin-edge.io entity
 // Clear the status health topic as well as the registration topic
 func (c *Client) DeregisterEntity(target Target, retainedTopicPartials ...string) error {
