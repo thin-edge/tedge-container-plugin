@@ -27,6 +27,11 @@ Install/uninstall container-group package
     Should Contain    ${operation.to_json()["c8y_Command"]["result"]}    Welcome to nginx
     Cumulocity.Should Have Services    name=nginx@nginx    service_type=container-group    status=up
 
+    # Check if you can request the logs for it
+    Cumulocity.Should Contain Supported Log Types    nginx@nginx::container-group
+    ${operation}=    Cumulocity.Get Log File    nginx@nginx::container-group
+    Operation Should Be SUCCESSFUL    ${operation}
+
     # Uninstall
     ${operation}=     Cumulocity.Uninstall Software    {"name": "nginx", "version": "1.0.0", "softwareType": "container-group"}
     Operation Should Be SUCCESSFUL    ${operation}
@@ -59,12 +64,19 @@ Install/uninstall container package
     Should Contain    ${operation.to_json()["c8y_Command"]["result"]}    It works!
     Cumulocity.Should Have Services    name=webserver    service_type=container    status=up
 
+    # Check if you can request the logs for it
+    Cumulocity.Should Contain Supported Log Types    webserver::container
+    ${operation}=    Cumulocity.Get Log File    webserver::container
+    Operation Should Be SUCCESSFUL    ${operation}
+
     # Uninstall
     ${operation}=     Cumulocity.Uninstall Software    {"name": "webserver", "version": "docker.io/library/httpd:2.4", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}
     Device Should Not Have Installed Software    webserver
     Cumulocity.Should Have Services    name=webserver    service_type=container    min_count=0    max_count=0
 
+    # container's log type should be removed
+    Cumulocity.Should Not Contain Supported Log Types    webserver::container
 
 Install/uninstall container package from file
     ${binary_url}=    Cumulocity.Create Inventory Binary    app3    container    file=${CURDIR}/data/apps/app3.tar
@@ -91,6 +103,9 @@ Manual container creation/deletion
     Should Contain    ${operation.to_json()["c8y_Command"]["result"]}    It works!
     Cumulocity.Should Have Services    name=manualapp1    service_type=container    status=up
 
+    # container's log type should of been added
+    Cumulocity.Should Contain Supported Log Types    manualapp1::container
+
     # Pause
     ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker pause manualapp1;
     Operation Should Be SUCCESSFUL    ${operation}
@@ -106,6 +121,8 @@ Manual container creation/deletion
     Operation Should Be SUCCESSFUL    ${operation}
     Cumulocity.Should Have Services    name=manualapp1    service_type=container    min_count=0    max_count=0    timeout=10
 
+    # container's log type should be removed
+    Cumulocity.Should Not Contain Supported Log Types    manualapp1::container
 
 Manual container creation/deletion with error on run
     ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run -d --name manualapp2 httpd:2.4 --invalid-arg || exit 0

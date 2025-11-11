@@ -201,6 +201,11 @@ func FormatPorts(values []container.Port) string {
 	return strings.Join(formatted, ", ")
 }
 
+func ParseContainerGroup(v string) (projectName string, serviceName string, ok bool) {
+	projectName, serviceName, ok = strings.Cut(v, "@")
+	return
+}
+
 func ConvertName(v []string) string {
 	return strings.TrimPrefix(v[0], "/")
 }
@@ -887,6 +892,19 @@ func CheckPodmanComposeError(b string) error {
 		}
 	}
 	return lastErr
+}
+
+func (c *ContainerClient) LookupProject(ctx context.Context, projectName string, serviceName string) ([]container.Summary, error) {
+	projectFilter := filters.NewArgs(
+		filters.Arg("label", "com.docker.compose.project="+projectName),
+	)
+	if serviceName != "" {
+		projectFilter.Add("name", serviceName)
+	}
+	projectContainers, err := c.Client.ContainerList(ctx, container.ListOptions{
+		Filters: projectFilter,
+	})
+	return projectContainers, err
 }
 
 func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectName string, defaultWorkingDir string) error {
