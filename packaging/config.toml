@@ -25,6 +25,11 @@ names = [ "^buildx.*" ]
 # Exclude containers which have any of the given labels
 labels = [ "tedge.ignore" ]
 
+[container_image]
+# Enable the container-image software management plugin
+# which allows users to just install the container image but not run it
+enabled = false
+
 [client]
 # Certificate key used to connect to local thin-edge.io services (only used if the file exists)
 key = "/etc/tedge/device-certs/local-tedge.key"
