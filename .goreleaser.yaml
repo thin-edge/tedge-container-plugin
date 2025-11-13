@@ -119,6 +119,10 @@ nfpms:
         dst: /etc/tedge/sm-plugins/container-group
         type: symlink
 
+      - src: /usr/bin/tedge-container
+        dst: /etc/tedge/sm-plugins/container-image
+        type: symlink
+
       # log plugins
       - src: packaging/log-plugins/container
         dst: /usr/share/tedge/log-plugins/container
