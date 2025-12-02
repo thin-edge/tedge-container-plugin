@@ -1576,7 +1576,6 @@ func CloneHostConfig(ref *container.HostConfig, opts CloneOptions) *container.Ho
 			MemoryReservation: ref.MemoryReservation,
 			OomKillDisable:    ref.OomKillDisable,
 		},
-		ShmSize: ref.ShmSize,
 		Sysctls: ref.Sysctls,
 	}
 
