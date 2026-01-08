@@ -16,6 +16,7 @@ The instructions assume that you are using thin-edge.io &gt;= 1.0.0
 * The following software management plugins which is called when installing and removing containers/container groups via Cumulocity
     * `container` - Deploy a single container (`docker run xxx` equivalent)
     * `container-group` - Deploy one or more container as defined by a `docker-compose.yaml` file (`docker compose up` equivalent), or an archive (gzip or zip)
+    * `container-image` - (optional) Install/remove container images. This software management plugin is disabled by default but can be enabled by setting `container_image.enabled` to `true` in the configuration file
 
 
 **Technical summary**
