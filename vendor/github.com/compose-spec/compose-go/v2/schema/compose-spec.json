@@ -531,19 +531,24 @@
             {"type": "object",
               "patternProperties": {
                 "^[a-zA-Z0-9._-]+$": {
-                  "type": "object",
-                  "properties": {
-                    "endpoint_var": {
-                      "type": "string",
-                      "description": "Environment variable set to AI model endpoint."
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "endpoint_var": {
+                          "type": "string",
+                          "description": "Environment variable set to AI model endpoint."
+                        },
+                        "model_var": {
+                          "type": "string",
+                          "description": "Environment variable set to AI model name."
+                        }
+                      },
+                      "additionalProperties": false,
+                      "patternProperties": {"^x-": {}}
                     },
-                    "model_var": {
-                      "type": "string",
-                      "description": "Environment variable set to AI model name."
-                    }
-                  },
-                  "additionalProperties": false,
-                  "patternProperties": {"^x-": {}}
+                    {"type": "null"}
+                  ]
                 }
               }
             }
@@ -992,6 +997,10 @@
               "exec": {
                 "$ref": "#/definitions/service_hook",
                 "description": "Command to execute when a change is detected and action is sync+exec."
+              },
+              "initial_sync": {
+                "type": "boolean",
+                "description": "Ensure that an initial synchronization is done before starting watch mode for sync+x triggers"
               }
             },
             "additionalProperties": false,
