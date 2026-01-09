@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/thin-edge/tedge-container-plugin/cli/container"
 	"github.com/thin-edge/tedge-container-plugin/cli/container_group"
+	"github.com/thin-edge/tedge-container-plugin/cli/container_image"
 	"github.com/thin-edge/tedge-container-plugin/cli/container_logs"
 	"github.com/thin-edge/tedge-container-plugin/cli/engine"
 	"github.com/thin-edge/tedge-container-plugin/cli/initcmd"
@@ -44,7 +45,7 @@ func Execute() {
 	args := os.Args
 	name := filepath.Base(args[0])
 	switch name {
-	case "container", "container-group", "self":
+	case "container", "container-image", "container-group", "self":
 		slog.Debug("Calling as a software management plugin.", "name", name, "args", args)
 		rootCmd.SetArgs(append([]string{name}, args[1:]...))
 	default:
@@ -96,6 +97,7 @@ func init() {
 		tools.NewToolsCommand(cliConfig),
 		container_logs.NewContainerLogsCommand(cliConfig),
 		log_plugins.NewCommand(cliConfig),
+		container_image.NewCommand(cliConfig),
 	)
 
 	rootCmd.PersistentFlags().String("log-level", "info", "Log level")
