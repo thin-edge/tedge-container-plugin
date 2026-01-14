@@ -14,7 +14,7 @@ func IsEnabled(cmdCli cli.Cli) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		enabled := cmdCli.GetBool("container_image.enabled")
 		if !enabled {
-			slog.Info("The container-image sm-plugin is not enabled. Enabled it using the 'container-image.enabled' setting")
+			slog.Info("The container-image sm-plugin is not enabled. Enabled it using the 'container_image.enabled' setting or 'CONTAINER_CONTAINER_IMAGE_ENABLED' env variable")
 			return cli.ExitCodeError{
 				Code:   1,
 				Err:    fmt.Errorf("container-image is not enabled"),
