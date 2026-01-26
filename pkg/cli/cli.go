@@ -225,7 +225,7 @@ func (c *Cli) GetCumulocityHost() string {
 }
 
 func (c *Cli) GetCumulocityPort() uint16 {
-	v := viper.GetUint16("monitor.c8y.proxy.client..port")
+	v := viper.GetUint16("client.c8y.port")
 	if v == 0 {
 		return 8001
 	}
