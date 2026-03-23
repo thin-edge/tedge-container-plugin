@@ -177,6 +177,7 @@ Remove Orphaned Cloud Services
     Cumulocity.Should Have Services    name=manualapp4    min_count=0    max_count=0    timeout=10
 
 Install container group that uses host volume mount
+    [Setup]    Start Service    tedge-container-plugin
     # Install container-group
     Install container-group application    app5    1.0.0    app5    ${CURDIR}/data/apps/app5.tar.gz
     Device Should Have Installed Software    {"name": "app5", "version": "1.0.0", "softwareType": "container-group"}
