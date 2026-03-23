@@ -165,6 +165,9 @@ func NewClient(parent Target, target Target, serviceName string, config *ClientC
 		subscriptions := make(map[string]byte)
 		subscriptions[target.RootPrefix+"/+/+/+/+"] = 1
 		subscriptions[GetTopic(*target.Service("+"), "cmd", "health", "check")] = 1
+		// Subscribe to service health status topics so bridge online/offline
+		// transitions can be detected and used to retry pending cloud operations.
+		subscriptions[target.RootPrefix+"/+/+/service/+/status/health"] = 1
 		slog.Info("Subscribing to topics.", "topics", subscriptions)
 		tok := c.SubscribeMultiple(subscriptions, nil)
 		tok.Wait()

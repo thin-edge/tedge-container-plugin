@@ -176,6 +176,40 @@ Remove Orphaned Cloud Services
     Start Service    tedge-container-plugin
     Cumulocity.Should Have Services    name=manualapp4    min_count=0    max_count=0    timeout=10
 
+Remove Orphaned Cloud Services eventually if Cumulocity Proxy is Unavailable at deletion time
+    [Documentation]    Some instances the Cumulocity local proxy will not be available
+    ...    so the syncing of the services in the cloud should be able to handle
+    ...    a delayed sync when the Cumulocity local proxy is unavailable, or the device
+    ...    the device went offline at the time of installation or removal of a container
+    ...    or container-group.
+    ...    See https://github.com/thin-edge/tedge-container-plugin/issues/181
+
+    # create a local container manually
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run -d --name manualapp4 busybox sh -c 'exec sleep infinity'
+    Operation Should Be SUCCESSFUL    ${operation}    timeout=60
+    Cumulocity.Should Have Services    name=manualapp4    service_type=container    status=up
+
+    # install a container-group
+    Install container-group application    app6    1.0.0    app5    ${CURDIR}/data/apps/app5.tar.gz
+    Device Should Have Installed Software    {"name": "app6", "version": "1.0.0", "softwareType": "container-group"}
+    Cumulocity.Should Have Services    name=app6@httpd    service_type=container-group    status=up
+
+    Stop Service    tedge-mapper-c8y
+
+    # Remove the container (manually)
+    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker rm manualapp4 --force
+
+    # Remove the container-group (manually as the mapper is down)
+    DeviceLibrary.Execute Command    cmd=sudo /etc/tedge/sm-plugins/container-group remove app6 --module-version 1.0.0
+
+    # Start the service, and check that the service has been removed (without the explicit service type defined)
+    Sleep    15s
+    Start Service    tedge-mapper-c8y
+
+    # Services should be eventually deleted
+    Cumulocity.Should Have Services    name=manualapp4    min_count=0    max_count=0    timeout=10
+    Cumulocity.Should Have Services    name=app6@httpd    min_count=0    max_count=0    timeout=10
+
 Install container group that uses host volume mount
     [Setup]    Start Service    tedge-container-plugin
     # Install container-group

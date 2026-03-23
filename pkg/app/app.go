@@ -50,11 +50,13 @@ type App struct {
 
 	Device *tedge.Target
 
-	config         Config
-	shutdown       chan struct{}
-	updateRequests chan ActionRequest
-	updateResults  chan error
-	wg             sync.WaitGroup
+	config             Config
+	shutdown           chan struct{}
+	updateRequests     chan ActionRequest
+	updateResults      chan error
+	wg                 sync.WaitGroup
+	pendingDeletions   []tedge.Target
+	pendingDeletionsMu sync.Mutex
 }
 
 type Config struct {
@@ -152,19 +154,28 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 	}
 
 	application := &App{
-		client:          tedgeClient,
-		ContainerClient: containerClient,
-		Device:          &device,
-		config:          config,
-		updateRequests:  make(chan ActionRequest),
-		updateResults:   make(chan error),
-		shutdown:        make(chan struct{}),
-		wg:              sync.WaitGroup{},
+		client:           tedgeClient,
+		ContainerClient:  containerClient,
+		Device:           &device,
+		config:           config,
+		updateRequests:   make(chan ActionRequest),
+		updateResults:    make(chan error),
+		shutdown:         make(chan struct{}),
+		wg:               sync.WaitGroup{},
+		pendingDeletions: make([]tedge.Target, 0),
 	}
 
 	// Start background task to process requests
 	application.wg.Add(1)
 	go application.worker()
+
+	// Register MQTT route callbacks. This must be done after the struct is
+	// constructed (so the callbacks can reference it) but is safe to call
+	// here because AddRoute only registers in-process handlers — no broker
+	// interaction occurs.
+	if err := application.Subscribe(); err != nil {
+		return nil, err
+	}
 
 	return application, nil
 }
@@ -244,6 +255,26 @@ func (a *App) Subscribe() error {
 		}
 	})
 
+	// Subscribe to cloud bridge health topics so we can retry any failed cloud
+	// deletions and trigger a full resync when connectivity is restored.
+	// Both the built-in bridge (tedge-mapper-c8y) and the mosquitto bridge
+	// (c8y-mapper) variants are covered.
+	for _, bridgeService := range []string{"tedge-mapper-c8y", "tedge-mapper-bridge-c8y", "mosquitto-c8y-bridge"} {
+		bridgeTopic := tedge.GetHealthTopic(*a.Device.Service(bridgeService))
+		slog.Info("Subscribing to bridge health topic.", "topic", bridgeTopic)
+		a.client.Client.AddRoute(bridgeTopic, func(c mqtt.Client, m mqtt.Message) {
+			if len(m.Payload()) == 0 {
+				return
+			}
+			if isBridgeOnline(m.Payload()) {
+				slog.Info("Cloud bridge is online, triggering service resync to process any pending cloud deletions.", "topic", m.Topic())
+				go func() {
+					a.updateRequests <- NewUpdateAllAction(container.FilterOptions{})
+				}()
+			}
+		})
+	}
+
 	return nil
 }
 
@@ -321,6 +352,28 @@ var ContainerEventText = map[events.Action]string{
 func mustMarshalJSON(v any) []byte {
 	b, _ := json.Marshal(v)
 	return b
+}
+
+// isBridgeOnline returns true when a bridge health payload indicates the bridge
+// is online. It handles two formats:
+//   - The mosquitto bridge format: a plain "1" (online) or "0" (offline).
+//   - The thin-edge built-in bridge format: JSON {"status":"up"}.
+func isBridgeOnline(payload []byte) bool {
+	// Mosquitto bridge publishes "1" when connected and "0" when disconnected.
+	p := strings.TrimSpace(string(payload))
+	if p == "1" {
+		return true
+	}
+	if p == "0" {
+		return false
+	}
+	var s struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(payload, &s); err != nil {
+		return false
+	}
+	return s.Status == tedge.StatusUp
 }
 
 func getEventAttributes(attr map[string]string, props ...string) []string {
@@ -578,6 +631,34 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 		}
 	}
 
+	// Retry any cloud deletions that previously failed due to the proxy being unavailable.
+	if a.config.DeleteFromCloud {
+		a.pendingDeletionsMu.Lock()
+		pendingRetry := a.pendingDeletions
+		a.pendingDeletions = make([]tedge.Target, 0)
+		a.pendingDeletionsMu.Unlock()
+
+		if len(pendingRetry) > 0 {
+			slog.Info("Retrying previously-failed cloud deletions.", "count", len(pendingRetry))
+			for _, target := range pendingRetry {
+				// Skip if the service has re-registered itself since the deletion was queued.
+				if _, reregistered := entities[target.TopicID]; reregistered {
+					slog.Info("Skipping pending cloud deletion: service re-registered.", "topic", target.Topic())
+					continue
+				}
+				slog.Info("Retrying cloud deletion.", "topic", target.Topic())
+				if _, err := tedgeClient.DeleteCumulocityManagedObject(target); err != nil {
+					slog.Warn("Failed to retry cloud deletion, re-queuing.", "err", err, "topic", target.Topic())
+					a.pendingDeletionsMu.Lock()
+					a.pendingDeletions = append(a.pendingDeletions, target)
+					a.pendingDeletionsMu.Unlock()
+				} else {
+					slog.Info("Successfully retried cloud deletion.", "topic", target.Topic())
+				}
+			}
+		}
+	}
+
 	// Delete removed values, via MQTT and c8y API
 	markedForDeletion := make([]tedge.Target, 0)
 	if removeStaleServices {
@@ -604,14 +685,17 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 			for _, target := range markedForDeletion {
 				slog.Info("Removing service from the cloud", "topic", target.Topic())
 
-				// FIXME: How to handle if the device is deregistered locally, but still exists in the cloud?
-				// Should it try to reconcile with the cloud to delete orphaned services?
-				// Delete service directly from Cumulocity using the local Cumulocity Proxy
+				// Delete service directly from Cumulocity using the local Cumulocity Proxy.
+				// If the proxy is unavailable (e.g. the device is offline or the mapper is
+				// restarting), queue the target so the deletion is retried when the bridge
+				// comes back online.
 				target.CloudIdentity = tedgeClient.Target.CloudIdentity
 				if target.CloudIdentity != "" {
-					// Delay deleting the value
 					if _, err := tedgeClient.DeleteCumulocityManagedObject(target); err != nil {
-						slog.Warn("Failed to delete managed object.", "err", err)
+						slog.Warn("Failed to delete managed object, queuing for retry.", "err", err, "topic", target.Topic())
+						a.pendingDeletionsMu.Lock()
+						a.pendingDeletions = append(a.pendingDeletions, target)
+						a.pendingDeletionsMu.Unlock()
 					}
 				}
 			}
