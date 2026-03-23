@@ -27,7 +27,7 @@ func (cp *ComposeProject) GetVersion() string {
 	if err != nil {
 		return "latest"
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	scanner := bufio.NewScanner(file)
 	scanner.Scan()
 	return scanner.Text()
@@ -70,7 +70,7 @@ func NewListCommand(cliContext cli.Cli) *cobra.Command {
 
 			for _, key := range keys {
 				project := projects[key]
-				fmt.Fprintf(stdout, "%s\t%s\n", project.Name, project.GetVersion())
+				_, _ = fmt.Fprintf(stdout, "%s\t%s\n", project.Name, project.GetVersion())
 			}
 			return nil
 		},

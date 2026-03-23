@@ -69,8 +69,8 @@ func (c *SocketClient) PruneImages(body io.Reader) (report image.PruneReport, er
 		return
 	}
 
+	defer func() { _ = r.Body.Close() }()
 	b, err := io.ReadAll(r.Body)
-	defer r.Body.Close()
 	if err != nil {
 		return
 	}
@@ -148,7 +148,7 @@ func (c *SocketClient) PullImages(ctx context.Context, imageRef string, alwaysPu
 		return err
 	}
 
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	if _, ioErr := io.Copy(os.Stderr, r.Body); ioErr != nil {
 		slog.Warn("Could not write to stderr.", "err", ioErr)
 	}

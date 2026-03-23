@@ -42,8 +42,8 @@ func IsDirWritable(d string, perm fs.FileMode) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer os.Remove(file.Name())
-	defer file.Close()
+	defer func() { _ = os.Remove(file.Name()) }()
+	defer func() { _ = file.Close() }()
 	return true, nil
 }
 

@@ -30,7 +30,7 @@ func NewInitCommand(cliContext cli.Cli) *cobra.Command {
 			if err != nil {
 				return nil
 			}
-			defer os.RemoveAll(dir)
+			defer func() { _ = os.RemoveAll(dir) }()
 
 			tmpfile := filepath.Join(dir, "config."+command.Format)
 			slog.Debug("Writing to temp file.", "path", tmpfile)

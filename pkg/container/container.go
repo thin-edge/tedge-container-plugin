@@ -53,7 +53,7 @@ func (t JSONTime) MarshalJSON() ([]byte, error) {
 		v := fmt.Sprintf("\"%s\"", time.Time(t.Time).Format(time.RFC3339))
 		return []byte(v), nil
 	}
-	v := fmt.Sprintf("%d", t.Time.Unix())
+	v := fmt.Sprintf("%d", t.Unix())
 	return []byte(v), nil
 }
 
@@ -725,7 +725,7 @@ func (c *ContainerClient) ImagePullWithRetries(ctx context.Context, imageRef str
 			if err != nil {
 				return nil, err
 			}
-			defer out.Close()
+			defer func() { _ = out.Close() }()
 			if _, ioErr := io.Copy(os.Stderr, out); ioErr != nil {
 				slog.Warn("Could not write to stderr.", "err", ioErr)
 			}
@@ -859,7 +859,7 @@ func (c *ContainerClient) ComposeUp(ctx context.Context, w io.Writer, projectNam
 	prog := exec.Command(command, args...)
 	prog.Dir = workingDir
 	out, err := prog.CombinedOutput()
-	fmt.Fprintf(w, "%s", out)
+	_, _ = fmt.Fprintf(w, "%s", out)
 
 	if err != nil {
 		return err
@@ -954,7 +954,7 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 		prog := exec.Command(command, args...)
 		prog.Dir = workingDir
 		out, err := prog.CombinedOutput()
-		fmt.Fprintf(w, "%s", out)
+		_, _ = fmt.Fprintf(w, "%s", out)
 
 		if err == nil {
 			slog.Info("Removing project directory.", "dir", workingDir)
@@ -1152,7 +1152,7 @@ func (c *ContainerClient) ContainerLogs(ctx context.Context, w io.Writer, contai
 	if logErr != nil {
 		return logErr
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	_, err := StdCopy(w, w, reader)
 	if err != nil {
 		return err
@@ -1290,7 +1290,7 @@ func (c *ContainerClient) CloneContainer(ctx context.Context, containerID string
 		if logErr != nil {
 			slog.Warn("Could not get logs from new container.", "id", nextContainer.ID, "err", logErr)
 		} else {
-			defer reader.Close()
+			defer func() { _ = reader.Close() }()
 
 			_, err := StdCopy(os.Stderr, os.Stderr, reader)
 			if err != nil {

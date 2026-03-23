@@ -37,7 +37,7 @@ func NewListCommand(cliContext cli.Cli) *cobra.Command {
 			for _, item := range images {
 				for _, tag := range item.RepoTags {
 					if name, version, ok := strings.Cut(tag, ":"); ok {
-						fmt.Fprintf(stdout, "%s\t%s\n", name, version)
+						_, _ = fmt.Fprintf(stdout, "%s\t%s\n", name, version)
 					}
 				}
 			}

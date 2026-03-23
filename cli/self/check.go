@@ -102,14 +102,16 @@ func (c *CheckCommand) RunE(cmd *cobra.Command, args []string) error {
 
 	match := UpdateInfo{}
 	for _, module := range updateList {
-		if module.Type == SoftwareManagementTypeSelf {
+		switch module.Type {
+		case SoftwareManagementTypeSelf:
 			// self update (to be removed in the future)
 			for _, item := range module.Modules {
-				if item.Action == SoftwareManagementActionInstall {
+				switch item.Action {
+				case SoftwareManagementActionInstall:
 					match.ContainerName = item.Name
 					match.Image = item.Version
 					includesSelfUpdate = true
-				} else if item.Action == SoftwareManagementActionRemove {
+				case SoftwareManagementActionRemove:
 					return cli.ExitCodeError{
 						Code:   ExitError,
 						Err:    fmt.Errorf("tedge's own container cannot be removed. name=%s, version=%s, containerId=%s", item.Name, item.Version, selfContainerID),
@@ -117,21 +119,22 @@ func (c *CheckCommand) RunE(cmd *cobra.Command, args []string) error {
 					}
 				}
 			}
-		} else if module.Type == SoftwareManagementTypeContainer {
+		case SoftwareManagementTypeContainer:
 			// container update
 			// Filter non self-updated modules
 			filteredModules := make([]SoftwareItem, 0)
 
 			for _, item := range module.Modules {
 				if selfContainerName == item.Name {
-					if item.Action == SoftwareManagementActionRemove {
+					switch item.Action {
+					case SoftwareManagementActionRemove:
 						// Protect against the user deleting the tedge container itself
 						return cli.ExitCodeError{
 							Code:   ExitError,
 							Err:    fmt.Errorf("tedge's own container cannot be removed. name=%s, version=%s, containerId=%s", item.Name, item.Version, selfContainerID),
 							Silent: true,
 						}
-					} else if item.Action == SoftwareManagementActionInstall {
+					case SoftwareManagementActionInstall:
 						// install
 						match.ContainerName = item.Name
 						match.Image = item.Version
@@ -147,7 +150,7 @@ func (c *CheckCommand) RunE(cmd *cobra.Command, args []string) error {
 					Modules: filteredModules,
 				})
 			}
-		} else {
+		default:
 			outputUpdateModules = append(outputUpdateModules, module)
 		}
 	}
@@ -168,7 +171,7 @@ func (c *CheckCommand) RunE(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return newUnexpectedError(err)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), ":::begin-tedge:::\n%s\n:::end-tedge:::\n", payload)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), ":::begin-tedge:::\n%s\n:::end-tedge:::\n", payload)
 
 	// includes self update
 	return nil
