@@ -63,7 +63,7 @@ services:
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(workingDir)
+	defer func() { _ = os.RemoveAll(workingDir) }()
 
 	composeFile := filepath.Join(workingDir, "docker-compose.yml")
 	if err := os.WriteFile(composeFile, []byte(contents), 0o644); err != nil {
@@ -202,11 +202,11 @@ func TestHelperProcess(t *testing.T) {
 	}
 
 	if strings.Contains(cmd, "docker") && subArgs[0] == "compose" && subArgs[1] == "version" {
-		fmt.Fprintln(os.Stdout, "Docker Compose version v2.10.0")
+		_, _ = fmt.Fprintln(os.Stdout, "Docker Compose version v2.10.0")
 		os.Exit(0)
 	}
 	if strings.Contains(cmd, "docker-compose") && subArgs[0] == "version" {
-		fmt.Fprintln(os.Stdout, "docker-compose version 1.29.2, build abcdef")
+		_, _ = fmt.Fprintln(os.Stdout, "docker-compose version 1.29.2, build abcdef")
 		os.Exit(0)
 	}
 	if strings.Contains(cmd, "podman-compose") && subArgs[0] == "version" {
@@ -215,7 +215,7 @@ func TestHelperProcess(t *testing.T) {
 		if v := os.Getenv("GO_TEST_PODMAN_COMPOSE_VERSION"); v != "" {
 			versionOutput = fmt.Sprintf("podman-compose version %s\n['podman', '--version', '']\nusing podman version: 4.x.x", v)
 		}
-		fmt.Fprintln(os.Stdout, versionOutput)
+		_, _ = fmt.Fprintln(os.Stdout, versionOutput)
 		os.Exit(0)
 	}
 
@@ -252,8 +252,8 @@ func TestDetectCompose(t *testing.T) {
 	// For simplicity, the current TestHelperProcess prioritizes docker compose.
 
 	t.Run("no compose found", func(t *testing.T) {
-		os.Setenv("GO_TEST_SIMULATE_NO_COMPOSE_FOUND", "1")
-		defer os.Unsetenv("GO_TEST_SIMULATE_NO_COMPOSE_FOUND")
+		_ = os.Setenv("GO_TEST_SIMULATE_NO_COMPOSE_FOUND", "1")
+		defer func() { _ = os.Unsetenv("GO_TEST_SIMULATE_NO_COMPOSE_FOUND") }()
 
 		cmd, err := detectCompose()
 		assert.Error(t, err)
@@ -290,8 +290,8 @@ func TestPrepareComposeCommand(t *testing.T) {
 		// or we'd need to simulate the detection order.
 
 		// Simulate podman-compose was detected
-		os.Setenv("GO_TEST_PODMAN_COMPOSE_VERSION", "1.0.6") // Version < 1.1.0
-		defer os.Unsetenv("GO_TEST_PODMAN_COMPOSE_VERSION")
+		_ = os.Setenv("GO_TEST_PODMAN_COMPOSE_VERSION", "1.0.6") // Version < 1.1.0
+		defer func() { _ = os.Unsetenv("GO_TEST_PODMAN_COMPOSE_VERSION") }()
 
 		// Temporarily override detectCompose for this specific sub-test
 		// This is a common pattern if direct exec mocking is too complex for all scenarios
@@ -309,8 +309,8 @@ func TestPrepareComposeCommand(t *testing.T) {
 	})
 
 	t.Run("podman-compose up - verbose added for version >= 1.1.0", func(t *testing.T) {
-		os.Setenv("GO_TEST_PODMAN_COMPOSE_VERSION", "1.1.0")
-		defer os.Unsetenv("GO_TEST_PODMAN_COMPOSE_VERSION")
+		_ = os.Setenv("GO_TEST_PODMAN_COMPOSE_VERSION", "1.1.0")
+		defer func() { _ = os.Unsetenv("GO_TEST_PODMAN_COMPOSE_VERSION") }()
 
 		oldDetect := detectComposeFunc
 		detectComposeFunc = func() (*cmdbuilder.Command, error) {
@@ -326,8 +326,8 @@ func TestPrepareComposeCommand(t *testing.T) {
 	})
 
 	t.Run("podman-compose up - verbose NOT added for version < 1.1.0", func(t *testing.T) {
-		os.Setenv("GO_TEST_PODMAN_COMPOSE_VERSION", "1.0.0")
-		defer os.Unsetenv("GO_TEST_PODMAN_COMPOSE_VERSION")
+		_ = os.Setenv("GO_TEST_PODMAN_COMPOSE_VERSION", "1.0.0")
+		defer func() { _ = os.Unsetenv("GO_TEST_PODMAN_COMPOSE_VERSION") }()
 
 		oldDetect := detectComposeFunc
 		detectComposeFunc = func() (*cmdbuilder.Command, error) {

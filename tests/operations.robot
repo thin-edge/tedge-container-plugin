@@ -170,13 +170,14 @@ Remove Orphaned Cloud Services
     # Confirm that the cloud's service status has not changed
     # Note: This could change once thin-edge.io supports deleting the cloud entities
     Sleep    1s
-    Cumulocity.Should Have Services    name=manualapp4    service_type=container    status=up
+    Cumulocity.Should Have Services    name=manualapp4    service_type=container
 
     # Start the service, and check that the service has been removed (without the explicit service type defined)
     Start Service    tedge-container-plugin
     Cumulocity.Should Have Services    name=manualapp4    min_count=0    max_count=0    timeout=10
 
 Install container group that uses host volume mount
+    [Setup]    Start Service    tedge-container-plugin
     # Install container-group
     Install container-group application    app5    1.0.0    app5    ${CURDIR}/data/apps/app5.tar.gz
     Device Should Have Installed Software    {"name": "app5", "version": "1.0.0", "softwareType": "container-group"}

@@ -34,12 +34,12 @@ func NewListCommand(cliContext cli.Cli) *cobra.Command {
 			for _, item := range containers {
 				switch item.ServiceType {
 				case container.ContainerType:
-					fmt.Fprintf(stdout, "%s\n", item.Name)
+					_, _ = fmt.Fprintf(stdout, "%s\n", item.Name)
 				case container.ContainerGroupType:
 					// TODO: Should container groups actually reference use <project>@<service>
 					// so it is easier for users to see the mapping? Or just create a new container-group-logs
 					// subcommand to handle this independently
-					fmt.Fprintf(stdout, "%s\n", item.Container.Name)
+					_, _ = fmt.Fprintf(stdout, "%s\n", item.Container.Name)
 				}
 			}
 			return nil

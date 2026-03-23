@@ -42,7 +42,7 @@ func collect(ctx context.Context, s *Stats, cli client.ContainerAPIClient, strea
 		s.SetError(err)
 		return
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	dec := json.NewDecoder(response.Body)
 	go func() {

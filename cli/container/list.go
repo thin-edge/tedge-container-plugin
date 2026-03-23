@@ -33,7 +33,7 @@ func NewListCommand(cliContext cli.Cli) *cobra.Command {
 			stdout := cmd.OutOrStdout()
 			for _, item := range containers {
 				if item.ServiceType == container.ContainerType {
-					fmt.Fprintf(stdout, "%s\t%s\n", item.Name, container.NormalizeImageRef(item.Container.Image))
+					_, _ = fmt.Fprintf(stdout, "%s\t%s\n", item.Name, container.NormalizeImageRef(item.Container.Image))
 				}
 			}
 			return nil

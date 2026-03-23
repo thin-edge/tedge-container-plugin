@@ -1,8 +1,6 @@
 module github.com/thin-edge/tedge-container-plugin
 
-go 1.24.0
-
-toolchain go1.24.5
+go 1.26.0
 
 require (
 	github.com/codeclysm/extract/v4 v4.0.0

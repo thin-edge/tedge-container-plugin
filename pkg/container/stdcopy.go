@@ -45,7 +45,7 @@ type stdWriter struct {
 // It makes stdWriter to implement io.Writer.
 func (w *stdWriter) Write(p []byte) (n int, err error) {
 	if w == nil || w.Writer == nil {
-		return 0, errors.New("Writer not instantiated")
+		return 0, errors.New("writer not instantiated")
 	}
 	if p == nil {
 		return 0, nil
@@ -135,7 +135,7 @@ func StdCopy(dstout, dsterr io.Writer, src io.Reader) (written int64, err error)
 			// to outstream if Systemerr is the stream
 			out = nil
 		default:
-			return 0, fmt.Errorf("Unrecognized input header: %d", buf[stdWriterFdIndex])
+			return 0, fmt.Errorf("unrecognized input header: %d", buf[stdWriterFdIndex])
 		}
 
 		// Retrieve the size of the frame

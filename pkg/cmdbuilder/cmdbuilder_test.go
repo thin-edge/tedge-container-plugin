@@ -97,11 +97,11 @@ func TestHelperProcess(t *testing.T) {
 	}
 
 	if strings.Contains(cmd, "docker") && subArgs[0] == "compose" && subArgs[1] == "version" {
-		fmt.Fprintln(os.Stdout, "Docker Compose version v2.10.0")
+		_, _ = fmt.Fprintln(os.Stdout, "Docker Compose version v2.10.0")
 		os.Exit(0)
 	}
 	if strings.Contains(cmd, "docker-compose") && subArgs[0] == "version" {
-		fmt.Fprintln(os.Stdout, "docker-compose version 1.29.2, build abcdef")
+		_, _ = fmt.Fprintln(os.Stdout, "docker-compose version 1.29.2, build abcdef")
 		os.Exit(0)
 	}
 	if strings.Contains(cmd, "podman-compose") && subArgs[0] == "version" {
@@ -110,7 +110,7 @@ func TestHelperProcess(t *testing.T) {
 		if v := os.Getenv("GO_TEST_PODMAN_COMPOSE_VERSION"); v != "" {
 			versionOutput = fmt.Sprintf("podman-compose version %s\n['podman', '--version', '']\nusing podman version: 4.x.x", v)
 		}
-		fmt.Fprintln(os.Stdout, versionOutput)
+		_, _ = fmt.Fprintln(os.Stdout, versionOutput)
 		os.Exit(0)
 	}
 

@@ -88,13 +88,13 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		imageResp, err := cli.Client.ImageLoad(ctx, file, client.ImageLoadWithQuiet(true))
 		if err != nil {
 			return err
 		}
-		defer imageResp.Body.Close()
+		defer func() { _ = imageResp.Body.Close() }()
 		if imageResp.JSON {
 			b, err := io.ReadAll(imageResp.Body)
 			if err != nil {
