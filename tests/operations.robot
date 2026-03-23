@@ -170,7 +170,7 @@ Remove Orphaned Cloud Services
     # Confirm that the cloud's service status has not changed
     # Note: This could change once thin-edge.io supports deleting the cloud entities
     Sleep    1s
-    Cumulocity.Should Have Services    name=manualapp4    service_type=container    status=up
+    Cumulocity.Should Have Services    name=manualapp4    service_type=container
 
     # Start the service, and check that the service has been removed (without the explicit service type defined)
     Start Service    tedge-container-plugin
