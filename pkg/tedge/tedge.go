@@ -111,6 +111,7 @@ type ClientConfig struct {
 
 	MqttHost string
 	MqttPort uint16
+	MQTTClientID string
 
 	CertFile string
 	KeyFile  string
@@ -144,8 +145,11 @@ func NewClient(parent Target, target Target, serviceName string, config *ClientC
 		opts.AddBroker(fmt.Sprintf("tcp://%s:%d", config.MqttHost, config.MqttPort))
 	}
 
-	opts.SetClientID(serviceName)
-	opts.SetClientID(fmt.Sprintf("%s#%s", serviceName, target.Topic()))
+	clientID := fmt.Sprintf("%s#%s", serviceName, target.Topic())
+	if config.MQTTClientID != "" {
+		clientID = config.MQTTClientID
+	}
+	opts.SetClientID(clientID)
 	opts.SetCleanSession(true)
 	// opts.SetOrderMatters(true)
 	opts.SetWill(GetHealthTopic(target), PayloadHealthStatusDown(), 1, true)

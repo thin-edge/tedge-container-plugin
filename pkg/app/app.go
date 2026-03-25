@@ -15,6 +15,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/reubenmiller/go-c8y/pkg/c8y"
 	"github.com/thin-edge/tedge-container-plugin/pkg/container"
+	"github.com/thin-edge/tedge-container-plugin/pkg/random"
 	"github.com/thin-edge/tedge-container-plugin/pkg/tedge"
 )
 
@@ -74,6 +75,7 @@ type Config struct {
 	EnableEngineEvents bool
 	DeleteFromCloud    bool
 	DeleteOrphans      bool
+	RunOnce            bool
 
 	HTTPHost string
 	HTTPPort uint16
@@ -97,6 +99,11 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 		CertFile: config.CertFile,
 		KeyFile:  config.KeyFile,
 		CAFile:   config.CAFile,
+	}
+	if config.RunOnce {
+		// use a randomized client id in run-once mode so it doesn't affect the main
+		// service or any other instances also running in run-once mode
+		tedgeOpts.MQTTClientID = fmt.Sprintf("%s-%s#%s", config.ServiceName, random.String(8), serviceTarget.Topic())
 	}
 	tedgeClient := tedge.NewClient(device, *serviceTarget, config.ServiceName, tedgeOpts)
 
