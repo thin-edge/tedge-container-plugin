@@ -1,6 +1,14 @@
 # Log level. values=debug, info, warn, error
 log_level = "info"
 
+# MQTT root prefix
+# Only change this if you know what you're doing
+# topic_root = "te"
+
+# The device MQTT topic identifier
+# Change if you're running this on a child device, e.g. "device/child01//"
+# topic_id = "device/main//"
+
 # Service name used to show the status of the service
 service_name = "tedge-container-plugin"
 
