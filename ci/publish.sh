@@ -122,6 +122,10 @@ publish() {
     #  * The component can not be set and is currently fixed to 'main'
     find "$sourcedir" -name "$pattern" -print0 | while read -r -d $'\0' file
     do
+        if [ "$package_type" = "deb" ] && [[ "$file" =~ .+_armv7.deb ]]; then
+            echo "Skipping debian armv7 package as it conflicts with the armv6" >&2
+            continue
+        fi
         cloudsmith upload "$package_type" "${PUBLISH_OWNER}/${PUBLISH_REPO}/${distribution}/${distribution_version}" "$file" \
             --no-wait-for-sync \
             --api-key "${PUBLISH_TOKEN}"
