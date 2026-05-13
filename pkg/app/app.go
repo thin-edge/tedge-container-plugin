@@ -58,6 +58,9 @@ type App struct {
 	shutdown           chan struct{}
 	updateRequests     chan ActionRequest
 	debouncer          *UpdateDebouncer
+	restartTracker     *RestartTracker
+	crashLoopAlarms    map[string]struct{}
+	crashLoopAlarmsMu  sync.Mutex
 	wg                 sync.WaitGroup
 	pendingDeletions   []tedge.Target
 	pendingDeletionsMu sync.Mutex
@@ -164,10 +167,10 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 	}
 
 	application := &App{
-		client:           tedgeClient,
-		ContainerClient:  containerClient,
-		Device:           &device,
-		config:           config,
+		client:          tedgeClient,
+		ContainerClient: containerClient,
+		Device:          &device,
+		config:          config,
 		// Buffered so that the debouncer's dispatch and synchronous Update()
 		// calls never block when the worker is briefly busy.
 		updateRequests:   make(chan ActionRequest, 8),
@@ -185,6 +188,10 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 			slog.Warn("Dropped debounced update request: worker queue is full.")
 		}
 	})
+
+	// Track container restarts to detect crash loops (≥5 restarts in 60 s).
+	application.restartTracker = NewRestartTracker(60*time.Second, 5)
+	application.crashLoopAlarms = make(map[string]struct{})
 
 	// Start background task to process requests
 	application.wg.Add(1)
@@ -471,6 +478,13 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 
 				switch evt.Action {
 				case events.ActionExecDie, events.ActionCreate, events.ActionStart, events.ActionStop, events.ActionPause, events.ActionUnPause, events.ActionHealthStatusHealthy, events.ActionHealthStatusUnhealthy:
+					// When the container becomes healthy, the crash loop has resolved.
+					if evt.Action == events.ActionHealthStatusHealthy {
+						if containerName := evt.Actor.Attributes["name"]; containerName != "" {
+							a.restartTracker.Clear(containerName)
+							a.clearCrashLoopAlarm(containerName)
+						}
+					}
 					// Enqueue a debounced scoped update for this container. The 2-second
 					// quiet period replaces the old 500ms sleep and also coalesces any
 					// burst of events (e.g. rapid start/stop cycles) into a single call.
@@ -485,6 +499,21 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 					}))
 				case events.ActionDestroy, events.ActionRemove, events.ActionDie:
 					slog.Info("Container removed/destroyed", "container", evt.Actor.ID, "attributes", evt.Actor.Attributes)
+					if containerName := evt.Actor.Attributes["name"]; containerName != "" {
+						switch evt.Action {
+						case events.ActionDie:
+							// Each die event is one restart attempt. Track it and raise an
+							// alarm when the threshold is exceeded.
+							if count, exceeded := a.restartTracker.Record(containerName); exceeded {
+								slog.Warn("Crash loop detected.", "container", containerName, "restarts", count)
+								a.publishCrashLoopAlarm(containerName, count)
+							}
+						case events.ActionDestroy, events.ActionRemove:
+							// Container was permanently removed — clear history and any alarm.
+							a.restartTracker.Clear(containerName)
+							a.clearCrashLoopAlarm(containerName)
+						}
+					}
 					// TODO: Trigger a removal instead of checking the whole state
 					// Lookup container name by container id (from the entity store) as lookup by name won't work for container-groups
 					a.debouncer.Enqueue(NewUpdateAllAction(filterOptions))
@@ -506,6 +535,62 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 			}
 			return err
 		}
+	}
+}
+
+// publishCrashLoopAlarm raises a CRITICAL alarm on the container's service
+// topic when a crash loop is detected. Duplicate alarms for the same
+// container are suppressed until the alarm is cleared.
+func (a *App) publishCrashLoopAlarm(name string, count int) {
+	a.crashLoopAlarmsMu.Lock()
+	_, alreadyRaised := a.crashLoopAlarms[name]
+	if !alreadyRaised {
+		a.crashLoopAlarms[name] = struct{}{}
+	}
+	a.crashLoopAlarmsMu.Unlock()
+
+	if alreadyRaised {
+		return
+	}
+
+	target := a.Device.Service(name)
+	topic := tedge.GetTopic(*target, "a", "ContainerCrashLoop")
+	payload := mustMarshalJSON(map[string]any{
+		"severity": "CRITICAL",
+		"text":     fmt.Sprintf("Container is in a crash loop (%d restarts detected in the last 60s).", count),
+		"time":     time.Now().UTC().Format(time.RFC3339),
+	})
+	slog.Warn("Publishing crash-loop alarm.", "container", name, "topic", topic, "restarts", count)
+	if err := a.client.Publish(topic, 1, false, payload); err != nil {
+		slog.Warn("Failed to publish crash-loop alarm.", "err", err)
+		// Un-mark so we retry on the next threshold crossing.
+		a.crashLoopAlarmsMu.Lock()
+		delete(a.crashLoopAlarms, name)
+		a.crashLoopAlarmsMu.Unlock()
+	}
+}
+
+// clearCrashLoopAlarm clears any active crash-loop alarm for the named
+// container. It is a no-op when no alarm has been raised.
+func (a *App) clearCrashLoopAlarm(name string) {
+	a.crashLoopAlarmsMu.Lock()
+	_, had := a.crashLoopAlarms[name]
+	delete(a.crashLoopAlarms, name)
+	a.crashLoopAlarmsMu.Unlock()
+
+	if !had {
+		return
+	}
+
+	target := a.Device.Service(name)
+	topic := tedge.GetTopic(*target, "a", "ContainerCrashLoop")
+	slog.Info("Clearing crash-loop alarm.", "container", name, "topic", topic)
+	if err := a.client.Publish(topic, 1, false, mustMarshalJSON(map[string]any{
+		"status": "CLEARED",
+		"text":   "Container crash loop resolved.",
+		"time":   time.Now().UTC().Format(time.RFC3339),
+	})); err != nil {
+		slog.Warn("Failed to clear crash-loop alarm.", "err", err)
 	}
 }
 
