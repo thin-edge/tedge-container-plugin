@@ -61,6 +61,9 @@ type App struct {
 	restartTracker     *RestartTracker
 	crashLoopAlarms    map[string]struct{}
 	crashLoopAlarmsMu  sync.Mutex
+	// eventLimiter rate-limits per-(container, event-type) MQTT publishes so
+	// that a crash-looping container cannot flood the broker.
+	eventLimiter       *EventRateLimiter
 	wg                 sync.WaitGroup
 	pendingDeletions   []tedge.Target
 	pendingDeletionsMu sync.Mutex
@@ -192,6 +195,11 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 	// Track container restarts to detect crash loops (≥5 restarts in 60 s).
 	application.restartTracker = NewRestartTracker(60*time.Second, 5)
 	application.crashLoopAlarms = make(map[string]struct{})
+
+	// Rate-limit engine event publishes: at most 1 event per
+	// (container, event-type) per 5 seconds. Combined with crash-loop
+	// suppression this eliminates broker flooding from restart storms.
+	application.eventLimiter = NewEventRateLimiter(5 * time.Second)
 
 	// Start background task to process requests
 	application.wg.Add(1)
@@ -483,6 +491,7 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 						if containerName := evt.Actor.Attributes["name"]; containerName != "" {
 							a.restartTracker.Clear(containerName)
 							a.clearCrashLoopAlarm(containerName)
+							a.eventLimiter.Remove(containerName)
 						}
 					}
 					// Enqueue a debounced scoped update for this container. The 2-second
@@ -509,9 +518,10 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 								a.publishCrashLoopAlarm(containerName, count)
 							}
 						case events.ActionDestroy, events.ActionRemove:
-							// Container was permanently removed — clear history and any alarm.
+							// Container was permanently removed — clear history, alarm, and rate-limit state.
 							a.restartTracker.Clear(containerName)
 							a.clearCrashLoopAlarm(containerName)
+							a.eventLimiter.Remove(containerName)
 						}
 					}
 					// TODO: Trigger a removal instead of checking the whole state
@@ -519,8 +529,28 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 					a.debouncer.Enqueue(NewUpdateAllAction(filterOptions))
 				}
 
-				if a.config.EnableEngineEvents {
-					if len(payload) > 0 {
+				if a.config.EnableEngineEvents && len(payload) > 0 {
+					containerName := evt.Actor.Attributes["name"]
+					key := containerName + "/" + string(evt.Action)
+
+					// Determine whether a crash loop is active for this container.
+					a.crashLoopAlarmsMu.Lock()
+					_, inCrashLoop := a.crashLoopAlarms[containerName]
+					a.crashLoopAlarmsMu.Unlock()
+
+					switch {
+					case inCrashLoop:
+						// Suppress all events for a crash-looping container to
+						// avoid saturating the broker. The alarm already signals
+						// the operator.
+						slog.Debug("Suppressing engine event for crash-looping container.",
+							"container", containerName, "action", evt.Action)
+					case !a.eventLimiter.Allow(key):
+						// Rate-limit: too many events for this (container,
+						// action) pair within the window.
+						slog.Debug("Rate-limiting engine event.",
+							"container", containerName, "action", evt.Action)
+					default:
 						if err := a.client.Publish(tedge.GetTopic(a.client.Target, "e", string(evt.Action)), 1, false, mustMarshalJSON(payload)); err != nil {
 							slog.Warn("Failed to publish container event.", "err", err)
 						}
@@ -541,6 +571,12 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 // publishCrashLoopAlarm raises a CRITICAL alarm on the container's service
 // topic when a crash loop is detected. Duplicate alarms for the same
 // container are suppressed until the alarm is cleared.
+//
+// Publishing is done asynchronously so that Monitor's event loop is never
+// blocked.  Before sending the alarm the container's thin-edge entity is
+// registered (idempotent), which ensures the mapper can route the alarm to
+// Cumulocity even when the container dies faster than the debounced
+// doUpdate() manages to register it.
 func (a *App) publishCrashLoopAlarm(name string, count int) {
 	a.crashLoopAlarmsMu.Lock()
 	_, alreadyRaised := a.crashLoopAlarms[name]
@@ -553,21 +589,56 @@ func (a *App) publishCrashLoopAlarm(name string, count int) {
 		return
 	}
 
-	target := a.Device.Service(name)
-	topic := tedge.GetTopic(*target, "a", "ContainerCrashLoop")
-	payload := mustMarshalJSON(map[string]any{
-		"severity": "CRITICAL",
-		"text":     fmt.Sprintf("Container is in a crash loop (%d restarts detected in the last 60s).", count),
-		"time":     time.Now().UTC().Format(time.RFC3339),
-	})
-	slog.Warn("Publishing crash-loop alarm.", "container", name, "topic", topic, "restarts", count)
-	if err := a.client.Publish(topic, 1, false, payload); err != nil {
-		slog.Warn("Failed to publish crash-loop alarm.", "err", err)
-		// Un-mark so we retry on the next threshold crossing.
+	go func() {
+		target := a.Device.Service(name)
+		topic := tedge.GetTopic(*target, "a", "ContainerCrashLoop")
+		payload := mustMarshalJSON(map[string]any{
+			"severity": "CRITICAL",
+			"text":     fmt.Sprintf("Container is in a crash loop (%d restarts detected in the last 60s).", count),
+			"time":     time.Now().UTC().Format(time.RFC3339),
+		})
+
+		// Ensure the entity is registered before publishing the alarm.
+		// A crash-looping container may die before the 2-second debounced
+		// doUpdate() fires, leaving the entity unknown to the mapper.
+		// Defaulting to ContainerType is safe: doUpdate() will correct it.
+		if _, err := a.client.TedgeAPI.CreateEntity(context.Background(), tedge.Entity{
+			TedgeType:     tedge.EntityTypeService,
+			TedgeTopicID:  target.TopicID,
+			Name:          name,
+			Type:          container.ContainerType,
+			TedgeParentID: a.client.Parent.TopicID,
+		}); err != nil {
+			slog.Warn("Could not pre-register entity for crash-loop alarm.", "container", name, "err", err)
+		}
+
+		slog.Warn("Publishing crash-loop alarm.", "container", name, "topic", topic, "restarts", count)
+		for attempt := 1; attempt <= 5; attempt++ {
+			// Stop retrying if the alarm was cleared (container recovered/removed).
+			a.crashLoopAlarmsMu.Lock()
+			_, stillActive := a.crashLoopAlarms[name]
+			a.crashLoopAlarmsMu.Unlock()
+			if !stillActive {
+				return
+			}
+
+			if err := a.client.Publish(topic, 1, false, payload); err != nil {
+				slog.Warn("Failed to publish crash-loop alarm, retrying.",
+					"err", err, "attempt", attempt, "container", name)
+				time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+				continue
+			}
+			slog.Warn("Crash-loop alarm published.", "container", name, "restarts", count)
+			return
+		}
+
+		// All retries exhausted — un-mark so the alarm can be re-raised on
+		// the next threshold crossing once the broker recovers.
+		slog.Warn("Gave up publishing crash-loop alarm after retries.", "container", name)
 		a.crashLoopAlarmsMu.Lock()
 		delete(a.crashLoopAlarms, name)
 		a.crashLoopAlarmsMu.Unlock()
-	}
+	}()
 }
 
 // clearCrashLoopAlarm clears any active crash-loop alarm for the named
