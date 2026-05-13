@@ -54,13 +54,13 @@ type App struct {
 
 	Device *tedge.Target
 
-	config             Config
-	shutdown           chan struct{}
-	updateRequests     chan ActionRequest
-	debouncer          *UpdateDebouncer
-	restartTracker     *RestartTracker
-	crashLoopAlarms    map[string]struct{}
-	crashLoopAlarmsMu  sync.Mutex
+	config            Config
+	shutdown          chan struct{}
+	updateRequests    chan ActionRequest
+	debouncer         *UpdateDebouncer
+	restartTracker    *RestartTracker
+	crashLoopAlarms   map[string]struct{}
+	crashLoopAlarmsMu sync.Mutex
 	// eventLimiter rate-limits per-(container, event-type) MQTT publishes so
 	// that a crash-looping container cannot flood the broker.
 	eventLimiter       *EventRateLimiter
@@ -610,6 +610,19 @@ func (a *App) publishCrashLoopAlarm(name string, count int) {
 			TedgeParentID: a.client.Parent.TopicID,
 		}); err != nil {
 			slog.Warn("Could not pre-register entity for crash-loop alarm.", "container", name, "err", err)
+		}
+
+		// Mark the service status as "down" immediately so the operator can
+		// see the crash loop in the service list without waiting for the
+		// debounced doUpdate() to fire. The next doUpdate() will overwrite
+		// this with the real container status (e.g. "up" once fixed).
+		healthTopic := tedge.GetHealthTopic(*target)
+		healthPayload := mustMarshalJSON(map[string]any{
+			"status": tedge.StatusDown,
+			"time":   time.Now().UTC().Format(time.RFC3339),
+		})
+		if err := a.client.Publish(healthTopic, 1, true, healthPayload); err != nil {
+			slog.Warn("Could not set crash-loop container status to down.", "container", name, "err", err)
 		}
 
 		slog.Warn("Publishing crash-loop alarm.", "container", name, "topic", topic, "restarts", count)
