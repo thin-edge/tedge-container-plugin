@@ -436,6 +436,20 @@ func getEventAttributes(attr map[string]string, props ...string) []string {
 	return out
 }
 
+// serviceNameFromEventAttrs derives the thin-edge service name from Docker
+// event Actor.Attributes. For plain containers this is the container name;
+// for compose services it follows the same "project@service" convention used
+// by Container.GetName() so the event handler and doUpdate() agree on the
+// identity of a service.
+func serviceNameFromEventAttrs(attr map[string]string) string {
+	project := attr["com.docker.compose.project"]
+	service := attr["com.docker.compose.service"]
+	if project != "" && service != "" {
+		return project + "@" + service
+	}
+	return attr["name"]
+}
+
 func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions) error {
 	evtCh, errCh := a.ContainerClient.MonitorEvents(ctx)
 
@@ -488,10 +502,11 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 				case events.ActionExecDie, events.ActionCreate, events.ActionStart, events.ActionStop, events.ActionPause, events.ActionUnPause, events.ActionHealthStatusHealthy, events.ActionHealthStatusUnhealthy:
 					// When the container becomes healthy, the crash loop has resolved.
 					if evt.Action == events.ActionHealthStatusHealthy {
-						if containerName := evt.Actor.Attributes["name"]; containerName != "" {
-							a.restartTracker.Clear(containerName)
-							a.clearCrashLoopAlarm(containerName)
-							a.eventLimiter.Remove(containerName)
+						serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
+						if serviceName != "" {
+							a.restartTracker.Clear(serviceName)
+							a.clearCrashLoopAlarm(serviceName)
+							a.eventLimiter.Remove(serviceName)
 						}
 					}
 					// Enqueue a debounced scoped update for this container. The 2-second
@@ -508,20 +523,21 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 					}))
 				case events.ActionDestroy, events.ActionRemove, events.ActionDie:
 					slog.Info("Container removed/destroyed", "container", evt.Actor.ID, "attributes", evt.Actor.Attributes)
-					if containerName := evt.Actor.Attributes["name"]; containerName != "" {
+					serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
+					if serviceName != "" {
 						switch evt.Action {
 						case events.ActionDie:
 							// Each die event is one restart attempt. Track it and raise an
 							// alarm when the threshold is exceeded.
-							if count, exceeded := a.restartTracker.Record(containerName); exceeded {
-								slog.Warn("Crash loop detected.", "container", containerName, "restarts", count)
-								a.publishCrashLoopAlarm(containerName, count)
+							if count, exceeded := a.restartTracker.Record(serviceName); exceeded {
+								slog.Warn("Crash loop detected.", "container", serviceName, "restarts", count)
+								a.publishCrashLoopAlarm(serviceName, count)
 							}
 						case events.ActionDestroy, events.ActionRemove:
 							// Container was permanently removed — clear history, alarm, and rate-limit state.
-							a.restartTracker.Clear(containerName)
-							a.clearCrashLoopAlarm(containerName)
-							a.eventLimiter.Remove(containerName)
+							a.restartTracker.Clear(serviceName)
+							a.clearCrashLoopAlarm(serviceName)
+							a.eventLimiter.Remove(serviceName)
 						}
 					}
 					// TODO: Trigger a removal instead of checking the whole state
@@ -530,12 +546,12 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 				}
 
 				if a.config.EnableEngineEvents && len(payload) > 0 {
-					containerName := evt.Actor.Attributes["name"]
-					key := containerName + "/" + string(evt.Action)
+					serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
+					key := serviceName + "/" + string(evt.Action)
 
 					// Determine whether a crash loop is active for this container.
 					a.crashLoopAlarmsMu.Lock()
-					_, inCrashLoop := a.crashLoopAlarms[containerName]
+					_, inCrashLoop := a.crashLoopAlarms[serviceName]
 					a.crashLoopAlarmsMu.Unlock()
 
 					switch {
@@ -544,12 +560,12 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 						// avoid saturating the broker. The alarm already signals
 						// the operator.
 						slog.Debug("Suppressing engine event for crash-looping container.",
-							"container", containerName, "action", evt.Action)
+							"container", serviceName, "action", evt.Action)
 					case !a.eventLimiter.Allow(key):
 						// Rate-limit: too many events for this (container,
 						// action) pair within the window.
 						slog.Debug("Rate-limiting engine event.",
-							"container", containerName, "action", evt.Action)
+							"container", serviceName, "action", evt.Action)
 					default:
 						if err := a.client.Publish(tedge.GetTopic(a.client.Target, "e", string(evt.Action)), 1, false, mustMarshalJSON(payload)); err != nil {
 							slog.Warn("Failed to publish container event.", "err", err)
@@ -601,12 +617,17 @@ func (a *App) publishCrashLoopAlarm(name string, count int) {
 		// Ensure the entity is registered before publishing the alarm.
 		// A crash-looping container may die before the 2-second debounced
 		// doUpdate() fires, leaving the entity unknown to the mapper.
-		// Defaulting to ContainerType is safe: doUpdate() will correct it.
+		// Infer the service type from the name: "project@service" means
+		// container-group, anything else is a plain container.
+		entityType := container.ContainerType
+		if strings.Contains(name, "@") {
+			entityType = container.ContainerGroupType
+		}
 		if _, err := a.client.TedgeAPI.CreateEntity(context.Background(), tedge.Entity{
 			TedgeType:     tedge.EntityTypeService,
 			TedgeTopicID:  target.TopicID,
 			Name:          name,
-			Type:          container.ContainerType,
+			Type:          entityType,
 			TedgeParentID: a.client.Parent.TopicID,
 		}); err != nil {
 			slog.Warn("Could not pre-register entity for crash-loop alarm.", "container", name, "err", err)
