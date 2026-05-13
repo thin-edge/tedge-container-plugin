@@ -221,6 +221,28 @@ Install container group that uses host volume mount
     ${operation}=    Operation Should Be SUCCESSFUL    ${operation}
     Should Contain    ${operation["c8y_Command"]["result"]}    It works
 
+Install container group with a container in a crash loop
+    [Setup]    Start Service    tedge-container-plugin
+
+    ${binary_url}=    Cumulocity.Create Inventory Binary    crash-loop    container-group    file=${CURDIR}/data/docker-compose.crash-loop.yaml
+    ${operation}=    Cumulocity.Install Software    {"name": "crash-loop", "version": "1.0.0", "softwareType": "container-group", "url": "${binary_url}"}
+    Operation Should Be SUCCESSFUL    ${operation}    timeout=60
+
+    # Install container-group
+    Install container-group application    crash-loop    1.0.0    crash-loop    ${CURDIR}/data/docker-compose.crash-loop.yaml
+    Device Should Have Installed Software    {"name": "crash-loop", "version": "1.0.0", "softwareType": "container-group"}
+    Cumulocity.Should Have Services    name=crash-loop@app    service_type=container-group    status=down
+
+    Cumulocity.Set Managed Object    external_id=${DEVICE_SN}:device:main:service:crash-loop@app
+    Cumulocity.Device Should Have Alarm/s    type=ContainerCrashLoop    expected_text=Container is in a crash loop
+
+    # Uninstall
+    Cumulocity.Set Managed Object    external_id=${DEVICE_SN}
+    ${operation}=     Cumulocity.Uninstall Software    {"name": "crash-loop", "version": "1.0.0", "softwareType": "container-group"}
+    Cumulocity.Operation Should Be SUCCESSFUL    ${operation}
+    Cumulocity.Device Should Not Have Installed Software    crash-loop
+    Cumulocity.Should Have Services    name=crash-loop@app    service_type=container-group    min_count=0    max_count=0
+
 *** Keywords ***
 
 Suite Setup
