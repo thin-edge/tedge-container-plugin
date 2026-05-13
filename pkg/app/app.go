@@ -29,6 +29,9 @@ const (
 type ActionRequest struct {
 	Action  Action
 	Options any
+	// result, when non-nil, receives the outcome of the request so that the
+	// caller can block waiting for completion. Leave nil for fire-and-forget.
+	result chan<- error
 }
 
 func NewUpdateAllAction(filter container.FilterOptions) ActionRequest {
@@ -54,7 +57,7 @@ type App struct {
 	config             Config
 	shutdown           chan struct{}
 	updateRequests     chan ActionRequest
-	updateResults      chan error
+	debouncer          *UpdateDebouncer
 	wg                 sync.WaitGroup
 	pendingDeletions   []tedge.Target
 	pendingDeletionsMu sync.Mutex
@@ -165,12 +168,23 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 		ContainerClient:  containerClient,
 		Device:           &device,
 		config:           config,
-		updateRequests:   make(chan ActionRequest),
-		updateResults:    make(chan error),
+		// Buffered so that the debouncer's dispatch and synchronous Update()
+		// calls never block when the worker is briefly busy.
+		updateRequests:   make(chan ActionRequest, 8),
 		shutdown:         make(chan struct{}),
 		wg:               sync.WaitGroup{},
 		pendingDeletions: make([]tedge.Target, 0),
 	}
+
+	// The debouncer coalesces rapid-fire event-driven update requests into a
+	// single doUpdate call. It is used by Monitor() and Subscribe() callbacks.
+	application.debouncer = NewUpdateDebouncer(2*time.Second, func(req ActionRequest) {
+		select {
+		case application.updateRequests <- req:
+		default:
+			slog.Warn("Dropped debounced update request: worker queue is full.")
+		}
+	})
 
 	// Start background task to process requests
 	application.wg.Add(1)
@@ -248,17 +262,13 @@ func (a *App) Subscribe() error {
 		parts := strings.Split(m.Topic(), "/")
 		if len(parts) > 5 {
 			slog.Info("Received request to update service data.", "service", parts[4], "topic", topic)
-			go func(name string) {
-				opts := container.FilterOptions{}
-				// If the name matches the current service name, then
-				// update all containers
-				if name != a.config.ServiceName {
-					opts.Names = []string{
-						fmt.Sprintf("^%s$", name),
-					}
-				}
-				a.updateRequests <- NewUpdateAllAction(opts)
-			}(parts[4])
+			name := parts[4]
+			opts := container.FilterOptions{}
+			// If the name matches the current service name, then update all containers
+			if name != a.config.ServiceName {
+				opts.Names = []string{fmt.Sprintf("^%s$", name)}
+			}
+			a.debouncer.Enqueue(NewUpdateAllAction(opts))
 		}
 	})
 
@@ -275,9 +285,7 @@ func (a *App) Subscribe() error {
 			}
 			if isBridgeOnline(m.Payload()) {
 				slog.Info("Cloud bridge is online, triggering service resync to process any pending cloud deletions.", "topic", m.Topic())
-				go func() {
-					a.updateRequests <- NewUpdateAllAction(container.FilterOptions{})
-				}()
+				a.debouncer.Enqueue(NewUpdateAllAction(container.FilterOptions{}))
 			}
 		})
 	}
@@ -298,29 +306,39 @@ func (a *App) Stop(clean bool) {
 	a.wg.Wait()
 }
 
+// sendResult delivers err to the request's result channel when one was
+// provided. It is non-blocking: if the channel is full the send is dropped.
+func sendResult(req ActionRequest, err error) {
+	if req.result != nil {
+		select {
+		case req.result <- err:
+		default:
+		}
+	}
+}
+
 func (a *App) worker() {
 	defer a.wg.Done()
 	for {
 		select {
-		case opts := <-a.updateRequests:
+		case req := <-a.updateRequests:
 
-			switch opts.Action {
+			switch req.Action {
 			case ActionUpdateAll:
 				slog.Info("Processing update request")
-				err := a.doUpdate(opts.Options.(container.FilterOptions))
-				// Don't block when publishing results
-				go func() {
-					a.updateResults <- err
-				}()
+				err := a.doUpdate(req.Options.(container.FilterOptions))
+				sendResult(req, err)
 			case ActionUpdateMetrics:
-				items, err := a.ContainerClient.List(context.Background(), opts.Options.(container.FilterOptions))
+				items, err := a.ContainerClient.List(context.Background(), req.Options.(container.FilterOptions))
 				if err != nil {
 					slog.Warn("Could not get container list.", "err", err)
 				} else {
-					if updateErr := a.updateMetrics(items); updateErr != nil {
-						slog.Warn("Error updating metrics.", "err", updateErr)
+					err = a.updateMetrics(items)
+					if err != nil {
+						slog.Warn("Error updating metrics.", "err", err)
 					}
 				}
+				sendResult(req, err)
 			}
 
 		case <-a.shutdown:
@@ -331,15 +349,23 @@ func (a *App) worker() {
 }
 
 func (a *App) Update(filterOptions container.FilterOptions) error {
-	a.updateRequests <- NewUpdateAllAction(filterOptions)
-	err := <-a.updateResults
-	return err
+	result := make(chan error, 1)
+	a.updateRequests <- ActionRequest{
+		Action:  ActionUpdateAll,
+		Options: filterOptions,
+		result:  result,
+	}
+	return <-result
 }
 
 func (a *App) UpdateMetrics(filterOptions container.FilterOptions) error {
-	a.updateRequests <- NewUpdateMetricsAction(filterOptions)
-	err := <-a.updateResults
-	return err
+	result := make(chan error, 1)
+	a.updateRequests <- ActionRequest{
+		Action:  ActionUpdateMetrics,
+		Options: filterOptions,
+		result:  result,
+	}
+	return <-result
 }
 
 var ContainerEventText = map[events.Action]string{
@@ -445,33 +471,23 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 
 				switch evt.Action {
 				case events.ActionExecDie, events.ActionCreate, events.ActionStart, events.ActionStop, events.ActionPause, events.ActionUnPause, events.ActionHealthStatusHealthy, events.ActionHealthStatusUnhealthy:
-					go func(evt events.Message) {
-						// Delay before trigger update to allow the service status to be updated
-						time.Sleep(500 * time.Millisecond)
-						if err := a.Update(container.FilterOptions{
-							IDs: []string{evt.Actor.ID},
-
-							// Preserve default filter options
-							Names:            filterOptions.Names,
-							Labels:           filterOptions.Labels,
-							Types:            filterOptions.Types,
-							ExcludeNames:     filterOptions.ExcludeNames,
-							ExcludeWithLabel: filterOptions.ExcludeWithLabel,
-						}); err != nil {
-							slog.Warn("Error updating container state.", "err", err)
-						}
-					}(evt)
+					// Enqueue a debounced scoped update for this container. The 2-second
+					// quiet period replaces the old 500ms sleep and also coalesces any
+					// burst of events (e.g. rapid start/stop cycles) into a single call.
+					a.debouncer.Enqueue(NewUpdateAllAction(container.FilterOptions{
+						IDs: []string{evt.Actor.ID},
+						// Preserve global filter options
+						Names:            filterOptions.Names,
+						Labels:           filterOptions.Labels,
+						Types:            filterOptions.Types,
+						ExcludeNames:     filterOptions.ExcludeNames,
+						ExcludeWithLabel: filterOptions.ExcludeWithLabel,
+					}))
 				case events.ActionDestroy, events.ActionRemove, events.ActionDie:
 					slog.Info("Container removed/destroyed", "container", evt.Actor.ID, "attributes", evt.Actor.Attributes)
 					// TODO: Trigger a removal instead of checking the whole state
 					// Lookup container name by container id (from the entity store) as lookup by name won't work for container-groups
-					go func(evt events.Message) {
-						// Delay before trigger update to allow the service status to be updated
-						time.Sleep(500 * time.Millisecond)
-						if err := a.Update(filterOptions); err != nil {
-							slog.Warn("Error updating container state.", "err", err)
-						}
-					}(evt)
+					a.debouncer.Enqueue(NewUpdateAllAction(filterOptions))
 				}
 
 				if a.config.EnableEngineEvents {
