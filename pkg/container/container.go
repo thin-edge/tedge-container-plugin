@@ -213,6 +213,10 @@ func ConvertName(v []string) string {
 type ContainerClient struct {
 	Client *client.Client
 	Engine EngineCapabilities
+	// LibPod is a client for the podman-native libpod REST API. It is non-nil
+	// only when Engine.HasLibPodAPI is true and the API responded successfully
+	// during initialisation.
+	LibPod *SocketClient
 }
 
 // IsPodman reports whether the connected container engine is podman.
@@ -366,9 +370,26 @@ func newContainerClient(options *ClientOptions) (*ContainerClient, error) {
 		return nil, err
 	}
 
+	engine := detectEngineCapabilities(engineInfo.Name)
+
+	// Attempt to connect to the libpod API when available (podman only).
+	// A failure here is non-fatal; we fall back to the Docker-compat API.
+	var libpod *SocketClient
+	if engine.HasLibPodAPI {
+		lp := NewLibPodHTTPClient(options.Host)
+		if err := lp.Test(context.Background()); err != nil {
+			slog.Warn("libpod API not reachable, falling back to Docker-compat API for all operations", "err", err)
+			engine.HasLibPodAPI = false
+		} else {
+			slog.Info("libpod API available")
+			libpod = lp
+		}
+	}
+
 	return &ContainerClient{
 		Client: cli,
-		Engine: detectEngineCapabilities(engineInfo.Name),
+		Engine: engine,
+		LibPod: libpod,
 	}, nil
 }
 
@@ -1287,6 +1308,10 @@ func (c *ContainerClient) CloneContainer(ctx context.Context, containerID string
 	// Copy host config
 	hostConfig := CloneHostConfig(prevContainer.HostConfig, opts)
 
+	// Enrich host config with engine-native data (e.g. recover UsernsMode
+	// "keep-id" that the Docker-compat API normalises to "private" on podman).
+	c.enrichHostConfigForEngine(ctx, containerID, hostConfig)
+
 	// Copy network config
 	var networkConfig *network.NetworkingConfig
 	if !opts.SkipNetwork {
@@ -1472,6 +1497,10 @@ func (c *ContainerClient) Fork(ctx context.Context, currentContainer container.I
 
 	hostConfig := CloneHostConfig(currentContainer.HostConfig, cloneOptions)
 
+	// Enrich host config with engine-native data (e.g. recover UsernsMode
+	// "keep-id" that the Docker-compat API normalises to "private" on podman).
+	c.enrichHostConfigForEngine(ctx, currentContainer.ID, hostConfig)
+
 	// TODO: Protect against the updater from shutting down due to a machine restart
 	// or is this not required if the restart policy of the container being updated
 	// is left at RestartAlways (as it would restart after a device reboot)
@@ -1523,6 +1552,41 @@ func IsInsideContainer() bool {
 		}
 	}
 	return false
+}
+
+// enrichHostConfigForEngine corrects fields in hc that the Docker-compat API
+// may have normalised.  It dispatches to engine-specific helpers and is a
+// no-op when no enrichment is needed.
+//
+// containerID is the ID or name of the *source* container (the one being
+// cloned or forked), not the newly created one.
+func (c *ContainerClient) enrichHostConfigForEngine(ctx context.Context, containerID string, hc *container.HostConfig) {
+	if c.Engine.HasLibPodAPI && c.LibPod != nil {
+		c.enrichHostConfigForPodman(ctx, containerID, hc)
+	}
+}
+
+// enrichHostConfigForPodman calls the libpod-native inspect endpoint to
+// retrieve the true UsernsMode for the source container and overwrites
+// whatever value the Docker-compat inspect returned.
+//
+// Failures are logged and silently ignored so that caller never aborts due
+// to enrichment – the worst outcome is the same behaviour as before this fix.
+func (c *ContainerClient) enrichHostConfigForPodman(ctx context.Context, containerID string, hc *container.HostConfig) {
+	resp, err := c.LibPod.ContainerInspect(ctx, containerID)
+	if err != nil {
+		slog.Warn("libpod inspect failed; UsernsMode may be incorrect in cloned container", "id", containerID, "err", err)
+		return
+	}
+	nativeMode := container.UsernsMode(resp.HostConfig.UsernsMode)
+	if nativeMode != hc.UsernsMode {
+		slog.Info("Correcting UsernsMode from libpod inspect",
+			"id", containerID,
+			"compat_value", hc.UsernsMode,
+			"libpod_value", nativeMode,
+		)
+		hc.UsernsMode = nativeMode
+	}
 }
 
 func CloneContainerConfig(ref *container.Config, opts CloneOptions) *container.Config {
