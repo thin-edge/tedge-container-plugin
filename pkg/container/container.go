@@ -212,6 +212,12 @@ func ConvertName(v []string) string {
 
 type ContainerClient struct {
 	Client *client.Client
+	Engine EngineCapabilities
+}
+
+// IsPodman reports whether the connected container engine is podman.
+func (c *ContainerClient) IsPodman() bool {
+	return c.Engine.Type == EnginePodman
 }
 
 func socketExists(p string) bool {
@@ -362,6 +368,7 @@ func newContainerClient(options *ClientOptions) (*ContainerClient, error) {
 
 	return &ContainerClient{
 		Client: cli,
+		Engine: detectEngineCapabilities(engineInfo.Name),
 	}, nil
 }
 
