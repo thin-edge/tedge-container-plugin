@@ -656,7 +656,7 @@ func (a *App) publishCrashLoopAlarm(name string, count int) {
 				return
 			}
 
-			if err := a.client.Publish(topic, 1, false, payload); err != nil {
+			if err := a.client.Publish(topic, 1, true, payload); err != nil {
 				slog.Warn("Failed to publish crash-loop alarm, retrying.",
 					"err", err, "attempt", attempt, "container", name)
 				time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
@@ -690,11 +690,7 @@ func (a *App) clearCrashLoopAlarm(name string) {
 	target := a.Device.Service(name)
 	topic := tedge.GetTopic(*target, "a", "ContainerCrashLoop")
 	slog.Info("Clearing crash-loop alarm.", "container", name, "topic", topic)
-	if err := a.client.Publish(topic, 1, false, mustMarshalJSON(map[string]any{
-		"status": "CLEARED",
-		"text":   "Container crash loop resolved.",
-		"time":   time.Now().UTC().Format(time.RFC3339),
-	})); err != nil {
+	if err := a.client.Publish(topic, 1, true, ""); err != nil {
 		slog.Warn("Failed to clear crash-loop alarm.", "err", err)
 	}
 }
