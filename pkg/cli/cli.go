@@ -172,6 +172,10 @@ func (c *Cli) DeleteOrphans() bool {
 	return viper.GetBool("delete_from_cloud.orphans")
 }
 
+func (c *Cli) GetCrashLoopThreshold() int {
+	return viper.GetInt("container.crash_loop_threshold")
+}
+
 func (c *Cli) GetHTTPHost() string {
 	return viper.GetString("client.http.host")
 }

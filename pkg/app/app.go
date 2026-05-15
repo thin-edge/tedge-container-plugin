@@ -21,9 +21,6 @@ import (
 
 type Action int
 
-// crashLoopThreshold is the number of daemon-initiated restarts (delta from
-// the last healthy baseline) that constitutes a crash loop.
-const crashLoopThreshold = 5
 
 const (
 	ActionUpdateAll Action = iota
@@ -104,6 +101,10 @@ type Config struct {
 
 	CumulocityHost string
 	CumulocityPort uint16
+
+	// CrashLoopThreshold is the number of daemon-initiated restarts since the
+	// last healthy state required to declare a crash loop.
+	CrashLoopThreshold int
 }
 
 func NewApp(device tedge.Target, config Config) (*App, error) {
@@ -202,8 +203,11 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 		}
 	})
 
+	if config.CrashLoopThreshold <= 0 {
+		config.CrashLoopThreshold = 5
+	}
 	// Track container restart baselines to detect crash loops using the Docker
-	// daemon's own RestartCount (≥5 daemon-initiated restarts since last healthy).
+	// daemon's own RestartCount.
 	application.restartBaseline = make(map[string]int)
 	application.crashLoopAlarms = make(map[string]struct{})
 
@@ -544,7 +548,7 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 								} else {
 									delta := rc - baseline
 									a.restartBaselineMu.Unlock()
-									if delta >= crashLoopThreshold {
+									if delta >= a.config.CrashLoopThreshold {
 										slog.Warn("Crash loop detected.", "container", serviceName, "restartCount", rc, "baseline", baseline, "delta", delta)
 										a.publishCrashLoopAlarm(serviceName, rc)
 									}

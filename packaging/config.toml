@@ -77,6 +77,11 @@ network = "tedge"
 # Prune any unused images after creating/deleting the containers
 pruneimages = true
 
+# Number of daemon-initiated restarts since the last healthy state required
+# to declare a crash loop and raise a CRITICAL alarm.
+# Set to 0 to use the default (5).
+# crash_loop_threshold = 5
+
 [metrics]
 # Enable/disable the container telemetry metrics such as memory etc. Regardless of this value, the containers status will still be sent, but the measurements will not
 enabled = true
