@@ -58,19 +58,19 @@ type App struct {
 
 	Device *tedge.Target
 
-	config            Config
-	shutdown          chan struct{}
-	updateRequests    chan ActionRequest
-	debouncer *UpdateDebouncer
+	config         Config
+	shutdown       chan struct{}
+	updateRequests chan ActionRequest
+	debouncer      *UpdateDebouncer
 	// restartBaseline maps service name → the Docker RestartCount observed the
 	// last time the container was considered healthy (or first seen). On each
 	// ActionStart event we inspect the container; the delta between its current
 	// RestartCount and this baseline is the number of daemon-initiated restarts
 	// since the last known-good state.
-	restartBaseline    map[string]int
-	restartBaselineMu  sync.Mutex
-	crashLoopAlarms    map[string]struct{}
-	crashLoopAlarmsMu  sync.Mutex
+	restartBaseline   map[string]int
+	restartBaselineMu sync.Mutex
+	crashLoopAlarms   map[string]struct{}
+	crashLoopAlarmsMu sync.Mutex
 	// eventLimiter rate-limits per-(container, event-type) MQTT publishes so
 	// that a crash-looping container cannot flood the broker.
 	eventLimiter       *EventRateLimiter
@@ -511,45 +511,45 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 
 				switch evt.Action {
 				case events.ActionExecDie, events.ActionCreate, events.ActionStart, events.ActionStop, events.ActionPause, events.ActionUnPause, events.ActionHealthStatusHealthy, events.ActionHealthStatusUnhealthy:
-				// When the container becomes healthy, reset the restart baseline
-				// to the current count so that future crash loops are measured
-				// from this healthy state.
-				if evt.Action == events.ActionHealthStatusHealthy {
-					serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
-					if serviceName != "" {
-						if rc, err := a.ContainerClient.GetRestartCount(context.Background(), evt.Actor.ID); err == nil {
-							a.restartBaselineMu.Lock()
-							a.restartBaseline[serviceName] = rc
-							a.restartBaselineMu.Unlock()
-						}
-						a.clearCrashLoopAlarm(serviceName)
-						a.eventLimiter.Remove(serviceName)
-					}
-				}
-				// On each daemon-initiated restart the Docker daemon increments
-				// RestartCount before firing the start event, so by the time we
-				// inspect here the count is already current.
-				if evt.Action == events.ActionStart {
-					serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
-					if serviceName != "" {
-						if rc, err := a.ContainerClient.GetRestartCount(context.Background(), evt.Actor.ID); err == nil && rc > 0 {
-							a.restartBaselineMu.Lock()
-							baseline, exists := a.restartBaseline[serviceName]
-							if !exists {
-								// First time seeing this container: treat the current
-								// count as the baseline so pre-existing restarts
-								// (before the plugin started) are not counted.
+					// When the container becomes healthy, reset the restart baseline
+					// to the current count so that future crash loops are measured
+					// from this healthy state.
+					if evt.Action == events.ActionHealthStatusHealthy {
+						serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
+						if serviceName != "" {
+							if rc, err := a.ContainerClient.GetRestartCount(context.Background(), evt.Actor.ID); err == nil {
+								a.restartBaselineMu.Lock()
 								a.restartBaseline[serviceName] = rc
 								a.restartBaselineMu.Unlock()
-							} else {
-								delta := rc - baseline
-								a.restartBaselineMu.Unlock()
-								if delta >= crashLoopThreshold {
-									slog.Warn("Crash loop detected.", "container", serviceName, "restartCount", rc, "baseline", baseline, "delta", delta)
-									a.publishCrashLoopAlarm(serviceName, rc)
+							}
+							a.clearCrashLoopAlarm(serviceName)
+							a.eventLimiter.Remove(serviceName)
+						}
+					}
+					// On each daemon-initiated restart the Docker daemon increments
+					// RestartCount before firing the start event, so by the time we
+					// inspect here the count is already current.
+					if evt.Action == events.ActionStart {
+						serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
+						if serviceName != "" {
+							if rc, err := a.ContainerClient.GetRestartCount(context.Background(), evt.Actor.ID); err == nil && rc > 0 {
+								a.restartBaselineMu.Lock()
+								baseline, exists := a.restartBaseline[serviceName]
+								if !exists {
+									// First time seeing this container: treat the current
+									// count as the baseline so pre-existing restarts
+									// (before the plugin started) are not counted.
+									a.restartBaseline[serviceName] = rc
+									a.restartBaselineMu.Unlock()
+								} else {
+									delta := rc - baseline
+									a.restartBaselineMu.Unlock()
+									if delta >= crashLoopThreshold {
+										slog.Warn("Crash loop detected.", "container", serviceName, "restartCount", rc, "baseline", baseline, "delta", delta)
+										a.publishCrashLoopAlarm(serviceName, rc)
+									}
 								}
 							}
-						}
 						}
 					}
 					// Enqueue a debounced scoped update for this container. The 2-second
@@ -648,7 +648,7 @@ func (a *App) publishCrashLoopAlarm(name string, count int) {
 		topic := tedge.GetTopic(*target, "a", "ContainerCrashLoop")
 		payload := mustMarshalJSON(map[string]any{
 			"severity": "CRITICAL",
-			"text":     fmt.Sprintf("Container is in a crash loop (%d restarts detected in the last 60s).", count),
+			"text":     fmt.Sprintf("Container is in a crash loop (%d daemon-initiated restarts since last healthy).", count),
 			"time":     time.Now().UTC().Format(time.RFC3339),
 		})
 
