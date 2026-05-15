@@ -21,6 +21,10 @@ import (
 
 type Action int
 
+// crashLoopThreshold is the number of daemon-initiated restarts (delta from
+// the last healthy baseline) that constitutes a crash loop.
+const crashLoopThreshold = 5
+
 const (
 	ActionUpdateAll Action = iota
 	ActionUpdateMetrics
@@ -57,10 +61,16 @@ type App struct {
 	config            Config
 	shutdown          chan struct{}
 	updateRequests    chan ActionRequest
-	debouncer         *UpdateDebouncer
-	restartTracker    *RestartTracker
-	crashLoopAlarms   map[string]struct{}
-	crashLoopAlarmsMu sync.Mutex
+	debouncer *UpdateDebouncer
+	// restartBaseline maps service name → the Docker RestartCount observed the
+	// last time the container was considered healthy (or first seen). On each
+	// ActionStart event we inspect the container; the delta between its current
+	// RestartCount and this baseline is the number of daemon-initiated restarts
+	// since the last known-good state.
+	restartBaseline    map[string]int
+	restartBaselineMu  sync.Mutex
+	crashLoopAlarms    map[string]struct{}
+	crashLoopAlarmsMu  sync.Mutex
 	// eventLimiter rate-limits per-(container, event-type) MQTT publishes so
 	// that a crash-looping container cannot flood the broker.
 	eventLimiter       *EventRateLimiter
@@ -192,8 +202,9 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 		}
 	})
 
-	// Track container restarts to detect crash loops (≥5 restarts in 60 s).
-	application.restartTracker = NewRestartTracker(60*time.Second, 5)
+	// Track container restart baselines to detect crash loops using the Docker
+	// daemon's own RestartCount (≥5 daemon-initiated restarts since last healthy).
+	application.restartBaseline = make(map[string]int)
 	application.crashLoopAlarms = make(map[string]struct{})
 
 	// Rate-limit engine event publishes: at most 1 event per
@@ -500,13 +511,45 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 
 				switch evt.Action {
 				case events.ActionExecDie, events.ActionCreate, events.ActionStart, events.ActionStop, events.ActionPause, events.ActionUnPause, events.ActionHealthStatusHealthy, events.ActionHealthStatusUnhealthy:
-					// When the container becomes healthy, the crash loop has resolved.
-					if evt.Action == events.ActionHealthStatusHealthy {
-						serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
-						if serviceName != "" {
-							a.restartTracker.Clear(serviceName)
-							a.clearCrashLoopAlarm(serviceName)
-							a.eventLimiter.Remove(serviceName)
+				// When the container becomes healthy, reset the restart baseline
+				// to the current count so that future crash loops are measured
+				// from this healthy state.
+				if evt.Action == events.ActionHealthStatusHealthy {
+					serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
+					if serviceName != "" {
+						if rc, err := a.ContainerClient.GetRestartCount(context.Background(), evt.Actor.ID); err == nil {
+							a.restartBaselineMu.Lock()
+							a.restartBaseline[serviceName] = rc
+							a.restartBaselineMu.Unlock()
+						}
+						a.clearCrashLoopAlarm(serviceName)
+						a.eventLimiter.Remove(serviceName)
+					}
+				}
+				// On each daemon-initiated restart the Docker daemon increments
+				// RestartCount before firing the start event, so by the time we
+				// inspect here the count is already current.
+				if evt.Action == events.ActionStart {
+					serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
+					if serviceName != "" {
+						if rc, err := a.ContainerClient.GetRestartCount(context.Background(), evt.Actor.ID); err == nil && rc > 0 {
+							a.restartBaselineMu.Lock()
+							baseline, exists := a.restartBaseline[serviceName]
+							if !exists {
+								// First time seeing this container: treat the current
+								// count as the baseline so pre-existing restarts
+								// (before the plugin started) are not counted.
+								a.restartBaseline[serviceName] = rc
+								a.restartBaselineMu.Unlock()
+							} else {
+								delta := rc - baseline
+								a.restartBaselineMu.Unlock()
+								if delta >= crashLoopThreshold {
+									slog.Warn("Crash loop detected.", "container", serviceName, "restartCount", rc, "baseline", baseline, "delta", delta)
+									a.publishCrashLoopAlarm(serviceName, rc)
+								}
+							}
+						}
 						}
 					}
 					// Enqueue a debounced scoped update for this container. The 2-second
@@ -526,16 +569,11 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 					serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
 					if serviceName != "" {
 						switch evt.Action {
-						case events.ActionDie:
-							// Each die event is one restart attempt. Track it and raise an
-							// alarm when the threshold is exceeded.
-							if count, exceeded := a.restartTracker.Record(serviceName); exceeded {
-								slog.Warn("Crash loop detected.", "container", serviceName, "restarts", count)
-								a.publishCrashLoopAlarm(serviceName, count)
-							}
 						case events.ActionDestroy, events.ActionRemove:
-							// Container was permanently removed — clear history, alarm, and rate-limit state.
-							a.restartTracker.Clear(serviceName)
+							// Container was permanently removed — clear baseline, alarm, and rate-limit state.
+							a.restartBaselineMu.Lock()
+							delete(a.restartBaseline, serviceName)
+							a.restartBaselineMu.Unlock()
 							a.clearCrashLoopAlarm(serviceName)
 							a.eventLimiter.Remove(serviceName)
 						}
@@ -805,8 +843,19 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 	for _, item := range items {
 		target := a.Device.Service(item.Name)
 
+		// If this container is in a crash loop, report it as down regardless of
+		// what Docker currently reports — during a crash loop the container is
+		// transiently running between restarts when the scan fires.
+		status := item.Status
+		a.crashLoopAlarmsMu.Lock()
+		_, inCrashLoop := a.crashLoopAlarms[item.Name]
+		a.crashLoopAlarmsMu.Unlock()
+		if inCrashLoop {
+			status = tedge.StatusDown
+		}
+
 		payload := map[string]any{
-			"status": item.Status,
+			"status": status,
 			"time":   item.Time,
 		}
 		b, err := json.Marshal(payload)

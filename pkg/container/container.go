@@ -495,6 +495,19 @@ func (c *ContainerClient) GetContainer(ctx context.Context, containerID string) 
 	return &containers[0], nil
 }
 
+// GetRestartCount returns the number of times the Docker daemon has
+// restarted this container since it was created.  The value comes from
+// ContainerInspect because ContainerList (Summary) does not expose it.
+// Daemon-initiated restarts (restart policy) increment the counter;
+// manual "docker restart" commands do not.
+func (c *ContainerClient) GetRestartCount(ctx context.Context, containerID string) (int, error) {
+	resp, err := c.Client.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return 0, err
+	}
+	return resp.RestartCount, nil
+}
+
 // Stop and remove a container
 // Don't fail if the container does not exist
 func (c *ContainerClient) StopRemoveContainer(ctx context.Context, containerID string) error {
