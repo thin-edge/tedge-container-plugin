@@ -120,6 +120,29 @@ type PodmanPullOptions struct {
 	Quiet bool
 }
 
+// ContainerInspect fetches the libpod-native inspect data for the named
+// container.  The returned struct contains fields that the Docker-compat API
+// normalises away (e.g. UsernsMode "keep-id" becomes "private" via compat).
+func (c *SocketClient) ContainerInspect(ctx context.Context, nameOrID string) (*LibPodInspectResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.resolveURL(fmt.Sprintf("containers/%s/json", nameOrID)), nil)
+	if err != nil {
+		return nil, err
+	}
+	r, err := c.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = r.Body.Close() }()
+	if r.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("libpod inspect: unexpected status %s", r.Status)
+	}
+	var resp LibPodInspectResponse
+	if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
+		return nil, fmt.Errorf("libpod inspect: decode: %w", err)
+	}
+	return &resp, nil
+}
+
 func (c *SocketClient) PullImages(ctx context.Context, imageRef string, alwaysPull bool, pullOptions PodmanPullOptions) error {
 	options := PodmanAPIPullOptions{
 		Reference: imageRef,
