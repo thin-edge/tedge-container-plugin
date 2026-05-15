@@ -21,7 +21,6 @@ import (
 
 type Action int
 
-
 const (
 	ActionUpdateAll Action = iota
 	ActionUpdateMetrics
