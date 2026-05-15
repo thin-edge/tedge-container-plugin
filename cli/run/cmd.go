@@ -52,6 +52,7 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 				DeleteFromCloud:    cliContext.DeleteFromCloud(),
 				DeleteOrphans:      cliContext.DeleteOrphans(),
 				EnableEngineEvents: cliContext.EngineEventsEnabled(),
+				CrashLoopThreshold: cliContext.GetCrashLoopThreshold(),
 
 				HTTPHost:       cliContext.GetHTTPHost(),
 				HTTPPort:       cliContext.GetHTTPPort(),
@@ -162,6 +163,9 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 	viper.SetDefault("events.enabled", true)
 	viper.SetDefault("delete_from_cloud.enabled", true)
 	viper.SetDefault("delete_from_cloud.orphans", true)
+
+	// Crash loop detection
+	viper.SetDefault("container.crash_loop_threshold", 5)
 
 	// thin-edge.io services
 	viper.SetDefault("client.http.host", "127.0.0.1")

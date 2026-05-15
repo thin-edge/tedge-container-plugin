@@ -29,6 +29,9 @@ const (
 type ActionRequest struct {
 	Action  Action
 	Options any
+	// result, when non-nil, receives the outcome of the request so that the
+	// caller can block waiting for completion. Leave nil for fire-and-forget.
+	result chan<- error
 }
 
 func NewUpdateAllAction(filter container.FilterOptions) ActionRequest {
@@ -51,10 +54,22 @@ type App struct {
 
 	Device *tedge.Target
 
-	config             Config
-	shutdown           chan struct{}
-	updateRequests     chan ActionRequest
-	updateResults      chan error
+	config         Config
+	shutdown       chan struct{}
+	updateRequests chan ActionRequest
+	debouncer      *UpdateDebouncer
+	// restartBaseline maps service name → the Docker RestartCount observed the
+	// last time the container was considered healthy (or first seen). On each
+	// ActionStart event we inspect the container; the delta between its current
+	// RestartCount and this baseline is the number of daemon-initiated restarts
+	// since the last known-good state.
+	restartBaseline   map[string]int
+	restartBaselineMu sync.Mutex
+	crashLoopAlarms   map[string]struct{}
+	crashLoopAlarmsMu sync.Mutex
+	// eventLimiter rate-limits per-(container, event-type) MQTT publishes so
+	// that a crash-looping container cannot flood the broker.
+	eventLimiter       *EventRateLimiter
 	wg                 sync.WaitGroup
 	pendingDeletions   []tedge.Target
 	pendingDeletionsMu sync.Mutex
@@ -85,6 +100,10 @@ type Config struct {
 
 	CumulocityHost string
 	CumulocityPort uint16
+
+	// CrashLoopThreshold is the number of daemon-initiated restarts since the
+	// last healthy state required to declare a crash loop.
+	CrashLoopThreshold int
 }
 
 func NewApp(device tedge.Target, config Config) (*App, error) {
@@ -161,16 +180,40 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 	}
 
 	application := &App{
-		client:           tedgeClient,
-		ContainerClient:  containerClient,
-		Device:           &device,
-		config:           config,
-		updateRequests:   make(chan ActionRequest),
-		updateResults:    make(chan error),
+		client:          tedgeClient,
+		ContainerClient: containerClient,
+		Device:          &device,
+		config:          config,
+		// Buffered so that the debouncer's dispatch and synchronous Update()
+		// calls never block when the worker is briefly busy.
+		updateRequests:   make(chan ActionRequest, 8),
 		shutdown:         make(chan struct{}),
 		wg:               sync.WaitGroup{},
 		pendingDeletions: make([]tedge.Target, 0),
 	}
+
+	// The debouncer coalesces rapid-fire event-driven update requests into a
+	// single doUpdate call. It is used by Monitor() and Subscribe() callbacks.
+	application.debouncer = NewUpdateDebouncer(2*time.Second, func(req ActionRequest) {
+		select {
+		case application.updateRequests <- req:
+		default:
+			slog.Warn("Dropped debounced update request: worker queue is full.")
+		}
+	})
+
+	if config.CrashLoopThreshold <= 0 {
+		config.CrashLoopThreshold = 5
+	}
+	// Track container restart baselines to detect crash loops using the Docker
+	// daemon's own RestartCount.
+	application.restartBaseline = make(map[string]int)
+	application.crashLoopAlarms = make(map[string]struct{})
+
+	// Rate-limit engine event publishes: at most 1 event per
+	// (container, event-type) per 5 seconds. Combined with crash-loop
+	// suppression this eliminates broker flooding from restart storms.
+	application.eventLimiter = NewEventRateLimiter(5 * time.Second)
 
 	// Start background task to process requests
 	application.wg.Add(1)
@@ -248,17 +291,13 @@ func (a *App) Subscribe() error {
 		parts := strings.Split(m.Topic(), "/")
 		if len(parts) > 5 {
 			slog.Info("Received request to update service data.", "service", parts[4], "topic", topic)
-			go func(name string) {
-				opts := container.FilterOptions{}
-				// If the name matches the current service name, then
-				// update all containers
-				if name != a.config.ServiceName {
-					opts.Names = []string{
-						fmt.Sprintf("^%s$", name),
-					}
-				}
-				a.updateRequests <- NewUpdateAllAction(opts)
-			}(parts[4])
+			name := parts[4]
+			opts := container.FilterOptions{}
+			// If the name matches the current service name, then update all containers
+			if name != a.config.ServiceName {
+				opts.Names = []string{fmt.Sprintf("^%s$", name)}
+			}
+			a.debouncer.Enqueue(NewUpdateAllAction(opts))
 		}
 	})
 
@@ -275,9 +314,7 @@ func (a *App) Subscribe() error {
 			}
 			if isBridgeOnline(m.Payload()) {
 				slog.Info("Cloud bridge is online, triggering service resync to process any pending cloud deletions.", "topic", m.Topic())
-				go func() {
-					a.updateRequests <- NewUpdateAllAction(container.FilterOptions{})
-				}()
+				a.debouncer.Enqueue(NewUpdateAllAction(container.FilterOptions{}))
 			}
 		})
 	}
@@ -298,29 +335,39 @@ func (a *App) Stop(clean bool) {
 	a.wg.Wait()
 }
 
+// sendResult delivers err to the request's result channel when one was
+// provided. It is non-blocking: if the channel is full the send is dropped.
+func sendResult(req ActionRequest, err error) {
+	if req.result != nil {
+		select {
+		case req.result <- err:
+		default:
+		}
+	}
+}
+
 func (a *App) worker() {
 	defer a.wg.Done()
 	for {
 		select {
-		case opts := <-a.updateRequests:
+		case req := <-a.updateRequests:
 
-			switch opts.Action {
+			switch req.Action {
 			case ActionUpdateAll:
 				slog.Info("Processing update request")
-				err := a.doUpdate(opts.Options.(container.FilterOptions))
-				// Don't block when publishing results
-				go func() {
-					a.updateResults <- err
-				}()
+				err := a.doUpdate(req.Options.(container.FilterOptions))
+				sendResult(req, err)
 			case ActionUpdateMetrics:
-				items, err := a.ContainerClient.List(context.Background(), opts.Options.(container.FilterOptions))
+				items, err := a.ContainerClient.List(context.Background(), req.Options.(container.FilterOptions))
 				if err != nil {
 					slog.Warn("Could not get container list.", "err", err)
 				} else {
-					if updateErr := a.updateMetrics(items); updateErr != nil {
-						slog.Warn("Error updating metrics.", "err", updateErr)
+					err = a.updateMetrics(items)
+					if err != nil {
+						slog.Warn("Error updating metrics.", "err", err)
 					}
 				}
+				sendResult(req, err)
 			}
 
 		case <-a.shutdown:
@@ -331,15 +378,23 @@ func (a *App) worker() {
 }
 
 func (a *App) Update(filterOptions container.FilterOptions) error {
-	a.updateRequests <- NewUpdateAllAction(filterOptions)
-	err := <-a.updateResults
-	return err
+	result := make(chan error, 1)
+	a.updateRequests <- ActionRequest{
+		Action:  ActionUpdateAll,
+		Options: filterOptions,
+		result:  result,
+	}
+	return <-result
 }
 
 func (a *App) UpdateMetrics(filterOptions container.FilterOptions) error {
-	a.updateRequests <- NewUpdateMetricsAction(filterOptions)
-	err := <-a.updateResults
-	return err
+	result := make(chan error, 1)
+	a.updateRequests <- ActionRequest{
+		Action:  ActionUpdateMetrics,
+		Options: filterOptions,
+		result:  result,
+	}
+	return <-result
 }
 
 var ContainerEventText = map[events.Action]string{
@@ -395,6 +450,20 @@ func getEventAttributes(attr map[string]string, props ...string) []string {
 	return out
 }
 
+// serviceNameFromEventAttrs derives the thin-edge service name from Docker
+// event Actor.Attributes. For plain containers this is the container name;
+// for compose services it follows the same "project@service" convention used
+// by Container.GetName() so the event handler and doUpdate() agree on the
+// identity of a service.
+func serviceNameFromEventAttrs(attr map[string]string) string {
+	project := attr["com.docker.compose.project"]
+	service := attr["com.docker.compose.service"]
+	if project != "" && service != "" {
+		return project + "@" + service
+	}
+	return attr["name"]
+}
+
 func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions) error {
 	evtCh, errCh := a.ContainerClient.MonitorEvents(ctx)
 
@@ -445,37 +514,100 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 
 				switch evt.Action {
 				case events.ActionExecDie, events.ActionCreate, events.ActionStart, events.ActionStop, events.ActionPause, events.ActionUnPause, events.ActionHealthStatusHealthy, events.ActionHealthStatusUnhealthy:
-					go func(evt events.Message) {
-						// Delay before trigger update to allow the service status to be updated
-						time.Sleep(500 * time.Millisecond)
-						if err := a.Update(container.FilterOptions{
-							IDs: []string{evt.Actor.ID},
-
-							// Preserve default filter options
-							Names:            filterOptions.Names,
-							Labels:           filterOptions.Labels,
-							Types:            filterOptions.Types,
-							ExcludeNames:     filterOptions.ExcludeNames,
-							ExcludeWithLabel: filterOptions.ExcludeWithLabel,
-						}); err != nil {
-							slog.Warn("Error updating container state.", "err", err)
+					// When the container becomes healthy, reset the restart baseline
+					// to the current count so that future crash loops are measured
+					// from this healthy state.
+					if evt.Action == events.ActionHealthStatusHealthy {
+						serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
+						if serviceName != "" {
+							if rc, err := a.ContainerClient.GetRestartCount(context.Background(), evt.Actor.ID); err == nil {
+								a.restartBaselineMu.Lock()
+								a.restartBaseline[serviceName] = rc
+								a.restartBaselineMu.Unlock()
+							}
+							a.clearCrashLoopAlarm(serviceName)
+							a.eventLimiter.Remove(serviceName)
 						}
-					}(evt)
+					}
+					// On each daemon-initiated restart the Docker daemon increments
+					// RestartCount before firing the start event, so by the time we
+					// inspect here the count is already current.
+					if evt.Action == events.ActionStart {
+						serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
+						if serviceName != "" {
+							if rc, err := a.ContainerClient.GetRestartCount(context.Background(), evt.Actor.ID); err == nil && rc > 0 {
+								a.restartBaselineMu.Lock()
+								baseline, exists := a.restartBaseline[serviceName]
+								if !exists {
+									// First time seeing this container: treat the current
+									// count as the baseline so pre-existing restarts
+									// (before the plugin started) are not counted.
+									a.restartBaseline[serviceName] = rc
+									a.restartBaselineMu.Unlock()
+								} else {
+									delta := rc - baseline
+									a.restartBaselineMu.Unlock()
+									if delta >= a.config.CrashLoopThreshold {
+										slog.Warn("Crash loop detected.", "container", serviceName, "restartCount", rc, "baseline", baseline, "delta", delta)
+										a.publishCrashLoopAlarm(serviceName, rc)
+									}
+								}
+							}
+						}
+					}
+					// Enqueue a debounced scoped update for this container. The 2-second
+					// quiet period replaces the old 500ms sleep and also coalesces any
+					// burst of events (e.g. rapid start/stop cycles) into a single call.
+					a.debouncer.Enqueue(NewUpdateAllAction(container.FilterOptions{
+						IDs: []string{evt.Actor.ID},
+						// Preserve global filter options
+						Names:            filterOptions.Names,
+						Labels:           filterOptions.Labels,
+						Types:            filterOptions.Types,
+						ExcludeNames:     filterOptions.ExcludeNames,
+						ExcludeWithLabel: filterOptions.ExcludeWithLabel,
+					}))
 				case events.ActionDestroy, events.ActionRemove, events.ActionDie:
 					slog.Info("Container removed/destroyed", "container", evt.Actor.ID, "attributes", evt.Actor.Attributes)
+					serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
+					if serviceName != "" {
+						switch evt.Action {
+						case events.ActionDestroy, events.ActionRemove:
+							// Container was permanently removed — clear baseline, alarm, and rate-limit state.
+							a.restartBaselineMu.Lock()
+							delete(a.restartBaseline, serviceName)
+							a.restartBaselineMu.Unlock()
+							a.clearCrashLoopAlarm(serviceName)
+							a.eventLimiter.Remove(serviceName)
+						}
+					}
 					// TODO: Trigger a removal instead of checking the whole state
 					// Lookup container name by container id (from the entity store) as lookup by name won't work for container-groups
-					go func(evt events.Message) {
-						// Delay before trigger update to allow the service status to be updated
-						time.Sleep(500 * time.Millisecond)
-						if err := a.Update(filterOptions); err != nil {
-							slog.Warn("Error updating container state.", "err", err)
-						}
-					}(evt)
+					a.debouncer.Enqueue(NewUpdateAllAction(filterOptions))
 				}
 
-				if a.config.EnableEngineEvents {
-					if len(payload) > 0 {
+				if a.config.EnableEngineEvents && len(payload) > 0 {
+					serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
+					key := serviceName + "/" + string(evt.Action)
+
+					// Determine whether a crash loop is active for this container.
+					a.crashLoopAlarmsMu.Lock()
+					_, inCrashLoop := a.crashLoopAlarms[serviceName]
+					a.crashLoopAlarmsMu.Unlock()
+
+					switch {
+					case inCrashLoop:
+						// Suppress all events for a crash-looping container to
+						// avoid saturating the broker. The alarm already signals
+						// the operator.
+						slog.Debug("Suppressing engine event for crash-looping container.",
+							"container", serviceName, "action", evt.Action)
+					case !a.eventLimiter.Allow(key):
+						// Rate-limit: too many events for this (container,
+						// action) pair within the window.
+						slog.Debug("Rate-limiting engine event.",
+							"container", serviceName, "action", evt.Action)
+					default:
 						if err := a.client.Publish(tedge.GetTopic(a.client.Target, "e", string(evt.Action)), 1, false, mustMarshalJSON(payload)); err != nil {
 							slog.Warn("Failed to publish container event.", "err", err)
 						}
@@ -490,6 +622,117 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 			}
 			return err
 		}
+	}
+}
+
+// publishCrashLoopAlarm raises a CRITICAL alarm on the container's service
+// topic when a crash loop is detected. Duplicate alarms for the same
+// container are suppressed until the alarm is cleared.
+//
+// Publishing is done asynchronously so that Monitor's event loop is never
+// blocked.  Before sending the alarm the container's thin-edge entity is
+// registered (idempotent), which ensures the mapper can route the alarm to
+// Cumulocity even when the container dies faster than the debounced
+// doUpdate() manages to register it.
+func (a *App) publishCrashLoopAlarm(name string, count int) {
+	a.crashLoopAlarmsMu.Lock()
+	_, alreadyRaised := a.crashLoopAlarms[name]
+	if !alreadyRaised {
+		a.crashLoopAlarms[name] = struct{}{}
+	}
+	a.crashLoopAlarmsMu.Unlock()
+
+	if alreadyRaised {
+		return
+	}
+
+	go func() {
+		target := a.Device.Service(name)
+		topic := tedge.GetTopic(*target, "a", "ContainerCrashLoop")
+		payload := mustMarshalJSON(map[string]any{
+			"severity": "CRITICAL",
+			"text":     fmt.Sprintf("Container is in a crash loop (%d daemon-initiated restarts since last healthy).", count),
+			"time":     time.Now().UTC().Format(time.RFC3339),
+		})
+
+		// Ensure the entity is registered before publishing the alarm.
+		// A crash-looping container may die before the 2-second debounced
+		// doUpdate() fires, leaving the entity unknown to the mapper.
+		// Infer the service type from the name: "project@service" means
+		// container-group, anything else is a plain container.
+		entityType := container.ContainerType
+		if strings.Contains(name, "@") {
+			entityType = container.ContainerGroupType
+		}
+		if _, err := a.client.TedgeAPI.CreateEntity(context.Background(), tedge.Entity{
+			TedgeType:     tedge.EntityTypeService,
+			TedgeTopicID:  target.TopicID,
+			Name:          name,
+			Type:          entityType,
+			TedgeParentID: a.client.Parent.TopicID,
+		}); err != nil {
+			slog.Warn("Could not pre-register entity for crash-loop alarm.", "container", name, "err", err)
+		}
+
+		// Mark the service status as "down" immediately so the operator can
+		// see the crash loop in the service list without waiting for the
+		// debounced doUpdate() to fire. The next doUpdate() will overwrite
+		// this with the real container status (e.g. "up" once fixed).
+		healthTopic := tedge.GetHealthTopic(*target)
+		healthPayload := mustMarshalJSON(map[string]any{
+			"status": tedge.StatusDown,
+			"time":   time.Now().UTC().Format(time.RFC3339),
+		})
+		if err := a.client.Publish(healthTopic, 1, true, healthPayload); err != nil {
+			slog.Warn("Could not set crash-loop container status to down.", "container", name, "err", err)
+		}
+
+		slog.Warn("Publishing crash-loop alarm.", "container", name, "topic", topic, "restarts", count)
+		for attempt := 1; attempt <= 5; attempt++ {
+			// Stop retrying if the alarm was cleared (container recovered/removed).
+			a.crashLoopAlarmsMu.Lock()
+			_, stillActive := a.crashLoopAlarms[name]
+			a.crashLoopAlarmsMu.Unlock()
+			if !stillActive {
+				return
+			}
+
+			if err := a.client.Publish(topic, 1, true, payload); err != nil {
+				slog.Warn("Failed to publish crash-loop alarm, retrying.",
+					"err", err, "attempt", attempt, "container", name)
+				time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+				continue
+			}
+			slog.Warn("Crash-loop alarm published.", "container", name, "restarts", count)
+			return
+		}
+
+		// All retries exhausted — un-mark so the alarm can be re-raised on
+		// the next threshold crossing once the broker recovers.
+		slog.Warn("Gave up publishing crash-loop alarm after retries.", "container", name)
+		a.crashLoopAlarmsMu.Lock()
+		delete(a.crashLoopAlarms, name)
+		a.crashLoopAlarmsMu.Unlock()
+	}()
+}
+
+// clearCrashLoopAlarm clears any active crash-loop alarm for the named
+// container. It is a no-op when no alarm has been raised.
+func (a *App) clearCrashLoopAlarm(name string) {
+	a.crashLoopAlarmsMu.Lock()
+	_, had := a.crashLoopAlarms[name]
+	delete(a.crashLoopAlarms, name)
+	a.crashLoopAlarmsMu.Unlock()
+
+	if !had {
+		return
+	}
+
+	target := a.Device.Service(name)
+	topic := tedge.GetTopic(*target, "a", "ContainerCrashLoop")
+	slog.Info("Clearing crash-loop alarm.", "container", name, "topic", topic)
+	if err := a.client.Publish(topic, 1, true, ""); err != nil {
+		slog.Warn("Failed to clear crash-loop alarm.", "err", err)
 	}
 }
 
@@ -603,8 +846,19 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 	for _, item := range items {
 		target := a.Device.Service(item.Name)
 
+		// If this container is in a crash loop, report it as down regardless of
+		// what Docker currently reports — during a crash loop the container is
+		// transiently running between restarts when the scan fires.
+		status := item.Status
+		a.crashLoopAlarmsMu.Lock()
+		_, inCrashLoop := a.crashLoopAlarms[item.Name]
+		a.crashLoopAlarmsMu.Unlock()
+		if inCrashLoop {
+			status = tedge.StatusDown
+		}
+
 		payload := map[string]any{
-			"status": item.Status,
+			"status": status,
 			"time":   item.Time,
 		}
 		b, err := json.Marshal(payload)

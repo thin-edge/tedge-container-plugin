@@ -495,6 +495,19 @@ func (c *ContainerClient) GetContainer(ctx context.Context, containerID string) 
 	return &containers[0], nil
 }
 
+// GetRestartCount returns the number of times the Docker daemon has
+// restarted this container since it was created.  The value comes from
+// ContainerInspect because ContainerList (Summary) does not expose it.
+// Daemon-initiated restarts (restart policy) increment the counter;
+// manual "docker restart" commands do not.
+func (c *ContainerClient) GetRestartCount(ctx context.Context, containerID string) (int, error) {
+	resp, err := c.Client.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return 0, err
+	}
+	return resp.RestartCount, nil
+}
+
 // Stop and remove a container
 // Don't fail if the container does not exist
 func (c *ContainerClient) StopRemoveContainer(ctx context.Context, containerID string) error {
@@ -946,11 +959,25 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 
 	// Find
 	if utils.PathExists(workingDir) {
+		// Run compose stop first to handle containers in a restart loop or similar states.
+		// Ignore errors as compose down will handle cleanup regardless.
+		stopCommand, stopArgs, stopErr := prepareComposeCommand("stop")
+		if stopErr == nil {
+			slog.Info("Stopping compose project containers.", "name", projectName, "dir", workingDir, "command", stopCommand, "args", strings.Join(stopArgs, " "))
+			stopProg := exec.Command(stopCommand, stopArgs...)
+			stopProg.Dir = workingDir
+			stopOut, stopRunErr := stopProg.CombinedOutput()
+			_, _ = fmt.Fprintf(w, "%s", stopOut)
+			if stopRunErr != nil {
+				slog.Warn("compose stop failed (ignoring).", "err", stopRunErr)
+			}
+		}
+
 		command, args, err := prepareComposeCommand("down", "--remove-orphans", "--volumes")
 		if err != nil {
 			return err
 		}
-		slog.Info("Stopping compose project.", "name", projectName, "dir", workingDir, "command", command, "args", strings.Join(args, " "))
+		slog.Info("Removing compose project.", "name", projectName, "dir", workingDir, "command", command, "args", strings.Join(args, " "))
 		prog := exec.Command(command, args...)
 		prog.Dir = workingDir
 		out, err := prog.CombinedOutput()
