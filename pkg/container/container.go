@@ -212,6 +212,16 @@ func ConvertName(v []string) string {
 
 type ContainerClient struct {
 	Client *client.Client
+	Engine EngineCapabilities
+	// LibPod is a client for the podman-native libpod REST API. It is non-nil
+	// only when Engine.HasLibPodAPI is true and the API responded successfully
+	// during initialisation.
+	LibPod *SocketClient
+}
+
+// IsPodman reports whether the connected container engine is podman.
+func (c *ContainerClient) IsPodman() bool {
+	return c.Engine.Type == EnginePodman
 }
 
 func socketExists(p string) bool {
@@ -360,8 +370,29 @@ func newContainerClient(options *ClientOptions) (*ContainerClient, error) {
 		return nil, err
 	}
 
+	// Use engine name as an initial hint only; the libpod probe below is authoritative.
+	// Podman returns the machine hostname (not "podman") in Info().Name, so name-based
+	// detection alone is unreliable.
+	engine := detectEngineCapabilities(engineInfo.Name)
+
+	// Always probe the libpod API unconditionally. If it responds, this is podman
+	// regardless of what Info().Name says. A failure is non-fatal; we fall back to
+	// the Docker-compat API.
+	var libpod *SocketClient
+	lp := NewLibPodHTTPClient(options.Host)
+	if err := lp.Test(context.Background()); err != nil {
+		slog.Debug("libpod API not available, using Docker-compat API", "err", err)
+		// Keep engine type as detected from name (docker/unknown).
+	} else {
+		slog.Info("libpod API available, engine is podman")
+		engine = EngineCapabilities{Type: EnginePodman, HasLibPodAPI: true}
+		libpod = lp
+	}
+
 	return &ContainerClient{
 		Client: cli,
+		Engine: engine,
+		LibPod: libpod,
 	}, nil
 }
 
@@ -1280,13 +1311,19 @@ func (c *ContainerClient) CloneContainer(ctx context.Context, containerID string
 	// Copy host config
 	hostConfig := CloneHostConfig(prevContainer.HostConfig, opts)
 
+	// Enrich host config with engine-native data (e.g. recover UsernsMode
+	// "keep-id" that the Docker-compat API normalises to "private" on podman).
+	// Use prevContainer.ID (SHA) because the container was already renamed above;
+	// the original name no longer resolves.
+	c.enrichHostConfigForEngine(ctx, prevContainer.ID, hostConfig)
+
 	// Copy network config
 	var networkConfig *network.NetworkingConfig
 	if !opts.SkipNetwork {
 		networkConfig = CloneNetworkConfig(prevContainer.NetworkSettings)
 	}
 
-	slog.Info("Creating new container.", "name", prevContainer.Name, "newImage", opts.Image, "prevImage", prevImage, "config", prevContainer.Config, "host_config", prevContainer.HostConfig)
+	slog.Info("Creating new container.", "name", prevContainer.Name, "newImage", opts.Image, "prevImage", prevImage, "config", prevContainer.Config, "host_config", hostConfig)
 	nextContainer, createErr := c.Client.ContainerCreate(ctx, clonedConfig, hostConfig, networkConfig, nil, containerName)
 
 	if createErr != nil {
@@ -1465,6 +1502,10 @@ func (c *ContainerClient) Fork(ctx context.Context, currentContainer container.I
 
 	hostConfig := CloneHostConfig(currentContainer.HostConfig, cloneOptions)
 
+	// Enrich host config with engine-native data (e.g. recover UsernsMode
+	// "keep-id" that the Docker-compat API normalises to "private" on podman).
+	c.enrichHostConfigForEngine(ctx, currentContainer.ID, hostConfig)
+
 	// TODO: Protect against the updater from shutting down due to a machine restart
 	// or is this not required if the restart policy of the container being updated
 	// is left at RestartAlways (as it would restart after a device reboot)
@@ -1516,6 +1557,72 @@ func IsInsideContainer() bool {
 		}
 	}
 	return false
+}
+
+// enrichHostConfigForEngine corrects fields in hc that the Docker-compat API
+// may have normalised.  It dispatches to engine-specific helpers and is a
+// no-op when no enrichment is needed.
+//
+// containerID is the ID or name of the *source* container (the one being
+// cloned or forked), not the newly created one.
+func (c *ContainerClient) enrichHostConfigForEngine(ctx context.Context, containerID string, hc *container.HostConfig) {
+	if c.Engine.HasLibPodAPI && c.LibPod != nil {
+		c.enrichHostConfigForPodman(ctx, containerID, hc)
+	}
+}
+
+// enrichHostConfigForPodman calls the libpod-native inspect endpoint to
+// retrieve the true UsernsMode for the source container and overwrites
+// whatever value the Docker-compat inspect returned.
+//
+// Failures are logged and silently ignored so that caller never aborts due
+// to enrichment – the worst outcome is the same behaviour as before this fix.
+// inferUsernsFromIDMappings detects "keep-id" user namespace mode from a UID
+// mapping table. Podman 4.x incorrectly normalises "keep-id" to "private" in
+// its REST API response. The signature of keep-id is an identity-mapped entry
+// where containerID == hostID (e.g. "999:999:1"). Regular "private" namespaces
+// use the subuid range starting at container UID 0, so no identity entry exists.
+// Returns "keep-id" if detected, or "" otherwise.
+func inferUsernsFromIDMappings(uidMap []string) string {
+	for _, entry := range uidMap {
+		parts := strings.SplitN(entry, ":", 3)
+		if len(parts) == 3 && parts[0] == parts[1] {
+			return "keep-id"
+		}
+	}
+	return ""
+}
+
+func (c *ContainerClient) enrichHostConfigForPodman(ctx context.Context, containerID string, hc *container.HostConfig) {
+	resp, err := c.LibPod.ContainerInspect(ctx, containerID)
+	if err != nil {
+		slog.Warn("libpod inspect failed; UsernsMode may be incorrect in cloned container", "id", containerID, "err", err)
+		return
+	}
+
+	nativeMode := container.UsernsMode(resp.HostConfig.UsernsMode)
+
+	// Podman 4.x normalises "keep-id" → "private" in the REST API response.
+	// Detect the original mode from IDMappings: keep-id leaves an identity
+	// mapping entry (containerID == hostID) that private userns never has.
+	if nativeMode == "private" && resp.HostConfig.IDMappings != nil {
+		if inferred := inferUsernsFromIDMappings(resp.HostConfig.IDMappings.UIDMap); inferred != "" {
+			slog.Info("Inferred UsernsMode keep-id from IDMappings",
+				"id", containerID,
+				"uidMap", resp.HostConfig.IDMappings.UIDMap,
+			)
+			nativeMode = container.UsernsMode(inferred)
+		}
+	}
+
+	if nativeMode != hc.UsernsMode {
+		slog.Info("Correcting UsernsMode for cloned container",
+			"id", containerID,
+			"compat_value", hc.UsernsMode,
+			"libpod_value", nativeMode,
+		)
+		hc.UsernsMode = nativeMode
+	}
 }
 
 func CloneContainerConfig(ref *container.Config, opts CloneOptions) *container.Config {
@@ -1602,6 +1709,7 @@ func CloneHostConfig(ref *container.HostConfig, opts CloneOptions) *container.Ho
 			CPUPeriod:         ref.CPUPeriod,
 			MemoryReservation: ref.MemoryReservation,
 			OomKillDisable:    ref.OomKillDisable,
+			PidsLimit:         ref.PidsLimit,
 		},
 		Sysctls: ref.Sysctls,
 	}
