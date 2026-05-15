@@ -16,5 +16,15 @@ type LibPodInspectResponse struct {
 type LibPodHostConfig struct {
 	// UsernsMode is the user-namespace mode as stored by podman, e.g. "" (host),
 	// "private", "keep-id", "keep-id:uid=X,gid=Y", "nomap", etc.
-	UsernsMode string `json:"UsernsMode"`
+	// NOTE: podman 4.x normalises "keep-id" to "private" here; use IDMappings
+	// to detect the original mode when this field cannot be trusted.
+	UsernsMode string            `json:"UsernsMode"`
+	IDMappings *LibPodIDMappings `json:"IDMappings,omitempty"`
+}
+
+// LibPodIDMappings holds the UID/GID mapping tables for a container's user
+// namespace. Each entry is in "containerID:hostID:size" format.
+type LibPodIDMappings struct {
+	UIDMap []string `json:"UIDMap"`
+	GIDMap []string `json:"GIDMap"`
 }
