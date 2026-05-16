@@ -52,6 +52,9 @@ build-test:
 
 # Run tests
 test *args='':
+  #!/usr/bin/env bash
+  set -euo pipefail
+  . ./.venv/bin/activate
   ./.venv/bin/python3 -m pabot.pabot --listener RetryFailed --outputdir output {{args}} tests
 
 # Download/update vendor packages
