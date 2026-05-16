@@ -979,6 +979,43 @@ func (c *ContainerClient) LookupProject(ctx context.Context, projectName string,
 	return projectContainers, err
 }
 
+// ResolveComposeProjectName resolves a name that may be either a Docker
+// compose project name (from the com.docker.compose.project label) or a
+// stored module name (line 2 of the version file in the project working dir).
+// It returns the actual Docker compose project name to use for API calls, or
+// the input name unchanged if no match is found.
+func (c *ContainerClient) ResolveComposeProjectName(ctx context.Context, name string) (string, error) {
+	// First try exact match on the Docker label - cheapest path.
+	direct, err := c.Client.ContainerList(ctx, container.ListOptions{
+		Filters: filters.NewArgs(filters.Arg("label", "com.docker.compose.project="+name)),
+	})
+	if err != nil {
+		return name, err
+	}
+	if len(direct) > 0 {
+		return name, nil
+	}
+
+	// No exact match: scan all compose containers and check their stored module names.
+	all, err := c.Client.ContainerList(ctx, container.ListOptions{
+		All:     true,
+		Filters: filters.NewArgs(filters.Arg("label", "com.docker.compose.project")),
+	})
+	if err != nil {
+		return name, err
+	}
+	for _, c := range all {
+		workingDir := c.Labels["com.docker.compose.project.working_dir"]
+		if workingDir == "" {
+			continue
+		}
+		if ReadModuleName(workingDir) == name {
+			return c.Labels["com.docker.compose.project"], nil
+		}
+	}
+	return name, nil
+}
+
 func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectName string, defaultWorkingDir string) error {
 	// TODO: Read setting from configuration
 	manualCleanup := false

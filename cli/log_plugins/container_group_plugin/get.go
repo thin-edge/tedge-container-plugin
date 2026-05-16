@@ -56,7 +56,17 @@ func (c *ContainerLogsCommand) RunE(cmd *cobra.Command, args []string) error {
 	if !found {
 		return fmt.Errorf("invalid service name. expected name in format of '<project>@<service>'")
 	}
-	services, err := containerCli.LookupProject(context.Background(), projectName, serviceName)
+
+	// The stored service name may use the module name rather than the Docker
+	// compose project name. Resolve it to the actual Docker project label so
+	// the container lookup works regardless.
+	resolvedProjectName, err := containerCli.ResolveComposeProjectName(ctx, projectName)
+	if err != nil {
+		slog.Warn("Could not resolve compose project name, using as-is.", "name", projectName, "err", err)
+		resolvedProjectName = projectName
+	}
+
+	services, err := containerCli.LookupProject(context.Background(), resolvedProjectName, serviceName)
 	if err != nil {
 		return err
 	}
