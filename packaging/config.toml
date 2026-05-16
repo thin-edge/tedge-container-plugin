@@ -99,6 +99,17 @@ enabled = true
 # delete orphaned services (related to containers) from the cloud
 orphans = true
 
+[container_group]
+# Control whether the thin-edge service name for container-group services is
+# derived from the module name stored at install time (true) or from
+# the compose project name taken from the Docker container labels (false, default).
+#
+# Set to false when you want the runtime service identity to be decoupled from
+# the software module name. For example, the installed module can be named
+# "myapp-dev" while the compose file has `name: myapp`, so the service shows
+# as "myapp@<service>" regardless of the module version installed.
+use_module_name = false
+
 [registry]
 # Path to the file containing container registry credentials
 credentials_path = "/data/tedge-container-plugin/credentials.toml"

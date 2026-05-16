@@ -104,6 +104,14 @@ type Config struct {
 	// CrashLoopThreshold is the number of daemon-initiated restarts since the
 	// last healthy state required to declare a crash loop.
 	CrashLoopThreshold int
+
+	// UseModuleNameForService controls whether the thin-edge service name for
+	// container-group services is derived from the stored module name (true,
+	// default) or from the compose project name taken from Docker labels
+	// (false). Set to false when you want the runtime service identity to be
+	// decoupled from the software module name, e.g. the module is "myapp-dev"
+	// but the compose project name (and therefore the service name) is "myapp".
+	UseModuleNameForService bool
 }
 
 func NewApp(device tedge.Target, config Config) (*App, error) {
@@ -362,6 +370,7 @@ func (a *App) worker() {
 				if err != nil {
 					slog.Warn("Could not get container list.", "err", err)
 				} else {
+					items = a.applyServiceNamePolicy(items)
 					err = a.updateMetrics(items)
 					if err != nil {
 						slog.Warn("Error updating metrics.", "err", err)
@@ -455,10 +464,17 @@ func getEventAttributes(attr map[string]string, props ...string) []string {
 // for compose services it follows the same "project@service" convention used
 // by Container.GetName() so the event handler and doUpdate() agree on the
 // identity of a service.
-func serviceNameFromEventAttrs(attr map[string]string) string {
+func (a *App) serviceNameFromEventAttrs(attr map[string]string) string {
 	project := attr["com.docker.compose.project"]
 	service := attr["com.docker.compose.service"]
 	if project != "" && service != "" {
+		if a.config.UseModuleNameForService {
+			if workingDir := attr["com.docker.compose.project.working_dir"]; workingDir != "" {
+				if moduleName := container.ReadModuleName(workingDir); moduleName != "" {
+					project = moduleName
+				}
+			}
+		}
 		return project + "@" + service
 	}
 	return attr["name"]
@@ -518,7 +534,7 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 					// to the current count so that future crash loops are measured
 					// from this healthy state.
 					if evt.Action == events.ActionHealthStatusHealthy {
-						serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
+						serviceName := a.serviceNameFromEventAttrs(evt.Actor.Attributes)
 						if serviceName != "" {
 							if rc, err := a.ContainerClient.GetRestartCount(context.Background(), evt.Actor.ID); err == nil {
 								a.restartBaselineMu.Lock()
@@ -533,7 +549,7 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 					// RestartCount before firing the start event, so by the time we
 					// inspect here the count is already current.
 					if evt.Action == events.ActionStart {
-						serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
+						serviceName := a.serviceNameFromEventAttrs(evt.Actor.Attributes)
 						if serviceName != "" {
 							if rc, err := a.ContainerClient.GetRestartCount(context.Background(), evt.Actor.ID); err == nil && rc > 0 {
 								a.restartBaselineMu.Lock()
@@ -569,7 +585,7 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 					}))
 				case events.ActionDestroy, events.ActionRemove, events.ActionDie:
 					slog.Info("Container removed/destroyed", "container", evt.Actor.ID, "attributes", evt.Actor.Attributes)
-					serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
+					serviceName := a.serviceNameFromEventAttrs(evt.Actor.Attributes)
 					if serviceName != "" {
 						switch evt.Action {
 						case events.ActionDestroy, events.ActionRemove:
@@ -587,7 +603,7 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 				}
 
 				if a.config.EnableEngineEvents && len(payload) > 0 {
-					serviceName := serviceNameFromEventAttrs(evt.Actor.Attributes)
+					serviceName := a.serviceNameFromEventAttrs(evt.Actor.Attributes)
 					key := serviceName + "/" + string(evt.Action)
 
 					// Determine whether a crash loop is active for this container.
@@ -786,6 +802,23 @@ func (a *App) updateMetrics(items []container.TedgeContainer) error {
 	return errors.Join(jobErrors...)
 }
 
+// applyServiceNamePolicy enforces the UseModuleNameForService setting on a
+// list of containers. When UseModuleNameForService is false the ModuleName
+// stored in the version file is ignored so that the compose project name
+// (from the Docker label) is used as the service name instead.
+func (a *App) applyServiceNamePolicy(items []container.TedgeContainer) []container.TedgeContainer {
+	if a.config.UseModuleNameForService {
+		return items
+	}
+	for i := range items {
+		if items[i].Container.ModuleName != "" {
+			items[i].Container.ModuleName = ""
+			items[i].Name = items[i].Container.GetName()
+		}
+	}
+	return items
+}
+
 func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 	tedgeClient := a.client
 	entities, err := tedgeClient.GetEntities()
@@ -815,6 +848,7 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 	if err != nil {
 		return err
 	}
+	items = a.applyServiceNamePolicy(items)
 
 	// Register devices
 	slog.Info("Registering containers")

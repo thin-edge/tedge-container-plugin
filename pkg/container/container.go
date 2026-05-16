@@ -1,6 +1,7 @@
 package container
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -110,6 +112,7 @@ type Container struct {
 	// Only used for container groups
 	ServiceName string `json:"serviceName,omitempty"`
 	ProjectName string `json:"projectName,omitempty"`
+	ModuleName  string `json:"-"`
 
 	// Private values
 	Labels map[string]string `json:"-"`
@@ -145,6 +148,10 @@ func NewContainerFromDockerContainer(item *container.Summary) TedgeContainer {
 		container.ServiceName = v
 	}
 
+	if workingDir, ok := item.Labels["com.docker.compose.project.working_dir"]; ok {
+		container.ModuleName = ReadModuleName(workingDir)
+	}
+
 	container.NetworkIDs = make([]string, 0)
 	if item.NetworkSettings != nil && len(item.NetworkSettings.Networks) > 0 {
 		for _, v := range item.NetworkSettings.Networks {
@@ -169,11 +176,32 @@ func NewContainerFromDockerContainer(item *container.Summary) TedgeContainer {
 	}
 }
 
+// ReadModuleName reads the module name (line 2) from the version file stored
+// in workingDir. Returns an empty string if the file is absent or line 2 is
+// missing/empty, so callers should fall back to the compose project name.
+func ReadModuleName(workingDir string) string {
+	f, err := os.Open(filepath.Join(workingDir, "version"))
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = f.Close() }()
+	scanner := bufio.NewScanner(f)
+	scanner.Scan() // skip version line
+	if scanner.Scan() {
+		return scanner.Text()
+	}
+	return ""
+}
+
 func (c *Container) GetName() string {
 	if c.ProjectName == "" {
 		return c.Name
 	}
-	return fmt.Sprintf("%s@%s", c.ProjectName, c.ServiceName)
+	project := c.ProjectName
+	if c.ModuleName != "" {
+		project = c.ModuleName
+	}
+	return fmt.Sprintf("%s@%s", project, c.ServiceName)
 }
 
 func ConvertToTedgeStatus(v string) string {
