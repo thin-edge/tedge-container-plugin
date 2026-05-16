@@ -33,6 +33,22 @@ func (cp *ComposeProject) GetVersion() string {
 	return scanner.Text()
 }
 
+func (cp *ComposeProject) GetModuleName() string {
+	file, err := os.Open(filepath.Join(cp.Dir, "version"))
+	if err != nil {
+		return cp.Name
+	}
+	defer func() { _ = file.Close() }()
+	scanner := bufio.NewScanner(file)
+	scanner.Scan() // skip version line
+	if scanner.Scan() {
+		if name := scanner.Text(); name != "" {
+			return name
+		}
+	}
+	return cp.Name
+}
+
 // listCmd represents the list command
 func NewListCommand(cliContext cli.Cli) *cobra.Command {
 	return &cobra.Command{
@@ -70,7 +86,7 @@ func NewListCommand(cliContext cli.Cli) *cobra.Command {
 
 			for _, key := range keys {
 				project := projects[key]
-				_, _ = fmt.Fprintf(stdout, "%s\t%s\n", project.Name, project.GetVersion())
+				_, _ = fmt.Fprintf(stdout, "%s\t%s\n", project.GetModuleName(), project.GetVersion())
 			}
 			return nil
 		},

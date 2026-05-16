@@ -60,6 +60,7 @@ func (c *Cli) OnInit() {
 	viper.SetDefault("delete_legacy", true)
 	viper.SetDefault("data_dir", []string{"/data/tedge-container-plugin", "/var/tedge-container-plugin"})
 	viper.SetDefault("registry.credentials_path", "/data/tedge-container-plugin/credentials.toml")
+	viper.SetDefault("container_group.use_module_name", false)
 
 	// Default to the tedge plugins folder
 	if c.ConfigFile == "" {
@@ -174,6 +175,10 @@ func (c *Cli) DeleteOrphans() bool {
 
 func (c *Cli) GetCrashLoopThreshold() int {
 	return viper.GetInt("container.crash_loop_threshold")
+}
+
+func (c *Cli) UseModuleNameForService() bool {
+	return viper.GetBool("container_group.use_module_name")
 }
 
 func (c *Cli) GetHTTPHost() string {

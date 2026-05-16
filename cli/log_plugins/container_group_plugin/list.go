@@ -31,9 +31,15 @@ func NewListCommand(cliContext cli.Cli) *cobra.Command {
 				return err
 			}
 			stdout := cmd.OutOrStdout()
+			useModuleName := cliContext.UseModuleNameForService()
 			for _, item := range containers {
 				if item.ServiceType == container.ContainerGroupType {
-					_, _ = fmt.Fprintf(stdout, "%s\n", item.Name)
+					name := item.Name
+					if !useModuleName && item.Container.ModuleName != "" {
+						item.Container.ModuleName = ""
+						name = item.Container.GetName()
+					}
+					_, _ = fmt.Fprintf(stdout, "%s\n", name)
 				}
 			}
 			return nil

@@ -1,0 +1,14 @@
+name: app7
+services:
+  nginx:
+    image: docker.io/nginx
+    hostname: nginx
+    networks:
+      - tedge
+    ports:
+      - 8080:80
+
+networks:
+  tedge:
+    name: tedge
+    external: true

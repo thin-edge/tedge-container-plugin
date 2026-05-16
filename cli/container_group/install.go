@@ -131,8 +131,8 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 	}
 
 	versionFile := filepath.Join(workingDir, "version")
-	slog.Info("Writing version to file.", "path", versionFile, "version", c.ModuleVersion)
-	if err := os.WriteFile(versionFile, []byte(c.ModuleVersion), 0644); err != nil {
+	slog.Info("Writing version to file.", "path", versionFile, "version", c.ModuleVersion, "moduleName", projectName)
+	if err := os.WriteFile(versionFile, []byte(c.ModuleVersion+"\n"+projectName), 0644); err != nil {
 		return err
 	}
 
