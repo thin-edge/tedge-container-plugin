@@ -55,7 +55,7 @@ test *args='':
   #!/usr/bin/env bash
   set -euo pipefail
   . ./.venv/bin/activate
-  ./.venv/bin/python3 -m pabot.pabot --listener RetryFailed --outputdir output {{args}} tests
+  ./.venv/bin/python3 -m pabot.pabot --listener RetryFailed:3 --outputdir output {{args}} tests
 
 # Download/update vendor packages
 update-vendor:
