@@ -5,11 +5,11 @@ Library    DeviceLibrary    bootstrap_script=bootstrap.sh
 
 Suite Setup    Suite Setup
 Test Teardown    Collect Logs
-Test Tags    podman    docker
 
 *** Test Cases ***
 
 Install/uninstall container-group package
+    [Tags]    podman    docker
     ${binary_url}=    Cumulocity.Create Inventory Binary    nginx    container-group    file=${CURDIR}/data/docker-compose.nginx.yaml
     ${operation}=    Cumulocity.Install Software    {"name": "nginx", "version": "1.0.0", "softwareType": "container-group", "url": "${binary_url}"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
@@ -41,23 +41,28 @@ Install/uninstall container-group package with custom project name and with usin
     Install/uninstall container-group package with custom project name    module_name=app7-test    service_name=app7-test@nginx    use_module_name=true
 
 Install/uninstall container-group package with non-existent image
+    [Tags]    podman    docker
     ${binary_url}=    Cumulocity.Create Inventory Binary    nginx    container-group    file=${CURDIR}/data/docker-compose.invalid-image.yaml
     ${operation}=    Cumulocity.Install Software    {"name": "nginx", "version": "1.0.0", "softwareType": "container-group", "url": "${binary_url}"}
     Operation Should Be FAILED    ${operation}    timeout=120
 
 Install invalid container-group
+    [Tags]    podman    docker
     ${binary_url}=    Cumulocity.Create Inventory Binary    nginx    container-group    file=${CURDIR}/data/docker-compose.invalid.yaml
     ${operation}=    Cumulocity.Install Software    {"name": "nginx", "version": "1.0.0", "softwareType": "container-group", "url": "${binary_url}"}
     Operation Should Be FAILED    ${operation}    timeout=120
     Device Should Not Have Installed Software    {"name": "nginx", "version": "1.0.0", "softwareType": "container-group"}
 
 Install container-group with multiple files - app1
+    [Tags]    podman    docker
     Install container-group file    app1    1.0.1    app1    ${CURDIR}/data/apps/app1.tar.gz
 
 Install container-group with multiple files - app2
+    [Tags]    podman    docker
     Install container-group file    app2    1.2.3    app2    ${CURDIR}/data/apps/app2.zip
 
 Install container group that uses host volume mount
+    [Tags]    podman    docker
     [Setup]    Start Service    tedge-container-plugin
     # Install container-group
     Install container-group application    app5    1.0.0    app5    ${CURDIR}/data/apps/app5.tar.gz
@@ -69,6 +74,7 @@ Install container group that uses host volume mount
     Should Contain    ${operation["c8y_Command"]["result"]}    It works
 
 Install container group with a container in a crash loop
+    [Tags]    podman    docker
     [Setup]    Start Service    tedge-container-plugin
 
     ${binary_url}=    Cumulocity.Create Inventory Binary    crash-loop    container-group    file=${CURDIR}/data/docker-compose.crash-loop.yaml
