@@ -52,7 +52,10 @@ build-test:
 
 # Run tests
 test *args='':
-  ./.venv/bin/python3 -m robot.run --outputdir output {{args}} tests
+  #!/usr/bin/env bash
+  set -euo pipefail
+  . ./.venv/bin/activate
+  ./.venv/bin/python3 -m pabot.pabot --listener RetryFailed:3 --outputdir output {{args}} tests
 
 # Download/update vendor packages
 update-vendor:

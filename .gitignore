@@ -9,6 +9,7 @@ __pycache__
 .pytest_cache
 
 # tests
+.pabotsuitenames
 log.html
 output.xml
 report.html

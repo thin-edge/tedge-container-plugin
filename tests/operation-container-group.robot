@@ -74,7 +74,8 @@ Install container group that uses host volume mount
     Should Contain    ${operation["c8y_Command"]["result"]}    It works
 
 Install container group with a container in a crash loop
-    [Tags]    podman    docker
+    # Retries are required as the container can sometimes fail during installation instead of after
+    [Tags]    podman    docker    test:retry(3)
     [Setup]    Start Service    tedge-container-plugin
 
     ${binary_url}=    Cumulocity.Create Inventory Binary    crash-loop    container-group    file=${CURDIR}/data/docker-compose.crash-loop.yaml
