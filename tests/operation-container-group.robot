@@ -31,9 +31,13 @@ Install/uninstall container-group package
     Cumulocity.Should Have Services    name=nginx@nginx    service_type=container-group    min_count=0    max_count=0
 
 Install/uninstall container-group package with custom project name and without using module name in services
+    [Tags]    docker
+    # Note: older versions of podman-compose don't support the .name property in the compose, it was added around podman-compose >= 1.3.0
     Install/uninstall container-group package with custom project name    module_name=app7-dev    service_name=app7@nginx    use_module_name=false
 
 Install/uninstall container-group package with custom project name and with using module name in services
+    [Tags]    docker
+    # Note: older versions of podman-compose don't support the .name property in the compose, it was added around podman-compose >= 1.3.0
     Install/uninstall container-group package with custom project name    module_name=app7-test    service_name=app7-test@nginx    use_module_name=true
 
 Install/uninstall container-group package with non-existent image
