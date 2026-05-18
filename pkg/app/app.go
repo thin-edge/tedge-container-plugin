@@ -876,7 +876,29 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 		entities[entity.TedgeTopicID] = entity
 	}
 
-	// Publish health messages
+	// update digital twin information
+	slog.Info("Updating digital twin information")
+	for _, item := range items {
+		target := a.Device.Service(item.Name)
+
+		// Create status
+		_, err := tedgeClient.TedgeAPI.UpdateTwin(
+			context.Background(),
+			tedge.Entity{
+				TedgeTopicID: target.TopicID,
+			},
+			"container",
+			item.Container,
+		)
+		if err != nil {
+			slog.Error("Could not publish container status", "err", err)
+		}
+	}
+
+	// Publish health messages last so the health status always wins over any
+	// implicit status that the C8Y mapper may emit when processing the entity
+	// registration or twin update messages (which could otherwise race and
+	// override an explicit "down" status with "up").
 	for _, item := range items {
 		target := a.Device.Service(item.Name)
 
@@ -904,25 +926,6 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 		slog.Info("Publishing container health status", "topic", topic, "payload", b)
 		if err := tedgeClient.Publish(topic, 1, true, b); err != nil {
 			slog.Error("Failed to update health status", "target", topic, "err", err)
-		}
-	}
-
-	// update digital twin information
-	slog.Info("Updating digital twin information")
-	for _, item := range items {
-		target := a.Device.Service(item.Name)
-
-		// Create status
-		_, err := tedgeClient.TedgeAPI.UpdateTwin(
-			context.Background(),
-			tedge.Entity{
-				TedgeTopicID: target.TopicID,
-			},
-			"container",
-			item.Container,
-		)
-		if err != nil {
-			slog.Error("Could not publish container status", "err", err)
 		}
 	}
 
