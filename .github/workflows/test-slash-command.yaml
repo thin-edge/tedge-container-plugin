@@ -1,0 +1,36 @@
+name: Test (Slash Command)
+
+# Listens for /test comments on pull requests.
+# Because issue_comment always runs in the base-repo context, this workflow
+# has access to repository secrets even for fork PRs.
+#
+# When a maintainer (write/maintain/admin) comments "/test" on a PR:
+#   - peter-evans/slash-command-dispatch validates the permission, adds 👀/🚀
+#     reactions, and fires a repository_dispatch event of type "test-command".
+#   - test.yaml picks up that event and runs the matrix tests against the
+#     PR's head SHA (available in client_payload.pull_request).
+#
+# Requires a repo-scoped PAT stored as the COMMUNITY_ACTIONS_PAT secret so that the action can
+# create repository_dispatch events (GITHUB_TOKEN cannot do this).
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  slash-command-dispatch:
+    name: Dispatch /test command
+    # Only process comments on pull requests
+    if: github.event.issue.pull_request != null
+    runs-on: ubuntu-latest
+    steps:
+      - name: Slash Command Dispatch
+        uses: peter-evans/slash-command-dispatch@v5
+        with:
+          token: ${{ secrets.COMMUNITY_ACTIONS_PAT }}
+          commands: test
+          permission: write
+          issue-type: pull-request

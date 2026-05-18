@@ -1,41 +1,42 @@
 name: Test
 
 on:
-  workflow_dispatch:
-  # Use a manual approval process before PR's are given access to
-  # the secrets which are required to run the integration tests.
-  # The PR code should be manually approved to see if it can be trusted.
-  # When in doubt, do not approve the test run.
-  # Reference: https://dev.to/petrsvihlik/using-environment-protection-rules-to-secure-secrets-when-building-external-forks-with-pullrequesttarget-hci
-  pull_request_target:
+  # Runs automatically for PRs from branches within this repo (maintainers).
+  # Fork PRs do not have access to secrets; maintainers must trigger those
+  # via a /test comment (see test-slash-command.yaml).
+  pull_request:
     branches: [ main ]
+  # Triggered by test-slash-command.yaml via peter-evans/slash-command-dispatch
+  # when a maintainer comments /test on a fork PR.
+  repository_dispatch:
+    types: [test-command]
+  # Allows manually triggering a test run against a specific ref from the UI.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit SHA or branch to test"
+        required: false
+        default: ""
   merge_group:
 
 permissions:
   contents: read
 
 jobs:
-  approve:
-    name: Approve
-    environment:
-      # For security reasons, all pull requests need to be approved first before granting access to secrets
-      # So the environment should be set to have a reviewer/s inspect it before approving it
-      name: ${{ github.event_name == 'pull_request_target' && 'Test Pull Request' || 'Test Auto'  }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Wait for approval
-        run: echo "Approved"
-
   test:
     name: Test ${{ matrix.job.image }}
-    needs: [approve]
+    # Skip fork PRs on the pull_request event — they have no secret access.
+    # Those PRs are tested via repository_dispatch triggered by test-slash-command.yaml.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    environment:
+      name: Test Auto
     permissions:
       # Required to publish system test results to the PR
       issues: write
       pull-requests: write
       contents: read
-    environment:
-      name: Test Auto
     runs-on: ubuntu-latest
     env:
       TEST_IMAGE: ${{ matrix.job.image }}
@@ -51,7 +52,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || '' }}
+          # repository_dispatch: use the fork PR's head SHA from the slash command payload
+          # workflow_dispatch:   use the manually specified ref (or default branch)
+          # pull_request / merge_group: use the default (current SHA)
+          ref: ${{ github.event.client_payload.pull_request.head.sha || inputs.ref || github.sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -111,8 +115,23 @@ jobs:
           path: output
 
       - name: Send report to commit
-        if: ${{ always() && github.event_name == 'pull_request_target' }}
+        if: ${{ always() && (github.event_name == 'pull_request' || github.event_name == 'repository_dispatch') }}
         uses: "joonvena/robotframework-reporter-action@v2.5"
         with:
           report_path: output
           gh_access_token: ${{ secrets.GITHUB_TOKEN }}
+          pull_request_id: ${{ github.event.pull_request.number || github.event.client_payload.pull_request.number }}
+          sha: ${{ github.event.client_payload.pull_request.head.sha || github.sha }}
+
+  tests-pass:
+    name: Tests Pass
+    needs: [test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all matrix jobs passed
+        run: |
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "One or more matrix jobs failed: ${{ needs.test.result }}"
+            exit 1
+          fi
