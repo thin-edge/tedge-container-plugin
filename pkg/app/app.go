@@ -69,10 +69,8 @@ type App struct {
 	crashLoopAlarmsMu sync.Mutex
 	// eventLimiter rate-limits per-(container, event-type) MQTT publishes so
 	// that a crash-looping container cannot flood the broker.
-	eventLimiter       *EventRateLimiter
-	wg                 sync.WaitGroup
-	pendingDeletions   []tedge.Target
-	pendingDeletionsMu sync.Mutex
+	eventLimiter *EventRateLimiter
+	wg           sync.WaitGroup
 }
 
 type Config struct {
@@ -194,10 +192,9 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 		config:          config,
 		// Buffered so that the debouncer's dispatch and synchronous Update()
 		// calls never block when the worker is briefly busy.
-		updateRequests:   make(chan ActionRequest, 8),
-		shutdown:         make(chan struct{}),
-		wg:               sync.WaitGroup{},
-		pendingDeletions: make([]tedge.Target, 0),
+		updateRequests: make(chan ActionRequest, 8),
+		shutdown:       make(chan struct{}),
+		wg:             sync.WaitGroup{},
 	}
 
 	// The debouncer coalesces rapid-fire event-driven update requests into a
@@ -929,74 +926,36 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 		}
 	}
 
-	// Retry any cloud deletions that previously failed due to the proxy being unavailable.
-	if a.config.DeleteFromCloud {
-		a.pendingDeletionsMu.Lock()
-		pendingRetry := a.pendingDeletions
-		a.pendingDeletions = make([]tedge.Target, 0)
-		a.pendingDeletionsMu.Unlock()
-
-		if len(pendingRetry) > 0 {
-			slog.Info("Retrying previously-failed cloud deletions.", "count", len(pendingRetry))
-			for _, target := range pendingRetry {
-				// Skip if the service has re-registered itself since the deletion was queued.
-				if _, reregistered := entities[target.TopicID]; reregistered {
-					slog.Info("Skipping pending cloud deletion: service re-registered.", "topic", target.Topic())
-					continue
-				}
-				slog.Info("Retrying cloud deletion.", "topic", target.Topic())
-				if _, err := tedgeClient.DeleteCumulocityManagedObject(target); err != nil {
-					slog.Warn("Failed to retry cloud deletion, re-queuing.", "err", err, "topic", target.Topic())
-					a.pendingDeletionsMu.Lock()
-					a.pendingDeletions = append(a.pendingDeletions, target)
-					a.pendingDeletionsMu.Unlock()
-				} else {
-					slog.Info("Successfully retried cloud deletion.", "topic", target.Topic())
-				}
-			}
-		}
-	}
-
-	// Delete removed values, via MQTT and c8y API
-	markedForDeletion := make([]tedge.Target, 0)
+	// Delete stale services — cloud first, then thin-edge.
+	//
+	// Cloud deletion is attempted before deregistering from thin-edge. If it
+	// fails (e.g. the local proxy is down), deregistration is skipped so the
+	// entity remains in the thin-edge entity store. The next doUpdate() will
+	// detect it as stale again and retry — including after a process restart,
+	// which is why an in-memory pending-deletions queue is insufficient.
 	if removeStaleServices {
 		slog.Info("Checking for any stale services")
 		for staleTopicID := range existingServices {
 			slog.Info("Removing stale service.", "topic-id", staleTopicID)
 			target := tedge.NewTarget(a.Device.RootPrefix, staleTopicID)
-			if err := tedgeClient.DeregisterEntity(*target); err != nil {
-				slog.Warn("Failed to deregister entity.", "err", err)
-			}
 
-			// Update entities map
-			delete(entities, staleTopicID)
-
-			// mark targets for deletion from the cloud, but don't delete them yet to give time
-			// for thin-edge.io to process the status updates
-			markedForDeletion = append(markedForDeletion, *target)
-		}
-
-		// Delete cloud
-		if len(markedForDeletion) > 0 {
-			// Delay before deleting messages
-			time.Sleep(500 * time.Millisecond)
-			for _, target := range markedForDeletion {
-				slog.Info("Removing service from the cloud", "topic", target.Topic())
-
-				// Delete service directly from Cumulocity using the local Cumulocity Proxy.
-				// If the proxy is unavailable (e.g. the device is offline or the mapper is
-				// restarting), queue the target so the deletion is retried when the bridge
-				// comes back online.
+			// Attempt cloud deletion first. On failure, leave the entity
+			// registered in thin-edge so it is re-detected on the next run.
+			if a.config.DeleteFromCloud {
 				target.CloudIdentity = tedgeClient.Target.CloudIdentity
 				if target.CloudIdentity != "" {
-					if _, err := tedgeClient.DeleteCumulocityManagedObject(target); err != nil {
-						slog.Warn("Failed to delete managed object, queuing for retry.", "err", err, "topic", target.Topic())
-						a.pendingDeletionsMu.Lock()
-						a.pendingDeletions = append(a.pendingDeletions, target)
-						a.pendingDeletionsMu.Unlock()
+					slog.Info("Removing service from the cloud", "topic", target.Topic())
+					if _, err := tedgeClient.DeleteCumulocityManagedObject(*target); err != nil {
+						slog.Warn("Failed to delete managed object, will retry on next update.", "err", err, "topic", target.Topic())
+						continue
 					}
 				}
 			}
+
+			if err := tedgeClient.DeregisterEntity(*target); err != nil {
+				slog.Warn("Failed to deregister entity.", "err", err)
+			}
+			delete(entities, staleTopicID)
 		}
 	}
 
