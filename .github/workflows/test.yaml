@@ -149,6 +149,7 @@ jobs:
         uses: "joonvena/robotframework-reporter-action@v2.5"
         with:
           report_path: output
+          show_passed_tests: "false"
           gh_access_token: ${{ secrets.GITHUB_TOKEN }}
           pull_request_id: ${{ github.event.pull_request.number || github.event.client_payload.pull_request.number }}
           sha: ${{ github.event.client_payload.pull_request.head.sha || github.sha }}
