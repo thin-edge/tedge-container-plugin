@@ -1,0 +1,9 @@
+services:
+  mqtt-client:
+    image: docker.io/library/eclipse-mosquitto
+    command:
+      - mosquitto_sub
+      - -h
+      - host.containers.internal
+      - -t
+      - "#"

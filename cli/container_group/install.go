@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/codeclysm/extract/v4"
+	version "github.com/hashicorp/go-version"
 	"github.com/spf13/cobra"
 	"github.com/thin-edge/tedge-container-plugin/pkg/cli"
 	"github.com/thin-edge/tedge-container-plugin/pkg/container"
@@ -123,6 +124,41 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 	// Create shared network
 	if err := cli.CreateSharedNetwork(ctx, c.CommandContext.GetSharedContainerNetwork()); err != nil {
 		return err
+	}
+
+	// Normalize host-gateway differences between docker and podman
+	// and their various different versions to make it easier to deploy
+	// compose projects across different container engines and versions
+	if cli.IsPodman() {
+		// Newer podman versions, ≥ 4.7.0 natively adds host.docker.internal and
+		// host.containers.internal, so only added it for older versions
+		podmanNativeDockerInternal := false
+		podmanNativeThreshold, _ := version.NewVersion("4.7")
+		if ver, err := version.NewVersion(cli.Engine.Version); err == nil {
+			podmanNativeDockerInternal = !ver.LessThan(podmanNativeThreshold)
+		}
+
+		if !podmanNativeDockerInternal {
+			// Old Podman: don't support the "host-gateway" reference, so the host.containers.internal
+			// and host.docker.internal aliases need to be manually set to point to an explicit IP address
+			// as defined by the shared network gateway setting
+			if gw := cli.GetNetworkGateway(ctx, c.CommandContext.GetSharedContainerNetwork()); gw != "" {
+				if err := container.EnsureExtraHost(ctx, []string{composeFile}, workingDir, "host.docker.internal", gw); err != nil {
+					slog.Warn("Failed to add host.docker.internal to compose file.", "err", err)
+				}
+			} else {
+				slog.Warn("Could not determine network gateway for host.docker.internal alias; skipping.")
+			}
+		} else {
+			slog.Debug("Podman >= 4.7.0 detected: skipping host.docker.internal injection (added natively).", "version", cli.Engine.Version)
+		}
+	} else {
+		// Docker: inject both cross-engine aliases via the host-gateway special value.
+		for _, hostname := range []string{"host.containers.internal", "host.docker.internal"} {
+			if err := container.EnsureExtraHost(ctx, []string{composeFile}, workingDir, hostname, "host-gateway"); err != nil {
+				slog.Warn("Failed to add extra host to compose file.", "hostname", hostname, "err", err)
+			}
+		}
 	}
 
 	if err := cli.ComposeUp(ctx, stderr, projectName, workingDir, composeUpExtraArgs...); err != nil {
