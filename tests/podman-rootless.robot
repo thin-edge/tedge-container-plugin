@@ -13,7 +13,7 @@ Clone a rootless container
     Execute Command    cmd=rm -f /tmp/info && mkfifo /tmp/info && chown tedge:tedge /tmp/info && chmod 660 /tmp/info && mkdir -p /home/tedge && chown tedge:tedge -R /home/tedge
     Execute Command    cmd=sudo usermod --add-subuids 100000-165535 tedge && sudo usermod --add-subgids 100000-165535 tedge && sudo usermod -s /bin/bash tedge
     Execute Command    cmd=loginctl enable-linger tedge && sudo -iu tedge systemctl --user start podman.service
-    Execute Command    cmd=sudo -iu tedge podman run --pids-limit=-1 -d -t -u 1000 --name test01 -v /tmp/info:/tmp/info --userns keep-id alpine sh -c 'while true; do echo hello > /tmp/info; sleep 1; done'
+    Execute Command    cmd=sudo -iu tedge podman rm -f test01; sudo -iu tedge podman run --pids-limit=-1 -d -t -u 1000 --name test01 -v /tmp/info:/tmp/info --userns keep-id alpine sh -c 'while true; do echo hello > /tmp/info; sleep 1; done'
     Execute Command    cmd=sudo -iu tedge tedge-container tools container-clone --container test01    retries=0
 
 *** Keywords ***
