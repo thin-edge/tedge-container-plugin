@@ -1396,9 +1396,29 @@ func (c *ContainerClient) CloneContainer(ctx context.Context, containerID string
 	}
 	slog.Info("Created new container.", "id", nextContainer.ID, "name", containerName)
 
-	// start container
-	if err := c.Client.ContainerStart(ctx, nextContainer.ID, container.StartOptions{}); err != nil {
-		slog.Warn("Container failed to start.", "id", nextContainer.ID, "err", err)
+	// Retry starting the container to handle cases where the port previously
+	// held by the old container has not yet been released by the OS network
+	// stack.  Only port-conflict errors trigger a retry; all other errors are
+	// returned immediately.
+	const startMaxAttempts = 5
+	startWait := 3 * time.Second
+	var startErr error
+	for attempt := 1; attempt <= startMaxAttempts; attempt++ {
+		startErr = c.Client.ContainerStart(ctx, nextContainer.ID, container.StartOptions{})
+		if startErr == nil {
+			break
+		}
+		errMsg := strings.ToLower(startErr.Error())
+		isPortConflict := strings.Contains(errMsg, "address already in use") ||
+			strings.Contains(errMsg, "port is already allocated")
+		if !isPortConflict {
+			break
+		}
+		slog.Warn("Container failed to start due to port conflict, retrying.", "id", nextContainer.ID, "attempt", attempt, "maxAttempts", startMaxAttempts, "retryIn", startWait, "err", startErr)
+		time.Sleep(startWait)
+	}
+	if startErr != nil {
+		slog.Warn("Container failed to start.", "id", nextContainer.ID, "err", startErr)
 	}
 
 	// Check if the container is healthy
