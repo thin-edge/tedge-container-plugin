@@ -42,7 +42,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: stable
-          cache: false
+          cache: true
 
       - name: Install GoReleaser
         uses: goreleaser/goreleaser-action@v7
@@ -78,7 +78,15 @@ jobs:
       matrix:
         job:
           - { image: debian-systemd-docker-cli, test_options: "--include docker" }
+          - { image: debian-12-docker-20, test_options: "--include docker --exclude docker-modern" }
+          - { image: debian-13-docker-26, test_options: "--include docker" }
+          - { image: debian-14-docker-28, test_options: "--include docker" }
+          - { image: debian-13-docker-latest, test_options: "--include docker" }
+
           - { image: debian-systemd-podman-cli, test_options: "--include podman" }
+          - { image: debian-12-podman-4.3, test_options: "--include podman" }
+          - { image: debian-13-podman-5.4, test_options: "--include podman" }
+          - { image: debian-14-podman-5.x, test_options: "--include podman" }
 
     steps:
       - name: Checkout
@@ -141,6 +149,7 @@ jobs:
         uses: "joonvena/robotframework-reporter-action@v2.5"
         with:
           report_path: output
+          show_passed_tests: "false"
           gh_access_token: ${{ secrets.GITHUB_TOKEN }}
           pull_request_id: ${{ github.event.pull_request.number || github.event.client_payload.pull_request.number }}
           sha: ${{ github.event.client_payload.pull_request.head.sha || github.sha }}

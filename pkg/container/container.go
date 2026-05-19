@@ -39,6 +39,13 @@ var ErrNoImage = errors.New("no container image found")
 var ContainerType string = "container"
 var ContainerGroupType string = "container-group"
 
+// LabelModuleVersion is a container label used to record the exact module version
+// string supplied by the software management layer at install time. Storing this
+// separately from the Docker image reference avoids depending on how different
+// Docker/Podman versions normalise image tag strings (e.g. older Docker v20
+// strips the registry host prefix from image names).
+const LabelModuleVersion = "io.thin-edge.module.version"
+
 func NewJSONTime(t time.Time) JSONTime {
 	return JSONTime{
 		Time: t,
@@ -738,6 +745,35 @@ func NormalizeImageRef(imageRef string) string {
 	return fullRef
 }
 
+// expandForComparison expands an image ref to its fully-qualified form for
+// equality checks only. Unlike NormalizeImageRef it also expands bare names
+// (e.g. "httpd:2.4") and user/image names (e.g. "myuser/app:1.0") to their
+// docker.io equivalents, because those are semantically identical. This
+// expansion is intentionally NOT used for display/reporting to avoid asserting
+// provenance for locally-built or non-Hub images.
+func expandForComparison(imageRef string) string {
+	if fullRef, changed := ResolveDockerIOImage(imageRef); changed {
+		return fullRef
+	}
+	refWithoutDigest := strings.SplitN(imageRef, "@", 2)[0]
+	namePart := strings.SplitN(refWithoutDigest, ":", 2)[0]
+	parts := strings.SplitN(namePart, "/", 2)
+	firstComponent := parts[0]
+	if strings.ContainsAny(firstComponent, ".:") || firstComponent == "localhost" {
+		return imageRef
+	}
+	if len(parts) == 1 {
+		return "docker.io/library/" + imageRef
+	}
+	return "docker.io/" + imageRef
+}
+
+// ImageRefsEqual reports whether two image reference strings refer to the same
+// image, normalising both sides before comparing.
+func ImageRefsEqual(a, b string) bool {
+	return expandForComparison(a) == expandForComparison(b)
+}
+
 // Pull a container image. The image will be verified if it exists afterwards
 //
 // Use credentials function to generate initial credentials
@@ -1396,9 +1432,29 @@ func (c *ContainerClient) CloneContainer(ctx context.Context, containerID string
 	}
 	slog.Info("Created new container.", "id", nextContainer.ID, "name", containerName)
 
-	// start container
-	if err := c.Client.ContainerStart(ctx, nextContainer.ID, container.StartOptions{}); err != nil {
-		slog.Warn("Container failed to start.", "id", nextContainer.ID, "err", err)
+	// Retry starting the container to handle cases where the port previously
+	// held by the old container has not yet been released by the OS network
+	// stack.  Only port-conflict errors trigger a retry; all other errors are
+	// returned immediately.
+	const startMaxAttempts = 5
+	startWait := 3 * time.Second
+	var startErr error
+	for attempt := 1; attempt <= startMaxAttempts; attempt++ {
+		startErr = c.Client.ContainerStart(ctx, nextContainer.ID, container.StartOptions{})
+		if startErr == nil {
+			break
+		}
+		errMsg := strings.ToLower(startErr.Error())
+		isPortConflict := strings.Contains(errMsg, "address already in use") ||
+			strings.Contains(errMsg, "port is already allocated")
+		if !isPortConflict {
+			break
+		}
+		slog.Warn("Container failed to start due to port conflict, retrying.", "id", nextContainer.ID, "attempt", attempt, "maxAttempts", startMaxAttempts, "retryIn", startWait, "err", startErr)
+		time.Sleep(startWait)
+	}
+	if startErr != nil {
+		slog.Warn("Container failed to start.", "id", nextContainer.ID, "err", startErr)
 	}
 
 	// Check if the container is healthy

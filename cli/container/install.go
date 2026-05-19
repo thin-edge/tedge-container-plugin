@@ -113,7 +113,10 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 					imageName := strings.TrimPrefix(line, "Loaded image: ")
 					slog.Info("Found image reference in file.", "file", c.File, "image", imageName)
 					images = append(images, imageName)
-					if imageName == c.ModuleVersion {
+					if !moduleVersionFound && container.ImageRefsEqual(imageName, c.ModuleVersion) {
+						// Use the Docker-reported name as imageRef — it is guaranteed to
+						// resolve regardless of how the engine normalises tag strings.
+						imageRef = imageName
 						moduleVersionFound = true
 					}
 				}
@@ -167,8 +170,13 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 	//
 	// Create new container
 	containerConfig := &containerSDK.Config{
-		Image:  imageRef,
-		Labels: map[string]string{},
+		Image: imageRef,
+		// Record the exact module version requested by the software management
+		// layer so that the list command can report it back accurately,
+		// independent of how the Docker/Podman engine normalises image refs.
+		Labels: map[string]string{
+			container.LabelModuleVersion: c.ModuleVersion,
+		},
 	}
 
 	networkConfig := make(map[string]*network.EndpointSettings)

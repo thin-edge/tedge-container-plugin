@@ -21,7 +21,7 @@ Get Container Logs
 
 Get Container Logs with only last N lines
     # Run dummy container then exit
-    DeviceLibrary.Execute Command    cmd=tedge-container engine docker run --name app11 httpd:2.4.61-alpine sh -c 'echo hello inside container stdout; echo hello inside container stderr >&2;'
+    DeviceLibrary.Execute Command    cmd=tedge-container engine docker run docker rm app11 >/dev/null 2>&1 ||: ; tedge-container engine docker run --name app11 httpd:2.4.61-alpine sh -c 'echo hello inside container stdout; sleep 1; echo hello inside container stderr >&2;'
 
     # Fetch logs
     ${output}=    DeviceLibrary.Execute Command    sudo tedge-container tools container-logs app11 -n 1

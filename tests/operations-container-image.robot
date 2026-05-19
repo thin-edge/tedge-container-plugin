@@ -10,22 +10,26 @@ Test Tags    podman    docker
 *** Test Cases ***
 
 Install/uninstall container-image
-    ${operation}=    Cumulocity.Install Software    {"name": "docker.io/library/httpd", "version": "2.4.64", "softwareType": "container-image", "url": ""}
+    [Documentation]    Docker automatically strips the docker.io/library from the tags so it means
+    ...    there isn't a reliable way to distinguish between a local image and a docker.io/library image
+    ...    For now, use the shortname when using docker
+    ${IMAGE_NAME}=    Execute Command    cmd=which podman >/dev/null 2>&1 && echo "docker.io/library/httpd" || echo "httpd"    strip=${True}
+    ${operation}=    Cumulocity.Install Software    {"name": "${IMAGE_NAME}", "version": "2.4.64", "softwareType": "container-image", "url": ""}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
-    Device Should Have Installed Software    {"name": "docker.io/library/httpd", "version": "2.4.64", "softwareType": "container-image"}
+    Device Should Have Installed Software    {"name": "${IMAGE_NAME}", "version": "2.4.64", "softwareType": "container-image"}
 
     # install another version of the same image
-    ${operation}=    Cumulocity.Install Software    {"name": "docker.io/library/httpd", "version": "2.4.65", "softwareType": "container-image", "url": ""}
+    ${operation}=    Cumulocity.Install Software    {"name": "${IMAGE_NAME}", "version": "2.4.65", "softwareType": "container-image", "url": ""}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
-    Device Should Have Installed Software    {"name": "docker.io/library/httpd", "version": "2.4.65", "softwareType": "container-image"}
+    Device Should Have Installed Software    {"name": "${IMAGE_NAME}", "version": "2.4.65", "softwareType": "container-image"}
 
     # Uninstall
-    ${operation}=     Cumulocity.Uninstall Software    {"name": "docker.io/library/httpd", "version": "2.4.64", "softwareType": "container-image"}
+    ${operation}=     Cumulocity.Uninstall Software    {"name": "${IMAGE_NAME}", "version": "2.4.64", "softwareType": "container-image"}
     Operation Should Be SUCCESSFUL    ${operation}
-    Device Should Not Have Installed Software    docker.io/library/httpd,2.4.64
+    Device Should Not Have Installed Software    ${IMAGE_NAME},2.4.64
 
     # The other version should be left untouched
-    Device Should Have Installed Software    {"name": "docker.io/library/httpd", "version": "2.4.65", "softwareType": "container-image"}
+    Device Should Have Installed Software    {"name": "${IMAGE_NAME}", "version": "2.4.65", "softwareType": "container-image"}
 
 Install/uninstall not existent container image
     ${operation}=    Cumulocity.Install Software    {"name": "doesnotexist", "version": "0.0.0-1201872", "softwareType": "container-image", "url": ""}
