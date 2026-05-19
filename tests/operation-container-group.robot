@@ -97,6 +97,14 @@ Install container group with a container in a crash loop
     Cumulocity.Device Should Not Have Installed Software    crash-loop
     Cumulocity.Should Have Services    name=crash-loop@app    service_type=container-group    min_count=0    max_count=0
 
+Podman gateway host is added by default
+    [Tags]    podman    docker
+    Install container-group and access gateway host    app8    service=app8@mqtt-client    file=${CURDIR}/data/docker-compose.app8-mqtt-client.yaml
+
+Docker gateway host is added by default
+    [Tags]    podman    docker
+    Install container-group and access gateway host    app9    service=app9@mqtt-client    file=${CURDIR}/data/docker-compose.app9-docker-host.yaml
+
 *** Keywords ***
 
 Suite Setup
@@ -153,3 +161,12 @@ Install/uninstall container-group package with custom project name
     Operation Should Be SUCCESSFUL    ${operation}
     Device Should Not Have Installed Software    ${module_name}
     Cumulocity.Should Have Services    name=${service_name}    service_type=container-group    min_count=0    max_count=0
+
+Install container-group and access gateway host
+    [Arguments]    ${name}    ${service}    ${file}
+    ${binary_url}=    Cumulocity.Create Inventory Binary    ${name}    container-group    file=${file}
+    ${operation}=    Cumulocity.Install Software    {"name": "${name}", "version": "1.0.0", "softwareType": "container-group", "url": "${binary_url}"}
+    Operation Should Be SUCCESSFUL    ${operation}    timeout=60
+
+    Sleep    5s    reason=Give time for the service to fail
+    Cumulocity.Should Have Services    name=${service}    service_type=container-group    status=up

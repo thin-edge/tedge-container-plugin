@@ -409,6 +409,7 @@ func newContainerClient(options *ClientOptions) (*ContainerClient, error) {
 	// Podman returns the machine hostname (not "podman") in Info().Name, so name-based
 	// detection alone is unreliable.
 	engine := detectEngineCapabilities(engineInfo.Name)
+	engine.Version = engineInfo.ServerVersion
 
 	// Always probe the libpod API unconditionally. If it responds, this is podman
 	// regardless of what Info().Name says. A failure is non-fatal; we fall back to
@@ -420,7 +421,7 @@ func newContainerClient(options *ClientOptions) (*ContainerClient, error) {
 		// Keep engine type as detected from name (docker/unknown).
 	} else {
 		slog.Info("libpod API available, engine is podman")
-		engine = EngineCapabilities{Type: EnginePodman, HasLibPodAPI: true}
+		engine = EngineCapabilities{Type: EnginePodman, HasLibPodAPI: true, Version: engineInfo.ServerVersion}
 		libpod = lp
 	}
 
@@ -950,6 +951,21 @@ func (c *ContainerClient) CreateSharedNetwork(ctx context.Context, name string) 
 		slog.Info("Network already exists.", "name", netw.Name, "id", netw.ID)
 	}
 	return nil
+}
+
+// GetNetworkGateway returns the IPv4 gateway address of the named network,
+// or an empty string if it cannot be determined.
+func (c *ContainerClient) GetNetworkGateway(ctx context.Context, name string) string {
+	netw, err := c.Client.NetworkInspect(ctx, name, network.InspectOptions{})
+	if err != nil {
+		return ""
+	}
+	for _, cfg := range netw.IPAM.Config {
+		if cfg.Gateway != "" {
+			return cfg.Gateway
+		}
+	}
+	return ""
 }
 
 func (c *ContainerClient) DockerCommand(args ...string) (string, []string, error) {

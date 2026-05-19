@@ -22,6 +22,9 @@ type EngineCapabilities struct {
 	// HasLibPodAPI indicates that the libpod REST API is available at the same
 	// socket. Only true for podman instances.
 	HasLibPodAPI bool
+
+	// Version is the server version string reported by the engine (e.g. "4.6.1").
+	Version string
 }
 
 // detectEngineCapabilities maps the engine name string returned by the docker/compat

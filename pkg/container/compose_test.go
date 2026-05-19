@@ -12,6 +12,8 @@ import (
 	"github.com/hashicorp/go-version"
 	"github.com/stretchr/testify/assert"
 	"github.com/thin-edge/tedge-container-plugin/pkg/cmdbuilder"
+
+	composeCli "github.com/compose-spec/compose-go/v2/cli"
 )
 
 func Test_Podman(t *testing.T) {
@@ -104,6 +106,118 @@ services:
 		}
 		_, err := ReadImages(context.Background(), []string{invalidComposeFile}, workingDir)
 		assert.Error(t, err)
+	})
+}
+
+func TestEnsureExtraHost(t *testing.T) {
+	ctx := context.Background()
+	const hostname = "host.containers.internal"
+	const ipValue = "host-gateway"
+
+	newComposePath := func(t *testing.T, content string) (dir, path string) {
+		t.Helper()
+		dir, err := os.MkdirTemp("", "compose-extra-host")
+		if err != nil {
+			t.Fatalf("MkdirTemp: %v", err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(dir) })
+		path = filepath.Join(dir, "docker-compose.yaml")
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		return dir, path
+	}
+
+	extraHostsFor := func(t *testing.T, path, svcName string) []string {
+		t.Helper()
+		proj, err := composeCli.NewProjectOptions([]string{path}, composeCli.WithDotEnv)
+		if err != nil {
+			t.Fatalf("NewProjectOptions: %v", err)
+		}
+		projectT, err := proj.LoadProject(ctx)
+		if err != nil {
+			t.Fatalf("LoadProject: %v", err)
+		}
+		return projectT.Services[svcName].ExtraHosts[hostname]
+	}
+
+	t.Run("adds entry when no extra_hosts defined", func(t *testing.T) {
+		dir, path := newComposePath(t, `services:
+  app1:
+    image: hello-world
+  app2:
+    image: another-image
+`)
+		assert.NoError(t, EnsureExtraHost(ctx, []string{path}, dir, hostname, ipValue))
+		assert.Contains(t, extraHostsFor(t, path, "app1"), ipValue)
+		assert.Contains(t, extraHostsFor(t, path, "app2"), ipValue)
+	})
+
+	t.Run("no-op when all services already have hostname", func(t *testing.T) {
+		dir, path := newComposePath(t, `services:
+  app1:
+    image: hello-world
+    extra_hosts:
+      - host.containers.internal=host-gateway
+`)
+		assert.NoError(t, EnsureExtraHost(ctx, []string{path}, dir, hostname, ipValue))
+		// Entry must appear exactly once — not duplicated.
+		assert.Len(t, extraHostsFor(t, path, "app1"), 1)
+	})
+
+	t.Run("patches only services missing the hostname", func(t *testing.T) {
+		dir, path := newComposePath(t, `services:
+  app1:
+    image: hello-world
+    extra_hosts:
+      - host.containers.internal=host-gateway
+  app2:
+    image: another-image
+`)
+		assert.NoError(t, EnsureExtraHost(ctx, []string{path}, dir, hostname, ipValue))
+		assert.Len(t, extraHostsFor(t, path, "app1"), 1, "app1 entry should not be duplicated")
+		assert.Contains(t, extraHostsFor(t, path, "app2"), ipValue, "app2 should get the entry")
+	})
+
+	t.Run("appends to existing sequence extra_hosts preserving other entries", func(t *testing.T) {
+		dir, path := newComposePath(t, `services:
+  app1:
+    image: hello-world
+    extra_hosts:
+      - other.host=1.2.3.4
+`)
+		assert.NoError(t, EnsureExtraHost(ctx, []string{path}, dir, hostname, ipValue))
+		assert.Contains(t, extraHostsFor(t, path, "app1"), ipValue)
+
+		// Existing entry must still be present.
+		proj, err := composeCli.NewProjectOptions([]string{path}, composeCli.WithDotEnv)
+		assert.NoError(t, err)
+		projectT, err := proj.LoadProject(ctx)
+		assert.NoError(t, err)
+		assert.Contains(t, projectT.Services["app1"].ExtraHosts["other.host"], "1.2.3.4")
+	})
+
+	t.Run("adds to mapping-style extra_hosts", func(t *testing.T) {
+		dir, path := newComposePath(t, `services:
+  app1:
+    image: hello-world
+    extra_hosts:
+      other.host: "1.2.3.4"
+`)
+		assert.NoError(t, EnsureExtraHost(ctx, []string{path}, dir, hostname, ipValue))
+		assert.Contains(t, extraHostsFor(t, path, "app1"), ipValue)
+	})
+
+	t.Run("recognises colon-separated existing entry as duplicate", func(t *testing.T) {
+		dir, path := newComposePath(t, `services:
+  app1:
+    image: hello-world
+    extra_hosts:
+      - host.containers.internal:host-gateway
+`)
+		assert.NoError(t, EnsureExtraHost(ctx, []string{path}, dir, hostname, ipValue))
+		// compose-go normalises both separator styles to the same key, so exactly one entry.
+		assert.Len(t, extraHostsFor(t, path, "app1"), 1)
 	})
 }
 

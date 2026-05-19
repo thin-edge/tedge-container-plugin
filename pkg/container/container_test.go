@@ -36,6 +36,63 @@ func Test_ResolveDockerIOImage(t *testing.T) {
 
 }
 
+func Test_NormalizeImageRef(t *testing.T) {
+	testcases := []struct {
+		Input  string
+		Expect string
+	}{
+		// Already fully-qualified — unchanged
+		{Input: "docker.io/library/httpd:2.4", Expect: "docker.io/library/httpd:2.4"},
+		{Input: "docker.io/library/app3:latest", Expect: "docker.io/library/app3:latest"},
+		{Input: "docker.io/myuser/app:1.0", Expect: "docker.io/myuser/app:1.0"},
+		{Input: "ghcr.io/owner/image:tag", Expect: "ghcr.io/owner/image:tag"},
+		// docker.io shorthand expanded to fully-qualified library ref
+		{Input: "docker.io/httpd:2.4", Expect: "docker.io/library/httpd:2.4"},
+		{Input: "docker.io/app3:latest", Expect: "docker.io/library/app3:latest"},
+		// Bare image names reported by older Docker versions are NOT expanded
+		// by NormalizeImageRef; the LabelModuleVersion label is used instead.
+		{Input: "app3:latest", Expect: "app3:latest"},
+		{Input: "httpd:2.4", Expect: "httpd:2.4"},
+	}
+
+	for _, tc := range testcases {
+		got := NormalizeImageRef(tc.Input)
+		if got != tc.Expect {
+			t.Errorf("NormalizeImageRef(%q) = %q, want %q", tc.Input, got, tc.Expect)
+		}
+	}
+}
+
+func Test_ImageRefsEqual(t *testing.T) {
+	equal := []struct{ a, b string }{
+		// Identical
+		{"docker.io/library/app3:latest", "docker.io/library/app3:latest"},
+		// docker.io shorthand vs fully-qualified
+		{"docker.io/app3:latest", "docker.io/library/app3:latest"},
+		// Bare name (Docker v20) vs fully-qualified (what the SM layer sends)
+		{"app3:latest", "docker.io/library/app3:latest"},
+		{"httpd:2.4", "docker.io/library/httpd:2.4"},
+		// User/image form
+		{"myuser/app:1.0", "docker.io/myuser/app:1.0"},
+	}
+	for _, tc := range equal {
+		if !ImageRefsEqual(tc.a, tc.b) {
+			t.Errorf("ImageRefsEqual(%q, %q) should be true", tc.a, tc.b)
+		}
+	}
+
+	notEqual := []struct{ a, b string }{
+		{"ghcr.io/owner/image:tag", "docker.io/library/image:tag"},
+		{"app3:latest", "app3:1.0"},
+		{"docker.io/library/httpd:2.4", "docker.io/library/nginx:2.4"},
+	}
+	for _, tc := range notEqual {
+		if ImageRefsEqual(tc.a, tc.b) {
+			t.Errorf("ImageRefsEqual(%q, %q) should be false", tc.a, tc.b)
+		}
+	}
+}
+
 func Test_FilterLabels(t *testing.T) {
 	in := map[string]string{
 		"foo":                              "bar",
