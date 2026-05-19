@@ -10,10 +10,10 @@ Test Tags    podman    docker
 *** Test Cases ***
 
 Install/uninstall container-image
-    [Documentation]    Older docker versions < v28, the container image will only be published as httpd,
-    ...    and not docker.io/library/httpd so the conversion is lossy, therefore dynamically set the image
-    ...    name to be used in the test based on the installed docker version.
-    ${IMAGE_NAME}=    Execute Command    cmd=if which podman >/dev/null 2>&1; then echo "docker.io/library/httpd"; else (docker --version 2>/dev/null | grep -q "version 2[0-7]" && echo "httpd" || echo "docker.io/library/httpd"); fi    strip=${True}
+    [Documentation]    Docker automatically strips the docker.io/library from the tags so it means
+    ...    there isn't a reliable way to distinguish between a local image and a docker.io/library image
+    ...    For now, use the shortname when using docker
+    ${IMAGE_NAME}=    Execute Command    cmd=which podman >/dev/null 2>&1 && echo "docker.io/library/httpd" || echo "httpd"    strip=${True}
     ${operation}=    Cumulocity.Install Software    {"name": "${IMAGE_NAME}", "version": "2.4.64", "softwareType": "container-image", "url": ""}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
     Device Should Have Installed Software    {"name": "${IMAGE_NAME}", "version": "2.4.64", "softwareType": "container-image"}
