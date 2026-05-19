@@ -6,7 +6,7 @@ SERVICE_NAME="tedge-container-plugin"
 stop_services() {
     if [ -d /run/systemd/system ] && command -V deb-systemd-invoke >/dev/null 2>&1; then
         deb-systemd-invoke stop "${SERVICE_NAME}.service" >/dev/null ||:
-    elif [ -d /run/systemd/system ] && command -V deb-systemd-invoke >/dev/null 2>&1; then
+    elif [ -d /run/systemd/system ] && command -V systemctl >/dev/null 2>&1; then
         systemctl stop "${SERVICE_NAME}.service" >/dev/null ||:
     fi
 
