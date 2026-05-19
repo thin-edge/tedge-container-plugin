@@ -78,7 +78,7 @@ jobs:
       matrix:
         job:
           - { image: debian-systemd-docker-cli, test_options: "--include docker" }
-          - { image: debian-12-docker-20, test_options: "--include docker" }
+          - { image: debian-12-docker-20, test_options: "--include docker --exclude docker-modern" }
           - { image: debian-13-docker-26, test_options: "--include docker" }
           - { image: debian-14-docker-28, test_options: "--include docker" }
           - { image: debian-13-docker-latest, test_options: "--include docker" }
