@@ -307,6 +307,10 @@ func findContainerEngineSocket() (socketAddr string) {
 			fmt.Sprintf("unix://%s/podman/podman.sock", xdg_runtime_dir),
 		)
 	}
+
+	// podman (rootless) - default debian, rpm
+	containerSockets = append(containerSockets, fmt.Sprintf("unix:///run/user/%s/podman/podman.sock", currentUserID))
+
 	// podman (rootless) - alpine linux
 	containerSockets = append(containerSockets, fmt.Sprintf("unix:///tmp/storage-run-%s/podman/podman.sock", currentUserID))
 
