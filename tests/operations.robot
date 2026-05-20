@@ -55,7 +55,7 @@ Install/uninstall container package from file
     Cumulocity.Should Have Services    name=app3    service_type=container    min_count=0    max_count=0
 
 Manual container creation/deletion
-    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker network create tedge ||:; sudo tedge-container engine docker run -d --network tedge --name manualapp1 httpd:2.4
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker network create tedge ||:; sudo tedge-container engine docker rm -f manualapp1 ||: ; sudo tedge-container engine docker run -d --network tedge --name manualapp1 httpd:2.4
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
 
     ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge docker.io/library/busybox wget -O- manualapp1:80;
@@ -97,7 +97,7 @@ Manual container creation/deletion with error on run
 
 
 Manual container created and then killed
-    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run -d --name manualapp3 busybox sh -c 'exec sleep infinity'
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker rm -f manualapp3 ||: ; sudo tedge-container engine docker run -d --name manualapp3 busybox sh -c 'exec sleep infinity'
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
     Cumulocity.Should Have Services    name=manualapp3    service_type=container    status=up
 

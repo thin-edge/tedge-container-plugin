@@ -83,10 +83,11 @@ jobs:
           - { image: debian-14-docker-28, test_options: "--include docker" }
           - { image: debian-13-docker-latest, test_options: "--include docker" }
 
-          - { image: debian-systemd-podman-cli, test_options: "--include podman" }
-          - { image: debian-12-podman-4.3, test_options: "--include podman" }
-          - { image: debian-13-podman-5.4, test_options: "--include podman" }
-          - { image: debian-14-podman-5.x, test_options: "--include podman" }
+          - { image: debian-systemd-podman-cli, test_options: "--include podman --exclude rootless" }
+          - { image: debian-12-podman-4.3, test_options: "--include podman --exclude rootless" }
+          - { image: debian-13-podman-5.4, test_options: "--include podman --exclude rootless" }
+          - { image: debian-13-podman-5.4-rootless, test_options: "--include podman --exclude rootful" }
+          - { image: debian-14-podman-5.x, test_options: "--include podman --exclude rootless" }
 
     steps:
       - name: Checkout
