@@ -75,7 +75,7 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 	// Only enable pulling if the user is providing a file
 	disablePull := c.File != ""
 
-	cli, err := container.NewContainerClient(context.TODO())
+	cli, err := container.NewContainerClient(context.TODO(), c.CommandContext.GetContainerClientOptions()...)
 	if err != nil {
 		return err
 	}
