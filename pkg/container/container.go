@@ -711,7 +711,7 @@ func (c *ContainerClient) List(ctx context.Context, options FilterOptions) ([]Te
 }
 
 func (c *ContainerClient) MonitorEvents(ctx context.Context) (<-chan events.Message, <-chan error) {
-	return c.Client.Events(context.Background(), events.ListOptions{})
+	return c.Client.Events(ctx, events.ListOptions{})
 }
 
 type ImagePullOptions struct {
