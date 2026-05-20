@@ -711,6 +711,16 @@ func (c *ContainerClient) List(ctx context.Context, options FilterOptions) ([]Te
 }
 
 func (c *ContainerClient) MonitorEvents(ctx context.Context) (<-chan events.Message, <-chan error) {
+	if c.Engine.HasLibPodAPI && c.LibPod != nil {
+		backend := c.LibPod.GetEventsBackend(ctx)
+		slog.Info("Using libpod native events stream.", "eventsBackend", backend)
+		if backend == "none" {
+			slog.Warn("Podman events backend is 'none' — no events will be delivered. " +
+				"Set events_logger = \"file\" in containers.conf to enable reactive updates. " +
+				"The periodic poll fallback is still active.")
+		}
+		return c.LibPod.Events(ctx)
+	}
 	return c.Client.Events(ctx, events.ListOptions{})
 }
 

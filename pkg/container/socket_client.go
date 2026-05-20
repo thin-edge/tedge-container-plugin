@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/image"
 	"github.com/google/go-querystring/query"
 )
@@ -60,6 +61,26 @@ func (c *SocketClient) Test(ctx context.Context) error {
 		return ErrPodmanAPIError
 	}
 	return nil
+}
+
+// GetEventsBackend queries GET /libpod/info and returns the configured events
+// backend (e.g. "journald", "file", "none").  An empty string is returned if
+// the field cannot be read; callers should treat that as unknown and proceed.
+func (c *SocketClient) GetEventsBackend(ctx context.Context) string {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.resolveURL("info"), nil)
+	if err != nil {
+		return ""
+	}
+	r, err := c.Client.Do(req)
+	if err != nil || r.StatusCode != http.StatusOK {
+		return ""
+	}
+	defer func() { _ = r.Body.Close() }()
+	var info LibPodInfo
+	if err := json.NewDecoder(r.Body).Decode(&info); err != nil {
+		return ""
+	}
+	return info.Host.EventLogger
 }
 
 // Prune all images and return object in same format as the docker prune response
@@ -182,4 +203,97 @@ func (c *SocketClient) PullImages(ctx context.Context, imageRef string, alwaysPu
 		return fmt.Errorf("podman api failed. code=%s", r.Status)
 	}
 	return nil
+}
+
+// Events subscribes to the libpod native events stream (GET /libpod/events)
+// and returns channels with the same signature as the Docker-compat client
+// Events API so that MonitorEvents can use it transparently.
+//
+// The libpod events endpoint sends newline-delimited JSON objects whose field
+// names match the Go docker/docker events.Message type directly (Type, Action,
+// Actor.ID, Actor.Attributes, time, timeNano), so we decode straight into
+// events.Message without a separate intermediate type.
+func (c *SocketClient) Events(ctx context.Context) (<-chan events.Message, <-chan error) {
+	msgCh := make(chan events.Message)
+	errCh := make(chan error, 1)
+
+	go func() {
+		defer close(msgCh)
+
+		sendErr := func(err error) {
+			select {
+			case errCh <- err:
+			default:
+			}
+			close(errCh)
+		}
+
+		url := c.resolveURL("events?stream=true")
+		slog.Info("Connecting to libpod events stream.", "url", url)
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			sendErr(err)
+			return
+		}
+
+		resp, err := c.Client.Do(req)
+		if err != nil {
+			if ctx.Err() != nil {
+				close(errCh)
+				return
+			}
+			slog.Warn("libpod events: request failed.", "err", err)
+			sendErr(err)
+			return
+		}
+		defer func() { _ = resp.Body.Close() }()
+
+		slog.Info("libpod events stream connected.", "status", resp.StatusCode)
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			sendErr(fmt.Errorf("libpod events: unexpected status %s: %s", resp.Status, strings.TrimSpace(string(body))))
+			return
+		}
+
+		dec := json.NewDecoder(resp.Body)
+		for {
+			var evt events.Message
+			if err := dec.Decode(&evt); err != nil {
+				if ctx.Err() != nil {
+					close(errCh)
+					return
+				}
+				if err == io.EOF {
+					slog.Warn("libpod events stream closed unexpectedly (EOF).")
+					sendErr(fmt.Errorf("libpod events stream closed: %w", io.EOF))
+				} else {
+					slog.Warn("libpod events decode error.", "err", err)
+					sendErr(err)
+				}
+				return
+			}
+			// Normalize libpod-native action names to their Docker-compat
+			// equivalents so that the rest of the codebase can use the
+			// standard events.ActionXxx constants regardless of engine.
+			// Podman's native API emits "died" and "exec_died"; the Docker
+			// compat API (and our switch statements) expect "die" / "exec_die".
+			// Reference: https://docs.podman.io/en/stable/markdown/podman-events.1.html
+			switch evt.Action {
+			case "died":
+				evt.Action = events.ActionDie
+			case "exec_died":
+				evt.Action = events.ActionExecDie
+			}
+			slog.Debug("libpod event received.", "type", evt.Type, "action", evt.Action, "id", evt.Actor.ID)
+			select {
+			case <-ctx.Done():
+				close(errCh)
+				return
+			case msgCh <- evt:
+			}
+		}
+	}()
+
+	return msgCh, errCh
 }
