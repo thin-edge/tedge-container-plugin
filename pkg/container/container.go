@@ -290,7 +290,8 @@ func findContainerEngineSocket() (socketAddr string) {
 	}
 	for _, name := range envVariables {
 		if v := os.Getenv(name); v != "" {
-			containerSockets = append(containerSockets, v)
+			slog.Info("Using socket defined in env variable", "name", name, "value", v)
+			return v
 		}
 	}
 
