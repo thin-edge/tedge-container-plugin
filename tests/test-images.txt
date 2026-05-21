@@ -1,0 +1,18 @@
+# Images mirrored to ghcr.io/thin-edge/test-images to avoid Docker Hub pull rate limits.
+# Format: <ghcr-tag>  <source1>  [<source2>  ...]
+# Whitespace-separated (spaces or tabs). Sources are tried left-to-right; the first
+# reachable one is used. Add extra sources by appending columns.
+# See ci/mirror-test-images.sh and .github/workflows/mirror-test-images.yml.
+
+# ghcr tag                  preferred source (ECR, no rate limit)                    fallback source (Docker Hub)
+httpd:2.4                   public.ecr.aws/docker/library/httpd:2.4                   docker.io/library/httpd:2.4
+httpd:2.4.61-alpine         public.ecr.aws/docker/library/httpd:2.4.61-alpine         docker.io/library/httpd:2.4.61-alpine
+httpd:2.4.64                public.ecr.aws/docker/library/httpd:2.4.64                docker.io/library/httpd:2.4.64
+httpd:2.4.65                public.ecr.aws/docker/library/httpd:2.4.65                docker.io/library/httpd:2.4.65
+httpd:latest                public.ecr.aws/docker/library/httpd:latest                docker.io/library/httpd:latest
+busybox:latest              public.ecr.aws/docker/library/busybox:latest              docker.io/library/busybox:latest
+alpine:latest               public.ecr.aws/docker/library/alpine:latest               docker.io/library/alpine:latest
+nginx:latest                public.ecr.aws/nginx/nginx:latest                         docker.io/nginx:latest
+eclipse-mosquitto:latest    public.ecr.aws/docker/library/eclipse-mosquitto:latest    docker.io/library/eclipse-mosquitto:latest
+debian:13-slim              public.ecr.aws/docker/library/debian:13-slim               docker.io/library/debian:13-slim
+
