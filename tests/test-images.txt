@@ -16,3 +16,7 @@ nginx:latest                public.ecr.aws/nginx/nginx:latest                   
 eclipse-mosquitto:latest    public.ecr.aws/docker/library/eclipse-mosquitto:latest    docker.io/library/eclipse-mosquitto:latest
 debian:13-slim              public.ecr.aws/docker/library/debian:13-slim               docker.io/library/debian:13-slim
 
+# Private image used to test private-registry authentication (operations-private-registries.robot).
+# Fully-qualified destination overrides the default ghcr.io/thin-edge/test-images namespace.
+ghcr.io/thin-edge/private-test-images/httpd:2.4    public.ecr.aws/docker/library/httpd:2.4    docker.io/library/httpd:2.4
+

@@ -16,7 +16,13 @@ while read -r ghcr_tag sources_str || [[ -n "${ghcr_tag:-}" ]]; do
     [[ "${ghcr_tag:-}" =~ ^#  ]] && continue
     [[ -z "${ghcr_tag:-}"     ]] && continue
 
-    dest="${GHCR_NAMESPACE}/${ghcr_tag}"
+    # Allow the first column to be a fully-qualified destination (e.g. a
+    # private namespace); otherwise prepend the default GHCR namespace.
+    if [[ "${ghcr_tag}" == ghcr.io/* ]]; then
+        dest="${ghcr_tag}"
+    else
+        dest="${GHCR_NAMESPACE}/${ghcr_tag}"
+    fi
 
     # Try each whitespace-separated source left-to-right; use the first reachable one.
     # skopeo inspect is a single manifest GET — cheap against rate limits.
