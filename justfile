@@ -11,8 +11,8 @@ init-dotenv:
   @echo "C8Y_BASEURL=$C8Y_BASEURL" >> .env
   @echo "C8Y_USER=$C8Y_USER" >> .env
   @echo "C8Y_PASSWORD=$C8Y_PASSWORD" >> .env
-  @echo "PRIVATE_IMAGE=docker.io/example/app:latest" >> .env
-  @echo "REGISTRY1_REPO=docker.io" >> .env
+  @echo "PRIVATE_IMAGE=ghcr.io/thin-edge/private-test-images/httpd:2.4" >> .env
+  @echo "REGISTRY1_REPO=ghcr.io" >> .env
   @echo "REGISTRY1_USERNAME=" >> .env
   @echo "REGISTRY1_PASSWORD=" >> .env
 
