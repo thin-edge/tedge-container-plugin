@@ -1,6 +1,6 @@
 services:
   app:
-    image: docker.io/library/debian:13-slim
+    image: ghcr.io/thin-edge/test-images/debian:13-slim
     restart: always
     command:
       - sh

@@ -128,7 +128,7 @@ Install container-group file
     DeviceLibrary.Directory Should Not Be Empty    /data/tedge-container-plugin/compose/${package_name}
 
     Device Should Have Installed Software    {"name": "${package_name}", "version": "${package_version}", "softwareType": "container-group"}
-    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge docker.io/library/busybox wget -O- ${service_name}:80
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge ghcr.io/thin-edge/test-images/busybox wget -O- ${service_name}:80
     Operation Should Be SUCCESSFUL    ${operation}
     Should Contain    ${operation.to_json()["c8y_Command"]["result"]}    My Custom Web Application
     Cumulocity.Should Have Services    name=${package_name}@${service_name}    service_type=container-group    status=up

@@ -34,5 +34,5 @@ Suite Setup
     DeviceLibrary.Execute Command    mkdir /data
 
     # Create a dummy container
-    DeviceLibrary.Execute Command    cmd=sudo tedge-container tools container-remove app40 ||: ; sudo tedge-container engine docker run -d --network bridge --name app40 httpd:2.4.61-alpine
+    DeviceLibrary.Execute Command    cmd=sudo tedge-container tools container-remove app40 ||: ; sudo tedge-container engine docker run -d --network bridge --name app40 ghcr.io/thin-edge/test-images/httpd:2.4.61-alpine
     DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker container inspect app40    exp_exit_code=0

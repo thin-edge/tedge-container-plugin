@@ -12,7 +12,7 @@ Test Tags    docker    podman
 
 Get Container Logs
     # Run dummy container then exit
-    DeviceLibrary.Execute Command    cmd=tedge-container tools container-remove app10 ||: ; tedge-container engine docker run --name app10 httpd:2.4.61-alpine sh -c 'echo hello inside container stdout; echo hello inside container stderr >&2;'
+    DeviceLibrary.Execute Command    cmd=tedge-container tools container-remove app10 ||: ; tedge-container engine docker run --name app10 ghcr.io/thin-edge/test-images/httpd:2.4.61-alpine sh -c 'echo hello inside container stdout; echo hello inside container stderr >&2;'
 
     # Fetch logs
     ${output}=    DeviceLibrary.Execute Command    sudo tedge-container tools container-logs app10
@@ -21,7 +21,7 @@ Get Container Logs
 
 Get Container Logs with only last N lines
     # Run dummy container then exit
-    DeviceLibrary.Execute Command    cmd=tedge-container engine docker run docker rm app11 >/dev/null 2>&1 ||: ; tedge-container engine docker run --name app11 httpd:2.4.61-alpine sh -c 'echo hello inside container stdout; sleep 1; echo hello inside container stderr >&2;'
+    DeviceLibrary.Execute Command    cmd=tedge-container engine docker run docker rm app11 >/dev/null 2>&1 ||: ; tedge-container engine docker run --name app11 ghcr.io/thin-edge/test-images/httpd:2.4.61-alpine sh -c 'echo hello inside container stdout; sleep 1; echo hello inside container stderr >&2;'
 
     # Fetch logs
     ${output}=    DeviceLibrary.Execute Command    sudo tedge-container tools container-logs app11 -n 1
@@ -34,7 +34,7 @@ Get Container Logs with only last N lines
 
 Get Container Logs By Operation
     # Run dummy container then exit
-    DeviceLibrary.Execute Command    cmd=tedge-container tools container-remove app14 ||: ; tedge-container engine docker run --name app14 httpd:2.4.61-alpine sh -c 'echo hello inside container stdout; echo hello inside container stderr >&2;'
+    DeviceLibrary.Execute Command    cmd=tedge-container tools container-remove app14 ||: ; tedge-container engine docker run --name app14 ghcr.io/thin-edge/test-images/httpd:2.4.61-alpine sh -c 'echo hello inside container stdout; echo hello inside container stderr >&2;'
     Cumulocity.Should Contain Supported Log Types    app14::container
     ${operation}=    Cumulocity.Get Log File    app14::container
     Operation Should Be SUCCESSFUL    ${operation}

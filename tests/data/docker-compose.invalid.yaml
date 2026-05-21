@@ -1,7 +1,7 @@
 version: "3"
 services:
   nginx:
-    image: docker.io/nginx
+    image: ghcr.io/thin-edge/test-images/nginx
     hostname: nginx
     networks:
       - tedge-invalid
