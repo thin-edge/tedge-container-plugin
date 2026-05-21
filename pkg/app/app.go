@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/docker/docker/api/types/events"
@@ -49,8 +50,11 @@ func NewUpdateMetricsAction(filter container.FilterOptions) ActionRequest {
 }
 
 type App struct {
-	client          *tedge.Client
-	ContainerClient *container.ContainerClient
+	client *tedge.Client
+	// containerClient is stored atomically so that ReconnectContainerClient can
+	// swap it without a data race against concurrent readers (worker, metrics).
+	containerClient     atomic.Pointer[container.ContainerClient]
+	containerClientOpts []container.Opt
 
 	Device *tedge.Target
 
@@ -137,6 +141,12 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 
 	clientOptions := make([]container.Opt, 0)
 
+	// Build reconnect options (limited retries, used when Monitor restarts).
+	reconnectOpts := make([]container.Opt, 0)
+	if config.ContainerHost != "" {
+		reconnectOpts = append(reconnectOpts, container.WithHost(config.ContainerHost))
+	}
+
 	// Use a time-based timeout instead of limiting number of retries
 	clientOptions = append(clientOptions, container.WithInfiniteRetries())
 
@@ -186,16 +196,17 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 	}
 
 	application := &App{
-		client:          tedgeClient,
-		ContainerClient: containerClient,
-		Device:          &device,
-		config:          config,
+		client:              tedgeClient,
+		containerClientOpts: reconnectOpts,
+		Device:              &device,
+		config:              config,
 		// Buffered so that the debouncer's dispatch and synchronous Update()
 		// calls never block when the worker is briefly busy.
 		updateRequests: make(chan ActionRequest, 8),
 		shutdown:       make(chan struct{}),
 		wg:             sync.WaitGroup{},
 	}
+	application.containerClient.Store(containerClient)
 
 	// The debouncer coalesces rapid-fire event-driven update requests into a
 	// single doUpdate call. It is used by Monitor() and Subscribe() callbacks.
@@ -233,6 +244,28 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 	}
 
 	return application, nil
+}
+
+// getContainerClient returns the current ContainerClient. The pointer is loaded
+// atomically so it is safe to call concurrently with ReconnectContainerClient.
+func (a *App) getContainerClient() *container.ContainerClient {
+	return a.containerClient.Load()
+}
+
+// ReconnectContainerClient creates a new ContainerClient using the same host
+// options as the original and atomically replaces the current one. It is called
+// by the Monitor restart loop when the event stream fails, so that a stale
+// client (e.g. after a podman socket restart) does not block recovery.
+// It uses a bounded retry count so it doesn't block forever during shutdown.
+func (a *App) ReconnectContainerClient(ctx context.Context) error {
+	opts := append([]container.Opt{container.WithAttempts(5)}, a.containerClientOpts...)
+	newClient, err := container.NewContainerClient(ctx, opts...)
+	if err != nil {
+		return err
+	}
+	a.containerClient.Store(newClient)
+	slog.Info("Container client reconnected successfully.")
+	return nil
 }
 
 func (a *App) DeleteLegacyService(deleteFromCloud bool) {
@@ -363,7 +396,7 @@ func (a *App) worker() {
 				err := a.doUpdate(req.Options.(container.FilterOptions))
 				sendResult(req, err)
 			case ActionUpdateMetrics:
-				items, err := a.ContainerClient.List(context.Background(), req.Options.(container.FilterOptions))
+				items, err := a.getContainerClient().List(context.Background(), req.Options.(container.FilterOptions))
 				if err != nil {
 					slog.Warn("Could not get container list.", "err", err)
 				} else {
@@ -478,7 +511,8 @@ func (a *App) serviceNameFromEventAttrs(attr map[string]string) string {
 }
 
 func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions) error {
-	evtCh, errCh := a.ContainerClient.MonitorEvents(ctx)
+	evtCh, errCh := a.getContainerClient().MonitorEvents(ctx)
+	slog.Info("Subscribed to container engine event stream.")
 
 	// Update after subscribing to the events but before reacting to them
 	if err := a.Update(filterOptions); err != nil {
@@ -533,7 +567,7 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 					if evt.Action == events.ActionHealthStatusHealthy {
 						serviceName := a.serviceNameFromEventAttrs(evt.Actor.Attributes)
 						if serviceName != "" {
-							if rc, err := a.ContainerClient.GetRestartCount(context.Background(), evt.Actor.ID); err == nil {
+							if rc, err := a.getContainerClient().GetRestartCount(context.Background(), evt.Actor.ID); err == nil {
 								a.restartBaselineMu.Lock()
 								a.restartBaseline[serviceName] = rc
 								a.restartBaselineMu.Unlock()
@@ -548,7 +582,7 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 					if evt.Action == events.ActionStart {
 						serviceName := a.serviceNameFromEventAttrs(evt.Actor.Attributes)
 						if serviceName != "" {
-							if rc, err := a.ContainerClient.GetRestartCount(context.Background(), evt.Actor.ID); err == nil && rc > 0 {
+							if rc, err := a.getContainerClient().GetRestartCount(context.Background(), evt.Actor.ID); err == nil && rc > 0 {
 								a.restartBaselineMu.Lock()
 								baseline, exists := a.restartBaseline[serviceName]
 								if !exists {
@@ -628,6 +662,11 @@ func (a *App) Monitor(ctx context.Context, filterOptions container.FilterOptions
 				}
 			}
 		case err := <-errCh:
+			if err == nil {
+				// Channel closed without a value — treat as a stream closure so
+				// the restart loop reconnects rather than spinning with no delay.
+				err = fmt.Errorf("event stream closed unexpectedly")
+			}
 			if errors.Is(err, io.EOF) {
 				slog.Info("No more events")
 			} else {
@@ -766,7 +805,7 @@ func (a *App) updateMetrics(items []container.TedgeContainer) error {
 				continue
 			}
 
-			stats, jobErr := a.ContainerClient.GetStats(context.Background(), j.Container.Id)
+			stats, jobErr := a.getContainerClient().GetStats(context.Background(), j.Container.Id)
 			if jobErr == nil {
 				topic := tedge.GetTopic(*target, "m", "resource_usage")
 				payload, err := json.Marshal(stats)
@@ -841,7 +880,7 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 	}
 
 	slog.Info("Reading containers")
-	items, err := a.ContainerClient.List(context.Background(), filterOptions)
+	items, err := a.getContainerClient().List(context.Background(), filterOptions)
 	if err != nil {
 		return err
 	}

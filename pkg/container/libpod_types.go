@@ -28,3 +28,13 @@ type LibPodIDMappings struct {
 	UIDMap []string `json:"UIDMap"`
 	GIDMap []string `json:"GIDMap"`
 }
+
+// LibPodInfo is a minimal subset of GET /libpod/info, used to surface
+// diagnostically-relevant configuration (e.g. the events backend).
+type LibPodInfo struct {
+	Host LibPodInfoHost `json:"host"`
+}
+
+type LibPodInfoHost struct {
+	EventLogger string `json:"eventLogger"`
+}

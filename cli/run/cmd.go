@@ -100,8 +100,15 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 						return
 					}
 					if err != nil {
-						slog.Warn("Monitor stopped. Restarting after 2 seconds.", "err", err)
+						slog.Warn("Monitor stopped. Reconnecting in 2 seconds.", "err", err)
 						time.Sleep(2 * time.Second)
+						// Recreate the container client in case the socket was
+						// restarted (e.g. podman rootless socket cycle at boot).
+						// A fresh client ensures the next Monitor call opens a
+						// healthy event stream and Update sees current containers.
+						if reconnErr := application.ReconnectContainerClient(ctx); reconnErr != nil {
+							slog.Warn("Container client reconnect failed, will retry on next iteration.", "err", reconnErr)
+						}
 					}
 				}
 			}()

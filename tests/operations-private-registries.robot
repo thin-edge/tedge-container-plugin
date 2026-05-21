@@ -44,17 +44,25 @@ Install/uninstall container package from private repository - credentials script
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
     Device Should Have Installed Software    {"name": "testapp2", "version": "${PRIVATE_IMAGE}", "softwareType": "container"}
 
-Install/uninstall container package from private repository - engine credentials
+Install/uninstall container package from private repository - engine credentials (rootful)
     [Documentation]    login to registry from host
-    [Tags]    podman
+    [Tags]    podman    rootful
     DeviceLibrary.Execute Command    tedge-container engine docker login ${REGISTRY1_REPO} -u '${REGISTRY1_USERNAME}' --password '${REGISTRY1_PASSWORD}'
     ${operation}=    Cumulocity.Install Software    {"name": "testapp3", "version": "${PRIVATE_IMAGE}", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
     Device Should Have Installed Software    {"name": "testapp3", "version": "${PRIVATE_IMAGE}", "softwareType": "container"}
 
-Install/uninstall container package from private repository - docker from docker
+Install/uninstall container package from private repository - engine credentials (rootless)
+    [Documentation]    login to registry from host
+    [Tags]    podman    rootless
+    DeviceLibrary.Execute Command    sudo -u tedge tedge-container engine docker login ${REGISTRY1_REPO} -u '${REGISTRY1_USERNAME}' --password '${REGISTRY1_PASSWORD}'
+    ${operation}=    Cumulocity.Install Software    {"name": "testapp3", "version": "${PRIVATE_IMAGE}", "softwareType": "container"}
+    Operation Should Be SUCCESSFUL    ${operation}    timeout=60
+    Device Should Have Installed Software    {"name": "testapp3", "version": "${PRIVATE_IMAGE}", "softwareType": "container"}
+
+Install/uninstall container package from private repository - docker from docker (rootful)
     [Documentation]    login inside a container with the auth file mounted from the host
-    [Tags]    podman
+    [Tags]    podman    rootful
 
     # Start a container
     DeviceLibrary.Execute Command    mkdir -p /run/containers/0/
