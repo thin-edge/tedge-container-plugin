@@ -1,0 +1,36 @@
+name: Mirror test images to GHCR
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'  # every Monday at 04:00 UTC
+  workflow_dispatch:       # allow manual trigger
+
+jobs:
+  mirror:
+    # Only run on the upstream repo so forks don't need GHCR push access
+    if: github.repository == 'thin-edge/tedge-container-plugin'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write  # required to push to ghcr.io
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install skopeo
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y skopeo
+
+      - name: Log in to Docker Hub
+        if: secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != ''
+        run: |
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" \
+            | skopeo login docker.io -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | skopeo login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Mirror images
+        run: bash ci/mirror-test-images.sh
