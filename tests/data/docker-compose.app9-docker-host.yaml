@@ -1,6 +1,6 @@
 services:
   mqtt-client:
-    image: docker.io/library/eclipse-mosquitto
+    image: ghcr.io/thin-edge/test-images/eclipse-mosquitto
     command:
       - mosquitto_sub
       - -h

@@ -18,10 +18,10 @@ Get Configuration
     Operation Should Be SUCCESSFUL    ${operation}
 
 Install/uninstall container package
-    ${operation}=    Cumulocity.Install Software    {"name": "webserver", "version": "docker.io/library/httpd:2.4", "softwareType": "container"}
+    ${operation}=    Cumulocity.Install Software    {"name": "webserver", "version": "ghcr.io/thin-edge/test-images/httpd:2.4", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
-    Device Should Have Installed Software    {"name": "webserver", "version": "docker.io/library/httpd:2.4", "softwareType": "container"}
-    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge docker.io/library/busybox wget -O- webserver:80;
+    Device Should Have Installed Software    {"name": "webserver", "version": "ghcr.io/thin-edge/test-images/httpd:2.4", "softwareType": "container"}
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge ghcr.io/thin-edge/test-images/busybox wget -O- webserver:80;
     Operation Should Be SUCCESSFUL    ${operation}
     Should Contain    ${operation.to_json()["c8y_Command"]["result"]}    It works!
     Cumulocity.Should Have Services    name=webserver    service_type=container    status=up
@@ -32,7 +32,7 @@ Install/uninstall container package
     Operation Should Be SUCCESSFUL    ${operation}
 
     # Uninstall
-    ${operation}=     Cumulocity.Uninstall Software    {"name": "webserver", "version": "docker.io/library/httpd:2.4", "softwareType": "container"}
+    ${operation}=     Cumulocity.Uninstall Software    {"name": "webserver", "version": "ghcr.io/thin-edge/test-images/httpd:2.4", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}
     Device Should Not Have Installed Software    webserver
     Cumulocity.Should Have Services    name=webserver    service_type=container    min_count=0    max_count=0
@@ -55,10 +55,10 @@ Install/uninstall container package from file
     Cumulocity.Should Have Services    name=app3    service_type=container    min_count=0    max_count=0
 
 Manual container creation/deletion
-    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker network create tedge ||:; sudo tedge-container engine docker rm -f manualapp1 ||: ; sudo tedge-container engine docker run -d --network tedge --name manualapp1 httpd:2.4
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker network create tedge ||:; sudo tedge-container engine docker rm -f manualapp1 ||: ; sudo tedge-container engine docker run -d --network tedge --name manualapp1 ghcr.io/thin-edge/test-images/httpd:2.4
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
 
-    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge docker.io/library/busybox wget -O- manualapp1:80;
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge ghcr.io/thin-edge/test-images/busybox wget -O- manualapp1:80;
     Operation Should Be SUCCESSFUL    ${operation}
 
     Should Contain    ${operation.to_json()["c8y_Command"]["result"]}    It works!
@@ -86,7 +86,7 @@ Manual container creation/deletion
     Cumulocity.Should Not Contain Supported Log Types    manualapp1::container
 
 Manual container creation/deletion with error on run
-    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run -d --name manualapp2 httpd:2.4 --invalid-arg || exit 0
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run -d --name manualapp2 ghcr.io/thin-edge/test-images/httpd:2.4 --invalid-arg || exit 0
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
     Cumulocity.Should Have Services    name=manualapp2    service_type=container    status=down
 
@@ -97,7 +97,7 @@ Manual container creation/deletion with error on run
 
 
 Manual container created and then killed
-    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker rm -f manualapp3 ||: ; sudo tedge-container engine docker run -d --name manualapp3 busybox sh -c 'exec sleep infinity'
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker rm -f manualapp3 ||: ; sudo tedge-container engine docker run -d --name manualapp3 ghcr.io/thin-edge/test-images/busybox sh -c 'exec sleep infinity'
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
     Cumulocity.Should Have Services    name=manualapp3    service_type=container    status=up
 
@@ -114,7 +114,7 @@ Manual container created and then killed
 Remove Orphaned Cloud Services
     [Documentation]    Orphaned cloud services can occur if entities are deregistered manually when the tedge-container-plugin
     ...    service is not running.
-    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run -d --name manualapp4 busybox sh -c 'exec sleep infinity'
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run -d --name manualapp4 ghcr.io/thin-edge/test-images/busybox sh -c 'exec sleep infinity'
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
     Cumulocity.Should Have Services    name=manualapp4    service_type=container    status=up
 
@@ -146,7 +146,7 @@ Remove Orphaned Cloud Services eventually if Cumulocity Proxy is Unavailable at 
     ...    See https://github.com/thin-edge/tedge-container-plugin/issues/181
 
     # create a local container manually
-    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run -d --name manualapp4 busybox sh -c 'exec sleep infinity'
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run -d --name manualapp4 ghcr.io/thin-edge/test-images/busybox sh -c 'exec sleep infinity'
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
     Cumulocity.Should Have Services    name=manualapp4    service_type=container    status=up
 
