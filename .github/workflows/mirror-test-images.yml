@@ -12,6 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       packages: write  # required to push to ghcr.io
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
     steps:
       - uses: actions/checkout@v6
@@ -22,7 +25,7 @@ jobs:
           sudo apt-get install -y skopeo
 
       - name: Log in to Docker Hub
-        if: secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != ''
+        if: env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != ''
         run: |
           echo "${{ secrets.DOCKERHUB_TOKEN }}" \
             | skopeo login docker.io -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
