@@ -11,17 +11,17 @@ Test Tags    docker    podman
 *** Test Cases ***
 
 Check for Update
-    Create Container    app1    ghcr.io/thin-edge/test-images/httpd:2.4.61-alpine
+    Create Container    app1    ghcr.io/thin-edge/test-images/httpd:2.4.64
     DeviceLibrary.Execute Command    cmd=tedge-container engine docker container inspect app1 --format "{{.Id}}"
 
     # No update
-    DeviceLibrary.Execute Command    sudo tedge-container tools container-clone --container app1 --image ghcr.io/thin-edge/test-images/httpd:2.4.61-alpine --check    exp_exit_code=2
+    DeviceLibrary.Execute Command    sudo tedge-container tools container-clone --container app1 --image ghcr.io/thin-edge/test-images/httpd:2.4.64 --check    exp_exit_code=2
 
     # Force update
-    DeviceLibrary.Execute Command    sudo tedge-container tools container-clone --container app1 --image ghcr.io/thin-edge/test-images/httpd:2.4.61-alpine --check --force    exp_exit_code=0
+    DeviceLibrary.Execute Command    sudo tedge-container tools container-clone --container app1 --image ghcr.io/thin-edge/test-images/httpd:2.4.64 --check --force    exp_exit_code=0
 
     # Update is required as local image is not available
-    DeviceLibrary.Execute Command    sudo tedge-container tools container-clone --container app1 --image httpd:2.4.62-alpine --check    exp_exit_code=0
+    DeviceLibrary.Execute Command    sudo tedge-container tools container-clone --container app1 --image ghcr.io/thin-edge/test-images/httpd:2.4.65 --check    exp_exit_code=0
 
 Clone Existing Container
     Create Container    app2    ghcr.io/thin-edge/test-images/httpd:2.4
