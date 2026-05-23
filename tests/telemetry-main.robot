@@ -36,12 +36,12 @@ Test Setup
     Cumulocity.External Identity Should Exist    ${DEVICE_SN}
 
 Install Example Container
-    ${operation}=    Cumulocity.Install Software    {"name": "customapp1", "version": "httpd:2.4", "softwareType": "container"}
+    ${operation}=    Cumulocity.Install Software    {"name": "customapp1", "version": "ghcr.io/thin-edge/test-images/httpd:2.4", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
 
 Uninstall Example Container
     Cumulocity.Set Managed Object    ${DEVICE_SN}
-    ${operation}=    Cumulocity.Uninstall Software    {"name": "customapp1", "version": "httpd:2.4", "softwareType": "container"}
+    ${operation}=    Cumulocity.Uninstall Software    {"name": "customapp1", "version": "ghcr.io/thin-edge/test-images/httpd:2.4", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
 
 Get Service External ID

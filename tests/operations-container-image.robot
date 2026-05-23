@@ -13,7 +13,7 @@ Install/uninstall container-image
     [Documentation]    Docker automatically strips the docker.io/library from the tags so it means
     ...    there isn't a reliable way to distinguish between a local image and a docker.io/library image
     ...    For now, use the shortname when using docker
-    ${IMAGE_NAME}=    Execute Command    cmd=which podman >/dev/null 2>&1 && echo "docker.io/library/httpd" || echo "httpd"    strip=${True}
+    ${IMAGE_NAME}=    Execute Command    cmd=which podman >/dev/null 2>&1 && echo "ghcr.io/thin-edge/test-images/httpd" || echo "ghcr.io/thin-edge/test-images/httpd"    strip=${True}
     ${operation}=    Cumulocity.Install Software    {"name": "${IMAGE_NAME}", "version": "2.4.64", "softwareType": "container-image", "url": ""}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
     Device Should Have Installed Software    {"name": "${IMAGE_NAME}", "version": "2.4.64", "softwareType": "container-image"}

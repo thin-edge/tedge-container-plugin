@@ -3,7 +3,7 @@ Resource    ./resources/common.robot
 Library    Cumulocity
 Library    DeviceLibrary    bootstrap_script=bootstrap.sh
 
-Suite Setup    Suite Setup
+Test Setup    Test Setup
 Test Teardown    Collect Logs
 
 *** Test Cases ***
@@ -76,7 +76,6 @@ Install container group that uses host volume mount
 Install container group with a container in a crash loop
     # Retries are required as the container can sometimes fail during installation instead of after
     [Tags]    podman    docker    test:retry(3)
-    [Setup]    Start Service    tedge-container-plugin
 
     ${binary_url}=    Cumulocity.Create Inventory Binary    crash-loop    container-group    file=${CURDIR}/data/docker-compose.crash-loop.yaml
     ${operation}=    Cumulocity.Install Software    {"name": "crash-loop", "version": "1.0.0", "softwareType": "container-group", "url": "${binary_url}"}
@@ -107,9 +106,9 @@ Docker gateway host is added by default
 
 *** Keywords ***
 
-Suite Setup
+Test Setup
     ${DEVICE_SN}=    Setup
-    Set Suite Variable    $DEVICE_SN
+    Set Test Variable    $DEVICE_SN
     Cumulocity.External Identity Should Exist    ${DEVICE_SN}
     Cumulocity.Should Have Services    name=tedge-container-plugin    service_type=service    min_count=1    max_count=1    timeout=30
 
@@ -128,7 +127,7 @@ Install container-group file
     DeviceLibrary.Directory Should Not Be Empty    /data/tedge-container-plugin/compose/${package_name}
 
     Device Should Have Installed Software    {"name": "${package_name}", "version": "${package_version}", "softwareType": "container-group"}
-    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge docker.io/library/busybox wget -O- ${service_name}:80
+    ${operation}=    Cumulocity.Execute Shell Command    sudo tedge-container engine docker run --rm -t --network tedge ghcr.io/thin-edge/test-images/busybox wget -O- ${service_name}:80
     Operation Should Be SUCCESSFUL    ${operation}
     Should Contain    ${operation.to_json()["c8y_Command"]["result"]}    My Custom Web Application
     Cumulocity.Should Have Services    name=${package_name}@${service_name}    service_type=container-group    status=up

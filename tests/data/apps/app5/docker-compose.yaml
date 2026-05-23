@@ -1,6 +1,6 @@
 services:
   httpd:
-    image: docker.io/library/httpd:latest
+    image: ghcr.io/thin-edge/test-images/httpd:latest
     volumes:
       - ./htdocs:/var/www/html
     ports:

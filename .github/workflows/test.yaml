@@ -69,6 +69,8 @@ jobs:
       issues: write
       pull-requests: write
       contents: read
+      # Required to pull private test images from ghcr.io/thin-edge/private-test-images
+      packages: read
     runs-on: ubuntu-latest
     env:
       TEST_IMAGE: ${{ matrix.job.image }}
@@ -113,10 +115,10 @@ jobs:
           echo 'C8Y_BASEURL="${{ secrets.C8Y_BASEURL }}"' >> .env
           echo 'C8Y_USER="${{ secrets.C8Y_USER }}"' >> .env
           echo 'C8Y_PASSWORD="${{ secrets.C8Y_PASSWORD }}"' >> .env
-          echo 'PRIVATE_IMAGE="${{ secrets.PRIVATE_IMAGE }}"' >> .env
-          echo 'REGISTRY1_REPO="${{ secrets.REGISTRY1_REPO }}"' >> .env
-          echo 'REGISTRY1_USERNAME="${{ secrets.REGISTRY1_USERNAME }}"' >> .env
-          echo 'REGISTRY1_PASSWORD="${{ secrets.REGISTRY1_PASSWORD }}"' >> .env
+          echo 'PRIVATE_IMAGE="ghcr.io/thin-edge/private-test-images/httpd:2.4"' >> .env
+          echo 'REGISTRY1_REPO="ghcr.io"' >> .env
+          echo 'REGISTRY1_USERNAME="${{ github.actor }}"' >> .env
+          echo 'REGISTRY1_PASSWORD="${{ github.token }}"' >> .env
 
       - uses: actions/setup-python@v6
         with:

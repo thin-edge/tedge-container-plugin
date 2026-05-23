@@ -17,6 +17,7 @@ ${REGISTRY1_PASSWORD}       %{REGISTRY1_PASSWORD=}
 
 Install/uninstall container package from private repository - credentials file
     [Tags]    docker    podman
+    Skip If    '${PRIVATE_IMAGE}' == ''    PRIVATE_IMAGE is not set — skipping private registry test
     DeviceLibrary.Execute Command    
     ...    cmd=printf -- '[registry1]\nrepo = "${REGISTRY1_REPO}"\nusername = "${REGISTRY1_USERNAME}"\npassword = "${REGISTRY1_PASSWORD}"\n' > /data/tedge-container-plugin/credentials.toml
 
@@ -26,6 +27,7 @@ Install/uninstall container package from private repository - credentials file
 
 Install/uninstall container package from private repository - credentials script
     [Tags]    docker    podman
+    Skip If    '${PRIVATE_IMAGE}' == ''    PRIVATE_IMAGE is not set — skipping private registry test
     Transfer To Device    ${CURDIR}/data/registry-credentials    /usr/bin/
     DeviceLibrary.Execute Command    cmd=sed -i 's|@@USERNAME@@|${REGISTRY1_USERNAME}|g' /usr/bin/registry-credentials
     DeviceLibrary.Execute Command    cmd=sed -i 's|@@PASSWORD@@|${REGISTRY1_PASSWORD}|g' /usr/bin/registry-credentials
@@ -36,6 +38,7 @@ Install/uninstall container package from private repository - credentials script
 
 Install/uninstall container package from private repository - credentials script with cache
     [Tags]    docker    podman
+    Skip If    '${PRIVATE_IMAGE}' == ''    PRIVATE_IMAGE is not set — skipping private registry test
     Transfer To Device    ${CURDIR}/data/registry-credentials-with-cache    /usr/bin/registry-credentials
     DeviceLibrary.Execute Command    cmd=sed -i 's|@@USERNAME@@|${REGISTRY1_USERNAME}|g' /usr/bin/registry-credentials
     DeviceLibrary.Execute Command    cmd=sed -i 's|@@PASSWORD@@|${REGISTRY1_PASSWORD}|g' /usr/bin/registry-credentials
@@ -47,6 +50,7 @@ Install/uninstall container package from private repository - credentials script
 Install/uninstall container package from private repository - engine credentials (rootful)
     [Documentation]    login to registry from host
     [Tags]    podman    rootful
+    Skip If    '${PRIVATE_IMAGE}' == ''    PRIVATE_IMAGE is not set — skipping private registry test
     DeviceLibrary.Execute Command    tedge-container engine docker login ${REGISTRY1_REPO} -u '${REGISTRY1_USERNAME}' --password '${REGISTRY1_PASSWORD}'
     ${operation}=    Cumulocity.Install Software    {"name": "testapp3", "version": "${PRIVATE_IMAGE}", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
@@ -55,6 +59,7 @@ Install/uninstall container package from private repository - engine credentials
 Install/uninstall container package from private repository - engine credentials (rootless)
     [Documentation]    login to registry from host
     [Tags]    podman    rootless
+    Skip If    '${PRIVATE_IMAGE}' == ''    PRIVATE_IMAGE is not set — skipping private registry test
     DeviceLibrary.Execute Command    sudo -u tedge tedge-container engine docker login ${REGISTRY1_REPO} -u '${REGISTRY1_USERNAME}' --password '${REGISTRY1_PASSWORD}'
     ${operation}=    Cumulocity.Install Software    {"name": "testapp3", "version": "${PRIVATE_IMAGE}", "softwareType": "container"}
     Operation Should Be SUCCESSFUL    ${operation}    timeout=60
@@ -63,6 +68,7 @@ Install/uninstall container package from private repository - engine credentials
 Install/uninstall container package from private repository - docker from docker (rootful)
     [Documentation]    login inside a container with the auth file mounted from the host
     [Tags]    podman    rootful
+    Skip If    '${PRIVATE_IMAGE}' == ''    PRIVATE_IMAGE is not set — skipping private registry test
 
     # Start a container
     DeviceLibrary.Execute Command    mkdir -p /run/containers/0/
