@@ -157,7 +157,9 @@ const (
 	symbolChars    = "`!$@#%^&*()-_=+[]{}|;:,.<>/?~"
 
 	// Symbols which don't require url encoding
-	symbolUrlWithoutEncodingChars = "-._~"
+	// Note: Exclude '.' as it can corrupt the URL
+	// when clicked on in a terminal
+	symbolUrlWithoutEncodingChars = "-_~"
 
 	// shell compatible symbols (which don't require escaping with either double or single quotes)
 	symbolShellCompatibleChars = "@#%^&*()-_=+[]{}|;:,.<>/?~"

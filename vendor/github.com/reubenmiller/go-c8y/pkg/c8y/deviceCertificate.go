@@ -18,6 +18,14 @@ type DeviceCertificateService service
 type DeviceCertificateCollectionOptions struct {
 	// Pagination options
 	PaginationOptions
+
+	// Only return the Cumulocity Certificate Authority certificate
+	CertificateAuthority *bool `url:"certificateAuthority,omitempty"`
+}
+
+func (o *DeviceCertificateCollectionOptions) WithCertificateAuthority(v bool) *DeviceCertificateCollectionOptions {
+	o.CertificateAuthority = &v
+	return o
 }
 
 // DeviceCertificateCollection a list of the trusted device certificates

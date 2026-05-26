@@ -227,6 +227,7 @@ func (s *EventService) UpdateBinary(ctx context.Context, ID, filename string) (*
 	resp, err := s.client.SendRequest(ctx, RequestOptions{
 		Method:       "PUT",
 		Path:         "event/events/" + ID + "/binaries",
+		ContentType:  "application/octet-stream",
 		Body:         binaryData,
 		ResponseData: data,
 	})

@@ -141,7 +141,7 @@ func cacheKey(req *http.Request, opt CacheOptions) (string, error) {
 		req.Body, bodyCopy = copyStream(req.Body)
 		defer bodyCopy.Close()
 
-		if len(opt.BodyKeys) > 0 && strings.Contains(req.Header.Get("Accept"), "json") && strings.Contains(req.Header.Get("Accept"), "application") {
+		if len(opt.BodyKeys) > 0 && strings.Contains(req.Header.Get("Content-Type"), "json") {
 			bodyBytes, err := io.ReadAll(bodyCopy)
 
 			if err != nil {
@@ -211,6 +211,9 @@ func (fs *fileStorage) read(key string) (*http.Response, error) {
 	}
 
 	res, err := http.ReadResponse(bufio.NewReader(body), nil)
+	if err != nil {
+		return nil, err
+	}
 	if res.Header.Get("ETag") == "" {
 		res.Header.Set("ETag", key)
 	}
@@ -223,19 +226,23 @@ func (fs *fileStorage) read(key string) (*http.Response, error) {
 func (fs *fileStorage) store(key string, res *http.Response) error {
 	cacheFile := fs.filePath(key)
 
-	fs.mu.Lock()
-	defer fs.mu.Unlock()
-
 	err := os.MkdirAll(filepath.Dir(cacheFile), 0755)
 	if err != nil {
 		return err
 	}
 
-	f, err := os.OpenFile(cacheFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	// Write to a temp file first, then rename atomically to avoid leaving
+	// a corrupt/partial cache file if the write fails midway.
+	f, err := os.CreateTemp(filepath.Dir(cacheFile), "cache-*.tmp")
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	tmpName := f.Name()
+	defer func() {
+		f.Close()
+		// Clean up temp file on failure (rename clears it on success).
+		os.Remove(tmpName)
+	}()
 
 	var origBody io.ReadCloser
 	if res.Body != nil {
@@ -246,5 +253,14 @@ func (fs *fileStorage) store(key string, res *http.Response) error {
 	if origBody != nil {
 		res.Body = origBody
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	return os.Rename(tmpName, cacheFile)
 }

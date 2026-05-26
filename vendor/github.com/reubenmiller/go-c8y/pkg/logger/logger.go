@@ -54,11 +54,11 @@ func (l Log) Println(args ...interface{}) {
 }
 
 func (l Log) Warnf(format string, args ...interface{}) {
-	l.Logger.Warningf(format, args...)
+	l.Warningf(format, args...)
 }
 
 func (l Log) Warn(args ...interface{}) {
-	l.Logger.Warning(args...)
+	l.Warning(args...)
 }
 
 func NewDummyLogger(name string) *Log {

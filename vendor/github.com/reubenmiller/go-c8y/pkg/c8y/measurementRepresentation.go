@@ -197,7 +197,7 @@ func (m ValueFragmentType) MarshalJSON() ([]byte, error) {
 		valueFragmentSeries = append(valueFragmentSeries, fmt.Sprintf("\"%s\": %s", value.Name, valueStr))
 	}
 
-	buffer.WriteString(fmt.Sprintf("\"%s\":{%s}", m.Name, strings.Join(valueFragmentSeries, ",")))
+	fmt.Fprintf(buffer, "\"%s\":{%s}", m.Name, strings.Join(valueFragmentSeries, ","))
 
 	buffer.WriteString("}")
 

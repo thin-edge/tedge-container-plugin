@@ -43,7 +43,7 @@ import (
 	"github.com/compose-spec/compose-go/v2/validation"
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/sirupsen/logrus"
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 )
 
 // Options supported by Load
@@ -84,6 +84,9 @@ type Options struct {
 	KnownExtensions map[string]any
 	// Metada for telemetry
 	Listeners []Listener
+	// MaxNodeVisits caps total YAML node visits during reset/override resolution.
+	// Zero means use the default. Useful for very large compose files that exceed the default cap.
+	MaxNodeVisits int
 }
 
 var versionWarning []string
@@ -427,7 +430,7 @@ func loadYamlFile(ctx context.Context,
 		file.Content = content
 	}
 
-	processRawYaml := func(raw interface{}, processors ...PostProcessor) error {
+	processRawYaml := func(raw interface{}, processor PostProcessor) error {
 		converted, err := convertToStringKeysRecursive(raw, "")
 		if err != nil {
 			return err
@@ -446,25 +449,26 @@ func loadYamlFile(ctx context.Context,
 
 		fixEmptyNotNull(cfg)
 
-		if !opts.SkipExtends {
-			err = ApplyExtends(ctx, cfg, opts, ct, processors...)
-			if err != nil {
-				return err
-			}
-		}
-
-		for _, processor := range processors {
-			if err := processor.Apply(dict); err != nil {
-				return err
-			}
-		}
-
+		// Process includes first so that extended services have all merged attributes
 		if !opts.SkipInclude {
 			included = append(included, file.Filename)
-			err = ApplyInclude(ctx, workingDir, environment, cfg, opts, included)
+			err = ApplyInclude(ctx, workingDir, environment, cfg, opts, included, processor)
 			if err != nil {
 				return err
 			}
+		}
+
+		if err := processor.Apply(dict); err != nil {
+			return err
+		}
+
+		// Process extends after includes so base services are fully merged
+		if !opts.SkipExtends {
+			err = ApplyExtends(ctx, cfg, opts, ct, processor)
+			if err != nil {
+				return err
+			}
+
 		}
 
 		dict, err = override.Merge(dict, cfg)
@@ -505,7 +509,7 @@ func loadYamlFile(ctx context.Context,
 		decoder := yaml.NewDecoder(r)
 		for {
 			var raw interface{}
-			reset := &ResetProcessor{target: &raw}
+			reset := &ResetProcessor{target: &raw, maxNodeVisits: opts.MaxNodeVisits}
 			err := decoder.Decode(reset)
 			if err != nil && errors.Is(err, io.EOF) {
 				break
@@ -519,7 +523,7 @@ func loadYamlFile(ctx context.Context,
 			}
 		}
 	} else {
-		if err := processRawYaml(file.Config); err != nil {
+		if err := processRawYaml(file.Config, NoopPostProcessor{}); err != nil {
 			return nil, nil, err
 		}
 	}

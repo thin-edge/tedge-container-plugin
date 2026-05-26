@@ -46,7 +46,7 @@ type ApplicationVersion struct {
 	BinaryID string   `json:"binaryId,omitempty"`
 	Tags     []string `json:"tags,omitempty"`
 
-	Application *Application `json:"-,omitempty"`
+	Application *Application `json:"-"`
 
 	Item gjson.Result `json:"-"`
 }
