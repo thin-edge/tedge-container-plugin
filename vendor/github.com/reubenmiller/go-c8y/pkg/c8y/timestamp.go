@@ -28,7 +28,7 @@ type Timestamp struct {
 }
 
 func (t *Timestamp) String() string {
-	return t.Time.Format(time.RFC3339Nano)
+	return t.Format(time.RFC3339Nano)
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.

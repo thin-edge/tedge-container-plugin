@@ -189,7 +189,7 @@ func Wait(ctx context.Context, c httpClient, uri string, opts WaitOptions) (*api
 		token, err := resp.AccessToken()
 		if err == nil {
 			return token, nil
-		} else if !(errors.As(err, &apiError) && apiError.Code == "authorization_pending") {
+		} else if !errors.As(err, &apiError) || apiError.Code != "authorization_pending" {
 			return nil, err
 		}
 	}

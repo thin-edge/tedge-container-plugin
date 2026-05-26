@@ -18,7 +18,7 @@ func DecodeBasicAuth(auth string, host string) (*ServiceUser, error) {
 
 	// Remove "Basic " prefix
 	dataStr := string(data)
-	dataStr = strings.Replace(dataStr, "Basic ", "", -1)
+	dataStr = strings.ReplaceAll(dataStr, "Basic ", "")
 	dataStr = strings.TrimSpace(dataStr)
 
 	parts := strings.SplitN(dataStr, ":", 2)

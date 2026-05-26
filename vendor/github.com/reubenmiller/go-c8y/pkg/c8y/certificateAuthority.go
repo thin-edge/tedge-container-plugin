@@ -83,13 +83,14 @@ func (s *CertificateAuthorityService) Delete(ctx context.Context, fingerprint st
 
 // Get certificate authority for the current tenant
 func (s *CertificateAuthorityService) Get(ctx context.Context) (*Certificate, error) {
-	paginationOptions := PaginationOptions{
-		PageSize:          2000,
-		WithTotalElements: true,
+	options := &DeviceCertificateCollectionOptions{
+		PaginationOptions: PaginationOptions{
+			PageSize:          5,
+			WithTotalElements: true,
+		},
 	}
-	items, resp, err := s.client.DeviceCertificate.GetCertificates(ctx, s.client.GetTenantName(ctx), &DeviceCertificateCollectionOptions{
-		PaginationOptions: paginationOptions,
-	})
+	options.WithCertificateAuthority(true)
+	items, resp, err := s.client.DeviceCertificate.GetCertificates(ctx, s.client.GetTenantName(ctx), options)
 	if err != nil {
 		return nil, err
 	}
@@ -97,10 +98,8 @@ func (s *CertificateAuthorityService) Get(ctx context.Context) (*Certificate, er
 		return nil, nil
 	}
 
-	for _, item := range items.Certificates {
-		if item.TenantCertificateAuthority {
-			return &item, nil
-		}
+	if len(items.Certificates) > 0 {
+		return &items.Certificates[0], nil
 	}
 	return nil, ErrNotFound
 }

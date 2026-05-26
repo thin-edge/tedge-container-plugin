@@ -336,13 +336,14 @@ func parseMessage(raw []byte) *Message {
 			continue
 		}
 		if inHeader {
-			if i == 0 {
+			switch i {
+			case 0:
 				message.Identifier = make([]byte, len(line))
 				copy(message.Identifier, line)
-			} else if i == 1 {
+			case 1:
 				message.Description = make([]byte, len(line))
 				copy(message.Description, line)
-			} else if i == 2 {
+			case 2:
 				message.Action = make([]byte, len(line))
 				copy(message.Action, line)
 			}

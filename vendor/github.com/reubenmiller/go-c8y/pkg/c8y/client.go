@@ -836,6 +836,7 @@ func (c *Client) SendRequest(ctx context.Context, options RequestOptions) (*Resp
 		// the authentication required for the request
 		u, _ := url.Parse(c.BaseURL.String())
 		u.Path = path.Join(u.Path, currentPath)
+		u.RawQuery = currentQuery
 		req, err = prepareMultipartRequest(options.Method, u.String(), options.FormData)
 		if err != nil {
 			return nil, err

@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"os"
 
 	"github.com/reubenmiller/go-c8y/pkg/oauth/api"
 	"github.com/reubenmiller/go-c8y/pkg/oauth/device"
+	"github.com/tidwall/gjson"
 )
 
 var ErrSSOInvalidConfiguration = errors.New("invalid sso configuration")
@@ -317,8 +320,30 @@ func (s *TenantService) DeleteApplicationReference(ctx context.Context, tenantID
 	})
 }
 
-// GetLoginOptions returns the login options available for the tenant
-func getAuthorizationRequest(ctx context.Context, client *http.Client, oauthUrl string) (*api.AuthorizationRequest, error) {
+func getAuthorizationEndpointFromURL(u *url.URL) *api.AuthorizationRequest {
+	endpoint := &api.AuthorizationRequest{
+		URL: u,
+	}
+
+	for k, v := range u.Query() {
+		switch k {
+		case "client_id":
+			if len(v) > 0 {
+				endpoint.ClientID = v[0]
+			}
+		case "audience":
+			if len(v) > 0 {
+				endpoint.Audience = v[0]
+			}
+		case "scope":
+			endpoint.Scopes = v
+		}
+	}
+
+	return endpoint
+}
+
+func getAuthorizationRequest(ctx context.Context, client *http.Client, oauthUrl string, redirectURL string) (*api.AuthorizationRequest, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", oauthUrl, nil)
 	if err != nil {
 		return nil, err
@@ -344,28 +369,23 @@ func getAuthorizationRequest(ctx context.Context, client *http.Client, oauthUrl 
 		if err != nil {
 			return nil, fmt.Errorf("failed to get redirect location: %w", err)
 		}
-
-		endpoint := &api.AuthorizationRequest{
-			URL: location,
-		}
-
-		for k, v := range location.Query() {
-			switch k {
-			case "client_id":
-				if len(v) > 0 {
-					endpoint.ClientID = v[0]
+		return getAuthorizationEndpointFromURL(location), nil
+	} else if resp.StatusCode == 200 {
+		// Some Cumulocity servers redirect SSO logins to a user application and
+		// return a 200 response with the redirect URI embedded in the JSON body.
+		if b, err := io.ReadAll(resp.Body); err == nil {
+			if value := gjson.GetBytes(b, "redirectTo"); value.Exists() {
+				u, err := url.Parse(value.String())
+				if err == nil {
+					params := u.Query()
+					if redirectURL != "" {
+						params.Set("redirect_uri", redirectURL)
+					}
+					u.RawQuery = params.Encode()
+					return getAuthorizationEndpointFromURL(u), nil
 				}
-			case "audience":
-				if len(v) > 0 {
-					endpoint.Audience = v[0]
-				}
-			case "scope":
-				endpoint.Scopes = v
 			}
-
 		}
-
-		return endpoint, nil
 	}
 
 	return &api.AuthorizationRequest{}, fmt.Errorf("not found")
@@ -402,7 +422,7 @@ func (s *TenantService) AuthorizeWithDeviceFlow(ctx context.Context, initRequest
 		WithInsecureSkipVerify(skipVerify),
 		WithRequestDebugLogger(Logger),
 	)
-	endpoint, err := getAuthorizationRequest(ctx, httpClient, initRequest)
+	endpoint, err := getAuthorizationRequest(ctx, httpClient, initRequest, "")
 	if err != nil {
 		return nil, err
 	}

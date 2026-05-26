@@ -497,6 +497,7 @@ func (s *InventoryService) UpdateBinary(ctx context.Context, ID string, file io.
 	resp, err := s.client.SendRequest(ctx, RequestOptions{
 		Method:       "PUT",
 		Path:         "inventory/binaries/" + ID,
+		ContentType:  "text/plain",
 		Body:         file,
 		ResponseData: data,
 	})
