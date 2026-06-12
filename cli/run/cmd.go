@@ -51,6 +51,7 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 				EnableMetrics:           cliContext.MetricsEnabled(),
 				DeleteFromCloud:         cliContext.DeleteFromCloud(),
 				DeleteOrphans:           cliContext.DeleteOrphans(),
+				OrphansCheckInterval:    cliContext.GetOrphansCheckInterval(),
 				EnableEngineEvents:      cliContext.EngineEventsEnabled(),
 				CrashLoopThreshold:      cliContext.GetCrashLoopThreshold(),
 				UseModuleNameForService: cliContext.UseModuleNameForService(),
@@ -194,6 +195,11 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 	viper.SetDefault("events.enabled", true)
 	viper.SetDefault("delete_from_cloud.enabled", true)
 	viper.SetDefault("delete_from_cloud.orphans", true)
+	// Minimum time between routine checks for orphaned cloud services, to
+	// limit the extra Cumulocity REST calls. The interval is bypassed when an
+	// update removed stale services (when new orphans are likely). "0" checks
+	// on every update.
+	viper.SetDefault("delete_from_cloud.orphans_interval", "1h")
 
 	// Crash loop detection
 	viper.SetDefault("container.crash_loop_threshold", 5)

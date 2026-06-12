@@ -173,6 +173,19 @@ func (c *Cli) DeleteOrphans() bool {
 	return viper.GetBool("delete_from_cloud.orphans")
 }
 
+// GetOrphansCheckInterval returns the minimum time between routine checks
+// for orphaned cloud services. The check costs additional Cumulocity REST
+// calls on each update, so it is rate limited (the interval is bypassed when
+// an update removed stale services, when new orphans are likely).
+// A value of 0 (or less) checks on every update.
+func (c *Cli) GetOrphansCheckInterval() time.Duration {
+	interval := viper.GetDuration("delete_from_cloud.orphans_interval")
+	if interval <= 0 {
+		return 0
+	}
+	return interval
+}
+
 func (c *Cli) GetCrashLoopThreshold() int {
 	return viper.GetInt("container.crash_loop_threshold")
 }

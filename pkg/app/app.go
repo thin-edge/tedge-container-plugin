@@ -77,7 +77,11 @@ type App struct {
 	// syncRetryScheduled guards against scheduling more than one concurrent
 	// failure-driven cloud sync retry.
 	syncRetryScheduled atomic.Bool
-	wg                 sync.WaitGroup
+	// lastOrphansCheck records when the orphaned cloud services check last
+	// completed successfully, used to enforce OrphansCheckInterval. Only
+	// accessed from the worker goroutine (doUpdate), so it needs no locking.
+	lastOrphansCheck time.Time
+	wg               sync.WaitGroup
 }
 
 type Config struct {
@@ -127,6 +131,15 @@ type Config struct {
 	// https://github.com/thin-edge/thin-edge.io/issues/3185).
 	// A value of 0 (or less) disables the failure-driven retry.
 	SyncRetryInterval time.Duration
+
+	// OrphansCheckInterval is the minimum time between routine checks for
+	// orphaned cloud services, limiting the additional Cumulocity REST calls
+	// the check costs on each update. The interval is bypassed whenever an
+	// update removed stale services, since that is when new orphans are
+	// likely, so cleanup after a container removal is never delayed by it.
+	// A value of 0 (or less) checks on every update.
+	// Only applies when DeleteFromCloud and DeleteOrphans are enabled.
+	OrphansCheckInterval time.Duration
 }
 
 func NewApp(device tedge.Target, config Config) (*App, error) {
@@ -1012,6 +1025,7 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 	// scheduleSyncRetry) so the next attempt does not depend on an external
 	// trigger.
 	cloudSyncPending := false
+	staleServicesRemoved := false
 	if removeStaleServices {
 		slog.Info("Checking for any stale services")
 		for staleTopicID := range existingServices {
@@ -1035,15 +1049,32 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 			if err := tedgeClient.DeregisterEntity(*target); err != nil {
 				slog.Warn("Failed to deregister entity.", "err", err)
 			}
+			staleServicesRemoved = true
 			delete(entities, staleTopicID)
 		}
 	}
 
-	// Delete orphaned cloud services
+	// Delete orphaned cloud services. The check is throttled by
+	// OrphansCheckInterval to limit the extra Cumulocity REST calls, but the
+	// interval only applies to routine sweeps: when a stale service was just
+	// removed an orphaned cloud service is likely (deleting by external ID
+	// reports success when the identity does not exist, leaving a managed
+	// object which only the sweep can find), so the check runs regardless.
+	// A failed check does not count as a completed one, so it is retried on
+	// the next update regardless of the interval.
 	if a.config.DeleteFromCloud && a.config.DeleteOrphans {
-		if err := a.DeleteOrphanedCloudServices(entities); err != nil {
-			slog.Warn("Could not delete orphaned cloud services.", "err", err)
-			cloudSyncPending = true
+		checkDue := a.config.OrphansCheckInterval <= 0 ||
+			staleServicesRemoved ||
+			time.Since(a.lastOrphansCheck) >= a.config.OrphansCheckInterval
+		if checkDue {
+			if err := a.DeleteOrphanedCloudServices(entities); err != nil {
+				slog.Warn("Could not delete orphaned cloud services.", "err", err)
+				cloudSyncPending = true
+			} else {
+				a.lastOrphansCheck = time.Now()
+			}
+		} else {
+			slog.Debug("Skipping orphaned cloud services check.", "last", a.lastOrphansCheck, "interval", a.config.OrphansCheckInterval)
 		}
 	}
 

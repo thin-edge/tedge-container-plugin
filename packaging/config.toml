@@ -114,6 +114,12 @@ enabled = true
 enabled = true
 # delete orphaned services (related to containers) from the cloud
 orphans = true
+# Minimum time between routine checks for orphaned cloud services, limiting
+# the additional Cumulocity REST calls the check requires on each update. The
+# interval is bypassed whenever an update removed stale services (that is when
+# new orphans are likely), so cleanup after a container removal is never
+# delayed by it. Set to "0" to check on every update.
+orphans_interval = "1h"
 
 [container_group]
 # Control whether the thin-edge service name for container-group services is
