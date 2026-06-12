@@ -89,6 +89,22 @@ enabled = true
 # How often the container status/telemetry should be collected. The interval will be the minimal interval as it is the time to sleep between collections
 interval = "300s"
 
+[reconcile]
+# How often the full container state is reconciled with thin-edge.io and the
+# cloud, independently of container engine events or MQTT messages. This acts
+# as a safety net which retries pending cloud deletions (e.g. a container-group
+# was removed while the Cumulocity mapper was down) and removes stale/orphaned
+# services. Minimum is "60s". Set to "0" to disable the reconcile loop.
+interval = "30m"
+
+# How long to wait before retrying a cloud sync after a failure, e.g. a cloud
+# service deletion failed because the local Cumulocity proxy was unavailable.
+# The retry repeats until the sync succeeds, so pending deletions are recovered
+# shortly after connectivity returns without waiting for the next reconcile
+# interval or depending on MQTT message delivery. Minimum is "5s". Set to "0"
+# to disable the failure-driven retry.
+retry_interval = "30s"
+
 [events]
 # Enable/disable publishing of container engine events
 enabled = true
@@ -98,6 +114,12 @@ enabled = true
 enabled = true
 # delete orphaned services (related to containers) from the cloud
 orphans = true
+# Minimum time between routine checks for orphaned cloud services, limiting
+# the additional Cumulocity REST calls the check requires on each update. The
+# interval is bypassed whenever an update removed stale services (that is when
+# new orphans are likely), so cleanup after a container removal is never
+# delayed by it. Set to "0" to check on every update.
+orphans_interval = "1h"
 
 [container_group]
 # Control whether the thin-edge service name for container-group services is

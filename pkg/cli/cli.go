@@ -173,6 +173,19 @@ func (c *Cli) DeleteOrphans() bool {
 	return viper.GetBool("delete_from_cloud.orphans")
 }
 
+// GetOrphansCheckInterval returns the minimum time between routine checks
+// for orphaned cloud services. The check costs additional Cumulocity REST
+// calls on each update, so it is rate limited (the interval is bypassed when
+// an update removed stale services, when new orphans are likely).
+// A value of 0 (or less) checks on every update.
+func (c *Cli) GetOrphansCheckInterval() time.Duration {
+	interval := viper.GetDuration("delete_from_cloud.orphans_interval")
+	if interval <= 0 {
+		return 0
+	}
+	return interval
+}
+
 func (c *Cli) GetCrashLoopThreshold() int {
 	return viper.GetInt("container.crash_loop_threshold")
 }
@@ -214,6 +227,43 @@ func (c *Cli) GetMetricsInterval() time.Duration {
 	if interval < 60*time.Second {
 		slog.Warn("metrics.interval is lower than allowed limit.", "old", interval, "new", 60*time.Second)
 		interval = 60 * time.Second
+	}
+	return interval
+}
+
+// GetReconcileInterval returns how often the full container state should be
+// reconciled with thin-edge.io and the cloud, independently of container
+// engine events or MQTT messages. The reconcile loop is a safety net which
+// retries pending cloud deletions and removes stale/orphaned services even
+// when the event that should have triggered the cleanup was lost (e.g. the
+// bridge-online message was missed due to retained message loss).
+// A value of 0 (or less) disables the reconcile loop.
+func (c *Cli) GetReconcileInterval() time.Duration {
+	interval := viper.GetDuration("reconcile.interval")
+	if interval <= 0 {
+		return 0
+	}
+	if interval < 60*time.Second {
+		slog.Warn("reconcile.interval is lower than allowed limit.", "old", interval, "new", 60*time.Second)
+		interval = 60 * time.Second
+	}
+	return interval
+}
+
+// GetSyncRetryInterval returns the delay before a failed cloud sync is
+// retried, e.g. a pending cloud service deletion which failed because the
+// local Cumulocity proxy was unavailable. The retry is scheduled by the
+// plugin itself so pending operations recover even when no container engine
+// event or bridge health message arrives to trigger an update.
+// A value of 0 (or less) disables the failure-driven retry.
+func (c *Cli) GetSyncRetryInterval() time.Duration {
+	interval := viper.GetDuration("reconcile.retry_interval")
+	if interval <= 0 {
+		return 0
+	}
+	if interval < 5*time.Second {
+		slog.Warn("reconcile.retry_interval is lower than allowed limit.", "old", interval, "new", 5*time.Second)
+		interval = 5 * time.Second
 	}
 	return interval
 }

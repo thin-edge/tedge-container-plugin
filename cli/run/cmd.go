@@ -51,9 +51,11 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 				EnableMetrics:           cliContext.MetricsEnabled(),
 				DeleteFromCloud:         cliContext.DeleteFromCloud(),
 				DeleteOrphans:           cliContext.DeleteOrphans(),
+				OrphansCheckInterval:    cliContext.GetOrphansCheckInterval(),
 				EnableEngineEvents:      cliContext.EngineEventsEnabled(),
 				CrashLoopThreshold:      cliContext.GetCrashLoopThreshold(),
 				UseModuleNameForService: cliContext.UseModuleNameForService(),
+				SyncRetryInterval:       cliContext.GetSyncRetryInterval(),
 
 				HTTPHost:       cliContext.GetHTTPHost(),
 				HTTPPort:       cliContext.GetHTTPPort(),
@@ -119,6 +121,19 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 				}()
 			}
 
+			// Start the background reconcile loop. It periodically triggers a
+			// full update so that pending cloud deletions are retried and
+			// stale/orphaned services are cleaned up even when no container
+			// engine event or bridge-online MQTT message arrives to trigger it
+			// (e.g. the mapper was stopped while a container-group was removed
+			// and the retained bridge health message was lost).
+			// See https://github.com/thin-edge/tedge-container-plugin/issues/181
+			if interval := cliContext.GetReconcileInterval(); interval > 0 {
+				go func() {
+					_ = backgroundReconcile(ctx, cliContext, application, interval)
+				}()
+			}
+
 			<-stop
 			cancel()
 			application.Stop(false)
@@ -167,10 +182,24 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 	viper.SetDefault("metrics.interval", "300s")
 	viper.SetDefault("metrics.enabled", true)
 
+	// Reconcile loop (safety net to retry pending cloud deletions and clean up
+	// stale services independently of events). "0" disables it.
+	viper.SetDefault("reconcile.interval", "30m")
+
+	// Failure-driven retry: how long to wait before retrying a cloud sync
+	// after a failure (e.g. a cloud service deletion failed because the local
+	// Cumulocity proxy was unavailable). "0" disables it.
+	viper.SetDefault("reconcile.retry_interval", "30s")
+
 	// Feature flags
 	viper.SetDefault("events.enabled", true)
 	viper.SetDefault("delete_from_cloud.enabled", true)
 	viper.SetDefault("delete_from_cloud.orphans", true)
+	// Minimum time between routine checks for orphaned cloud services, to
+	// limit the extra Cumulocity REST calls. The interval is bypassed when an
+	// update removed stale services (when new orphans are likely). "0" checks
+	// on every update.
+	viper.SetDefault("delete_from_cloud.orphans_interval", "1h")
 
 	// Crash loop detection
 	viper.SetDefault("container.crash_loop_threshold", 5)
@@ -191,6 +220,32 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 
 	command.Command = cmd
 	return cmd
+}
+
+// backgroundReconcile periodically triggers a full state update so that any
+// cleanup which failed at event time is eventually retried. In particular,
+// when a container/container-group is removed while the Cumulocity mapper is
+// down, the cloud service deletion fails and the entity is intentionally kept
+// in the thin-edge entity store; this loop re-detects it as stale and retries
+// the cloud deletion until it succeeds, without relying on MQTT message
+// delivery (the bridge-online handler) or further container events.
+func backgroundReconcile(ctx context.Context, cliContext cli.Cli, application *app.App, interval time.Duration) error {
+	slog.Info("Starting background reconcile task.", "interval", interval)
+	timerCh := time.NewTicker(interval)
+	defer timerCh.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("Stopping reconcile task")
+			return ctx.Err()
+
+		case <-timerCh.C:
+			slog.Info("Reconciling container state")
+			if err := application.Update(cliContext.GetFilterOptions()); err != nil {
+				slog.Warn("Error reconciling container state.", "err", err)
+			}
+		}
+	}
 }
 
 func backgroundMetric(ctx context.Context, cliContext cli.Cli, application *app.App, interval time.Duration) error {
