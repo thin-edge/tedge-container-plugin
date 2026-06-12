@@ -150,6 +150,11 @@ Remove Orphaned Cloud Services eventually if Cumulocity Proxy is Unavailable at 
     ...    the device went offline at the time of installation or removal of a container
     ...    or container-group.
     ...    See https://github.com/thin-edge/tedge-container-plugin/issues/181
+    ...
+    ...    The delayed sync is recovered by the bridge-online handler (when the mapper
+    ...    health message arrives) or by the failure-driven retry (reconcile.retry_interval,
+    ...    default 30s) when that message is lost (thin-edge/thin-edge.io#3185), so the
+    ...    cleanup can legitimately take up to ~60s after the mapper is back online.
     DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker rm -f manualapp5; sleep 1
 
     # create a local container manually
@@ -174,9 +179,13 @@ Remove Orphaned Cloud Services eventually if Cumulocity Proxy is Unavailable at 
     Sleep    15s
     Start Service    tedge-mapper-c8y
 
-    # Services should be eventually deleted
-    Cumulocity.Should Have Services    name=manualapp5    min_count=0    max_count=0    timeout=10
-    Cumulocity.Should Have Services    name=app6@httpd    min_count=0    max_count=0    timeout=10
+    # Services should be eventually deleted. The timeout must cover a full
+    # failure-driven retry cycle (the cleanup is not necessarily triggered by
+    # the mapper health message, which can be lost) plus the per-service
+    # deletion time right after the mapper starts (~5s each while the proxy
+    # and cloud connection warm up).
+    Cumulocity.Should Have Services    name=manualapp5    min_count=0    max_count=0    timeout=120
+    Cumulocity.Should Have Services    name=app6@httpd    min_count=0    max_count=0    timeout=120
 
 Remove orphaned cloud services via periodic reconciliation when bridge health messages are lost
     [Documentation]    Deterministic reproduction of the root cause of
@@ -194,8 +203,10 @@ Remove orphaned cloud services via periodic reconciliation when bridge health me
     ...    while it cannot react. The mapper is started while the plugin is disconnected,
     ...    and the retained bridge health messages are cleared before the plugin is
     ...    resumed. The plugin then reconnects and resubscribes, but no bridge-online
-    ...    health message exists or arrives, so only the timer-based background reconcile
-    ...    loop is able to clean up the orphaned cloud service.
+    ...    health message exists or arrives, so the orphaned cloud service can only be
+    ...    cleaned up by the trigger-independent mechanisms: the failure-driven sync
+    ...    retry (reconcile.retry_interval) and the periodic reconcile loop
+    ...    (reconcile.interval).
 
     # Speed up the background reconcile loop (60s is the allowed minimum). Restart to
     # apply it before the orphan is created, so the startup-time update does not
@@ -235,10 +246,13 @@ Remove orphaned cloud services via periodic reconciliation when bridge health me
     # health message exists or arrives, so the bridge-online handler never fires
     DeviceLibrary.Execute Command    cmd=sudo systemctl kill --signal=CONT --kill-who=main tedge-container-plugin
 
-    # Only the periodic reconciliation can clean up the orphaned cloud service now
+    # Only the trigger-independent mechanisms can clean up the orphan now
     Cumulocity.Should Have Services    name=app10@httpd    min_count=0    max_count=0    timeout=180
 
-    # Confirm the cleanup was driven by the background reconcile loop
+    # Confirm the trigger-independent recovery mechanisms ran: the failed cloud
+    # deletion must have scheduled a failure-driven retry, and the periodic
+    # reconcile loop must be ticking
+    DeviceLibrary.Execute Command    cmd=sudo journalctl -u tedge-container-plugin -n 5000 | grep "Scheduling retry of pending cloud sync"
     DeviceLibrary.Execute Command    cmd=sudo journalctl -u tedge-container-plugin -n 5000 | grep "Reconciling container state"
 
 *** Keywords ***

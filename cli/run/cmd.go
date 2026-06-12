@@ -54,6 +54,7 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 				EnableEngineEvents:      cliContext.EngineEventsEnabled(),
 				CrashLoopThreshold:      cliContext.GetCrashLoopThreshold(),
 				UseModuleNameForService: cliContext.UseModuleNameForService(),
+				SyncRetryInterval:       cliContext.GetSyncRetryInterval(),
 
 				HTTPHost:       cliContext.GetHTTPHost(),
 				HTTPPort:       cliContext.GetHTTPPort(),
@@ -183,6 +184,11 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 	// Reconcile loop (safety net to retry pending cloud deletions and clean up
 	// stale services independently of events). "0" disables it.
 	viper.SetDefault("reconcile.interval", "30m")
+
+	// Failure-driven retry: how long to wait before retrying a cloud sync
+	// after a failure (e.g. a cloud service deletion failed because the local
+	// Cumulocity proxy was unavailable). "0" disables it.
+	viper.SetDefault("reconcile.retry_interval", "30s")
 
 	// Feature flags
 	viper.SetDefault("events.enabled", true)

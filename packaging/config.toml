@@ -97,6 +97,14 @@ interval = "300s"
 # services. Minimum is "60s". Set to "0" to disable the reconcile loop.
 interval = "30m"
 
+# How long to wait before retrying a cloud sync after a failure, e.g. a cloud
+# service deletion failed because the local Cumulocity proxy was unavailable.
+# The retry repeats until the sync succeeds, so pending deletions are recovered
+# shortly after connectivity returns without waiting for the next reconcile
+# interval or depending on MQTT message delivery. Minimum is "5s". Set to "0"
+# to disable the failure-driven retry.
+retry_interval = "30s"
+
 [events]
 # Enable/disable publishing of container engine events
 enabled = true

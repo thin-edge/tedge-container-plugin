@@ -74,7 +74,10 @@ type App struct {
 	// eventLimiter rate-limits per-(container, event-type) MQTT publishes so
 	// that a crash-looping container cannot flood the broker.
 	eventLimiter *EventRateLimiter
-	wg           sync.WaitGroup
+	// syncRetryScheduled guards against scheduling more than one concurrent
+	// failure-driven cloud sync retry.
+	syncRetryScheduled atomic.Bool
+	wg                 sync.WaitGroup
 }
 
 type Config struct {
@@ -114,6 +117,16 @@ type Config struct {
 	// decoupled from the software module name, e.g. the module is "myapp-dev"
 	// but the compose project name (and therefore the service name) is "myapp".
 	UseModuleNameForService bool
+
+	// SyncRetryInterval is the delay before a failed cloud sync is retried,
+	// e.g. a stale service which could not be deleted from the cloud because
+	// the local Cumulocity proxy was unavailable. The retry is scheduled by
+	// the plugin itself so pending operations recover even when no container
+	// engine event or bridge health message arrives to trigger an update (the
+	// health message can be lost entirely, see
+	// https://github.com/thin-edge/thin-edge.io/issues/3185).
+	// A value of 0 (or less) disables the failure-driven retry.
+	SyncRetryInterval time.Duration
 }
 
 func NewApp(device tedge.Target, config Config) (*App, error) {
@@ -424,6 +437,29 @@ func (a *App) Update(filterOptions container.FilterOptions) error {
 		result:  result,
 	}
 	return <-result
+}
+
+// scheduleSyncRetry schedules a full update after the configured retry
+// interval so that pending cloud operations (e.g. service deletions which
+// failed because the local Cumulocity proxy was unavailable) are retried
+// without depending on an external trigger. Container engine events stop once
+// the container is gone, and the bridge health message can be lost entirely
+// (see https://github.com/thin-edge/thin-edge.io/issues/3185), which would
+// otherwise leave the cloud out of sync until the next periodic reconcile.
+// Only one retry is scheduled at a time; if the retried update fails again it
+// reschedules itself, effectively polling until the sync succeeds.
+func (a *App) scheduleSyncRetry() {
+	if a.config.SyncRetryInterval <= 0 || a.config.RunOnce {
+		return
+	}
+	if !a.syncRetryScheduled.CompareAndSwap(false, true) {
+		return
+	}
+	slog.Info("Scheduling retry of pending cloud sync.", "delay", a.config.SyncRetryInterval)
+	time.AfterFunc(a.config.SyncRetryInterval, func() {
+		a.syncRetryScheduled.Store(false)
+		a.debouncer.Enqueue(NewUpdateAllAction(container.FilterOptions{}))
+	})
 }
 
 func (a *App) UpdateMetrics(filterOptions container.FilterOptions) error {
@@ -972,6 +1008,10 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 	// entity remains in the thin-edge entity store. The next doUpdate() will
 	// detect it as stale again and retry — including after a process restart,
 	// which is why an in-memory pending-deletions queue is insufficient.
+	// Any failure also schedules a failure-driven retry (see
+	// scheduleSyncRetry) so the next attempt does not depend on an external
+	// trigger.
+	cloudSyncPending := false
 	if removeStaleServices {
 		slog.Info("Checking for any stale services")
 		for staleTopicID := range existingServices {
@@ -986,6 +1026,7 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 					slog.Info("Removing service from the cloud", "topic", target.Topic())
 					if _, err := tedgeClient.DeleteCumulocityManagedObject(*target); err != nil {
 						slog.Warn("Failed to delete managed object, will retry on next update.", "err", err, "topic", target.Topic())
+						cloudSyncPending = true
 						continue
 					}
 				}
@@ -1002,7 +1043,14 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 	if a.config.DeleteFromCloud && a.config.DeleteOrphans {
 		if err := a.DeleteOrphanedCloudServices(entities); err != nil {
 			slog.Warn("Could not delete orphaned cloud services.", "err", err)
+			cloudSyncPending = true
 		}
+	}
+
+	// Retry later when some cloud-side cleanup could not be completed, so the
+	// pending work is recovered without relying on an external trigger.
+	if cloudSyncPending {
+		a.scheduleSyncRetry()
 	}
 
 	// Update tedge-agent log types

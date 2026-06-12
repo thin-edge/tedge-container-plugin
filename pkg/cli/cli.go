@@ -237,6 +237,24 @@ func (c *Cli) GetReconcileInterval() time.Duration {
 	return interval
 }
 
+// GetSyncRetryInterval returns the delay before a failed cloud sync is
+// retried, e.g. a pending cloud service deletion which failed because the
+// local Cumulocity proxy was unavailable. The retry is scheduled by the
+// plugin itself so pending operations recover even when no container engine
+// event or bridge health message arrives to trigger an update.
+// A value of 0 (or less) disables the failure-driven retry.
+func (c *Cli) GetSyncRetryInterval() time.Duration {
+	interval := viper.GetDuration("reconcile.retry_interval")
+	if interval <= 0 {
+		return 0
+	}
+	if interval < 5*time.Second {
+		slog.Warn("reconcile.retry_interval is lower than allowed limit.", "old", interval, "new", 5*time.Second)
+		interval = 5 * time.Second
+	}
+	return interval
+}
+
 func (c *Cli) GetMQTTPort() uint16 {
 	v := viper.GetUint16("client.mqtt.port")
 	if v == 0 {
