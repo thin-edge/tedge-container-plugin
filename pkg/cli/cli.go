@@ -218,6 +218,25 @@ func (c *Cli) GetMetricsInterval() time.Duration {
 	return interval
 }
 
+// GetReconcileInterval returns how often the full container state should be
+// reconciled with thin-edge.io and the cloud, independently of container
+// engine events or MQTT messages. The reconcile loop is a safety net which
+// retries pending cloud deletions and removes stale/orphaned services even
+// when the event that should have triggered the cleanup was lost (e.g. the
+// bridge-online message was missed due to retained message loss).
+// A value of 0 (or less) disables the reconcile loop.
+func (c *Cli) GetReconcileInterval() time.Duration {
+	interval := viper.GetDuration("reconcile.interval")
+	if interval <= 0 {
+		return 0
+	}
+	if interval < 60*time.Second {
+		slog.Warn("reconcile.interval is lower than allowed limit.", "old", interval, "new", 60*time.Second)
+		interval = 60 * time.Second
+	}
+	return interval
+}
+
 func (c *Cli) GetMQTTPort() uint16 {
 	v := viper.GetUint16("client.mqtt.port")
 	if v == 0 {
