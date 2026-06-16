@@ -109,8 +109,8 @@ type ClientConfig struct {
 	HTTPHost string
 	HTTPPort uint16
 
-	MqttHost string
-	MqttPort uint16
+	MqttHost     string
+	MqttPort     uint16
 	MQTTClientID string
 
 	CertFile string
@@ -242,7 +242,7 @@ func (c *Client) DeleteCumulocityManagedObject(target Target) (bool, error) {
 func (c *Client) Publish(topic string, qos byte, retained bool, payload any) error {
 	slog.Info("Publishing MQTT Message.", "topic", topic, "payload", payload, "qos", qos, "retained", retained)
 	tok := c.Client.Publish(topic, 1, retained, payload)
-	if !tok.WaitTimeout(100 * time.Millisecond) {
+	if !tok.WaitTimeout(1000 * time.Millisecond) {
 		return fmt.Errorf("timed out")
 	}
 	return tok.Error()
