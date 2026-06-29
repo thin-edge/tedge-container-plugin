@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,6 +31,7 @@ import (
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	"github.com/docker/go-connections/sockets"
 	"github.com/docker/go-units"
 	"github.com/thin-edge/tedge-container-plugin/pkg/utils"
 )
@@ -380,7 +382,7 @@ func WithRetryInterval(v time.Duration) Opt {
 	}
 }
 
-func newContainerClient(options *ClientOptions) (*ContainerClient, error) {
+func buildClientWithRetries(options *ClientOptions) (*client.Client, error) {
 	// Find container socket
 	if options.Host == "" {
 		options.Host = findContainerEngineSocket()
@@ -388,14 +390,42 @@ func newContainerClient(options *ClientOptions) (*ContainerClient, error) {
 	if options.Host == "" {
 		return nil, fmt.Errorf("container engine socket was not found")
 	}
+
+	retryClient := newRetryableHTTPClient()
+
+	// Configure the underlying transport to dial the configured socket.
+	// client.WithHost normally does this, but because we override the HTTP
+	// client via client.WithHTTPClient, the host-aware dialer it sets up is
+	// discarded. Without this, a unix socket host gets dialed as TCP.
+	hostURL, err := client.ParseHostURL(options.Host)
+	if err != nil {
+		return nil, err
+	}
+	if transport, ok := retryClient.HTTPClient.Transport.(*http.Transport); ok {
+		if err := sockets.ConfigureTransport(transport, hostURL.Scheme, hostURL.Host); err != nil {
+			return nil, err
+		}
+	}
+	httpClient := retryClient.StandardClient()
+
 	slog.Info("Using container engine socket.", "value", options.Host)
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithHost(options.Host), client.WithAPIVersionNegotiation())
+	return client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithHost(options.Host),
+		client.WithHTTPClient(httpClient),
+		client.WithAPIVersionNegotiation(),
+	)
+}
+
+func newContainerClient(ctx context.Context, options *ClientOptions) (*ContainerClient, error) {
+	cli, err := buildClientWithRetries(options)
 	if err != nil {
 		return nil, err
 	}
 
-	// Check if engine is functional
-	engineInfo, err := cli.Info(context.Background())
+	// Check if engine is functional. Use the caller's context so the HTTP-level
+	// retries (and backoff) can be cancelled instead of blocking indefinitely.
+	engineInfo, err := cli.Info(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -421,7 +451,7 @@ func newContainerClient(options *ClientOptions) (*ContainerClient, error) {
 	// the Docker-compat API.
 	var libpod *SocketClient
 	lp := NewLibPodHTTPClient(options.Host)
-	if err := lp.Test(context.Background()); err != nil {
+	if err := lp.Test(ctx); err != nil {
 		slog.Debug("libpod API not available, using Docker-compat API", "err", err)
 		// Keep engine type as detected from name (docker/unknown).
 	} else {
@@ -453,7 +483,7 @@ func NewContainerClient(ctx context.Context, opts ...Opt) (*ContainerClient, err
 	var err error
 
 	for {
-		client, err = newContainerClient(options)
+		client, err = newContainerClient(ctx, options)
 		attempts += 1
 
 		if err == nil {

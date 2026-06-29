@@ -11,15 +11,61 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/image"
 	"github.com/google/go-querystring/query"
+	"github.com/hashicorp/go-retryablehttp"
 )
 
 type ResponsePruneImage struct {
 	Id   string `json:"Id,omitempty"`
 	Size uint64 `json:"Size,omitempty"`
+}
+
+// slogLeveledLogger adapts slog to retryablehttp's LeveledLogger interface so
+// the retry/backoff messages are emitted through the project's structured
+// logger instead of retryablehttp's default standard-library logger (which
+// writes "[DEBUG]"/"[ERR]" lines to stderr).
+type slogLeveledLogger struct{}
+
+func (slogLeveledLogger) Error(msg string, keysAndValues ...any) { slog.Error(msg, keysAndValues...) }
+func (slogLeveledLogger) Warn(msg string, keysAndValues ...any)  { slog.Warn(msg, keysAndValues...) }
+func (slogLeveledLogger) Info(msg string, keysAndValues ...any)  { slog.Debug(msg, keysAndValues...) }
+func (slogLeveledLogger) Debug(msg string, keysAndValues ...any) { slog.Debug(msg, keysAndValues...) }
+
+// newRetryableHTTPClient returns a retryablehttp client configured with the
+// project's retry policy and structured logger.
+func newRetryableHTTPClient() *retryablehttp.Client {
+	c := retryablehttp.NewClient()
+	c.RetryMax = 5
+	c.RetryWaitMin = 2 * time.Second
+	c.RetryWaitMax = 30 * time.Second
+	c.Logger = slogLeveledLogger{}
+	c.CheckRetry = retryConnectionErrorsOnly
+	return c
+}
+
+// retryConnectionErrorsOnly only retries transient connection-level failures
+// (e.g. the container engine socket is not yet available while the engine is
+// starting up). It deliberately does NOT retry HTTP responses returned by a
+// reachable engine: a 5xx such as a failed image pull is a real, often
+// non-transient result that must surface to the caller immediately. Retrying
+// those (up to RetryMax with exponential backoff, nested inside higher-level
+// retries like ImagePullWithRetries) would block operations for minutes and
+// cause them to exceed their timeout.
+func retryConnectionErrorsOnly(ctx context.Context, resp *http.Response, err error) (bool, error) {
+	if err != nil {
+		// Delegate to the default policy, which still declines to retry
+		// non-recoverable transport errors (TLS, redirects, bad scheme, ...).
+		return retryablehttp.DefaultRetryPolicy(ctx, resp, err)
+	}
+	// Respect context cancellation/deadline even when a response was received.
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+	return false, nil
 }
 
 type SocketClient struct {
@@ -32,16 +78,16 @@ func NewDefaultLibPodHTTPClient() *SocketClient {
 }
 
 func NewLibPodHTTPClient(sock string) *SocketClient {
-	httpc := http.Client{
-		Transport: &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", strings.TrimPrefix(sock, "unix://"))
-			},
+	retryClient := newRetryableHTTPClient()
+	retryClient.HTTPClient.Transport = &http.Transport{
+		DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+			return net.Dial("unix", strings.TrimPrefix(sock, "unix://"))
 		},
 	}
+	httpc := retryClient.StandardClient()
 
 	return &SocketClient{
-		Client:  &httpc,
+		Client:  httpc,
 		BaseURL: "http://d/v5.0.0/libpod",
 	}
 }
@@ -53,7 +99,11 @@ func (c *SocketClient) resolveURL(path string) string {
 var ErrPodmanAPIError = errors.New("podman api not available")
 
 func (c *SocketClient) Test(ctx context.Context) error {
-	r, err := c.Client.Get(c.resolveURL("info"))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.resolveURL("info"), nil)
+	if err != nil {
+		return err
+	}
+	r, err := c.Client.Do(req)
 	if err != nil {
 		return err
 	}
