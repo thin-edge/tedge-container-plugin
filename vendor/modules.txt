@@ -15,7 +15,7 @@ github.com/cihub/seelog/archive/zip
 # github.com/codeclysm/extract/v4 v4.0.0
 ## explicit; go 1.22
 github.com/codeclysm/extract/v4
-# github.com/compose-spec/compose-go/v2 v2.11.0
+# github.com/compose-spec/compose-go/v2 v2.12.1
 ## explicit; go 1.24
 github.com/compose-spec/compose-go/v2/cli
 github.com/compose-spec/compose-go/v2/consts
