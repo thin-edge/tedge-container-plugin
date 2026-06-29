@@ -185,7 +185,7 @@ github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 ## explicit
 github.com/pmezard/go-difflib/difflib
-# github.com/reubenmiller/go-c8y v0.37.9
+# github.com/reubenmiller/go-c8y v0.37.11
 ## explicit; go 1.25.0
 github.com/reubenmiller/go-c8y/pkg/c8y
 github.com/reubenmiller/go-c8y/pkg/c8y/binary
