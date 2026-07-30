@@ -32,7 +32,7 @@ trap -x
 }
 
 # with-contenv
-s6-envdir -L -- /run/s6/container_environment
+s6-envdir -Lf -- /run/s6/container_environment
 
 # Redirect stderr to stdout
 fdmove -c 2 1
