@@ -66,6 +66,10 @@ type Options struct {
 	SkipInclude bool
 	// SkipResolveEnvironment will ignore computing `environment` for services
 	SkipResolveEnvironment bool
+	// SkipResolveLabels will ignore resolving `label_file` into `labels` for services.
+	// When set, service `labels` may be incomplete: `label_file` entries are left unresolved,
+	// so callers must not treat `labels` as authoritative.
+	SkipResolveLabels bool
 	// SkipDefaultValues will ignore missing required attributes
 	SkipDefaultValues bool
 	// Interpolation options
@@ -78,6 +82,14 @@ type Options struct {
 	projectNameImperativelySet bool
 	// Profiles set profiles to enable
 	Profiles []string
+	// SelectedServices restricts the project model to these services (and their dependencies)
+	// after parsing. An empty slice means "all services". When set, services not in the list
+	// are dropped from the project before environment resolution, so their env_file / label_file
+	// entries are not loaded.
+	SelectedServices []string
+	// PruneUnnecessaryResources drops networks/volumes/secrets/configs/models that are not
+	// referenced by active services after service selection.
+	PruneUnnecessaryResources bool
 	// ResourceLoaders manages support for remote resources
 	ResourceLoaders []ResourceLoader
 	// KnownExtensions manages x-* attribute we know and the corresponding go structs
@@ -187,6 +199,8 @@ func (o *Options) clone() *Options {
 		projectName:                o.projectName,
 		projectNameImperativelySet: o.projectNameImperativelySet,
 		Profiles:                   o.Profiles,
+		SelectedServices:           o.SelectedServices,
+		PruneUnnecessaryResources:  o.PruneUnnecessaryResources,
 		ResourceLoaders:            o.ResourceLoaders,
 		KnownExtensions:            o.KnownExtensions,
 		Listeners:                  o.Listeners,
@@ -258,6 +272,22 @@ func WithProfiles(profiles []string) func(*Options) {
 	return func(opts *Options) {
 		opts.Profiles = profiles
 	}
+}
+
+// WithSelectedServices restricts the loaded project to the given services and their
+// dependencies. An empty slice means "all services". When set, services not in the
+// list are dropped from the project before environment resolution: their `env_file`
+// and `label_file` entries will not be loaded from disk.
+func WithSelectedServices(services []string) func(*Options) {
+	return func(opts *Options) {
+		opts.SelectedServices = services
+	}
+}
+
+// WithoutUnnecessaryResources drops networks/volumes/secrets/configs/models that
+// are not referenced by services remaining after selection.
+func WithoutUnnecessaryResources(opts *Options) {
+	opts.PruneUnnecessaryResources = true
 }
 
 // PostProcessor is used to tweak compose model based on metadata extracted during yaml Unmarshal phase
@@ -376,6 +406,10 @@ func loadYamlModel(ctx context.Context, config types.ConfigDetails, opts *Option
 		err  error
 	)
 	workingDir, environment := config.WorkingDir, config.Environment
+
+	// interpolation options and environment are fixed within this call, so
+	// extends.file bases can be shared by every service loaded from it
+	ctx = withExtendsCache(ctx)
 
 	for _, file := range config.ConfigFiles {
 		dict, _, err = loadYamlFile(ctx, file, opts, workingDir, environment, ct, dict, included)
@@ -539,7 +573,7 @@ func load(ctx context.Context, configDetails types.ConfigDetails, opts *Options,
 		}
 	}
 
-	dict, err := loadYamlModel(ctx, configDetails, opts, &cycleTracker{}, nil)
+	dict, err := loadYamlModel(withIncludeCache(ctx), configDetails, opts, &cycleTracker{}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -603,6 +637,24 @@ func ModelToProject(dict map[string]interface{}, opts *Options, configDetails ty
 		}
 	}
 
+	if len(opts.SelectedServices) > 0 {
+		// WithServicesEnabled must precede WithSelectedServices: the latter walks
+		// only active services, so any selected service currently sitting in
+		// DisabledServices (e.g. gated by a profile) would otherwise be invisible.
+		project, err = project.WithServicesEnabled(opts.SelectedServices...)
+		if err != nil {
+			return nil, err
+		}
+		project, err = project.WithSelectedServices(opts.SelectedServices)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if opts.PruneUnnecessaryResources {
+		project = project.WithoutUnnecessaryResources()
+	}
+
 	if !opts.SkipResolveEnvironment {
 		project, err = project.WithServicesEnvironmentResolved(opts.discardEnvFiles)
 		if err != nil {
@@ -610,9 +662,12 @@ func ModelToProject(dict map[string]interface{}, opts *Options, configDetails ty
 		}
 	}
 
-	project, err = project.WithServicesLabelsResolved(opts.discardEnvFiles)
-	if err != nil {
-		return nil, err
+	if !opts.SkipResolveLabels {
+		// discardEnvFiles only applies to `env_file`: `label_file` entries are never discarded
+		project, err = project.WithServicesLabelsResolved(false)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return project, nil
