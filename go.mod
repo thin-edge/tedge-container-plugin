@@ -7,7 +7,7 @@ require (
 	github.com/compose-spec/compose-go/v2 v2.11.0
 	github.com/distribution/reference v0.6.0
 	github.com/docker/docker v28.5.2+incompatible
-	github.com/docker/go-connections v0.7.0
+	github.com/docker/go-connections v0.8.1
 	github.com/docker/go-units v0.5.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/google/go-querystring v1.2.0
