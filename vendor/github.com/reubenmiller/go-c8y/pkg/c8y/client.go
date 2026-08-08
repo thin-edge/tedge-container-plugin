@@ -583,7 +583,7 @@ func (c *Client) SetBaseURL(v string) error {
 // must be a struct whose fields may contain "url" tags.
 func addOptions(s string, opt interface{}) (string, error) {
 	v := reflect.ValueOf(opt)
-	if v.Kind() == reflect.Ptr && v.IsNil() {
+	if v.Kind() == reflect.Pointer && v.IsNil() {
 		return s, nil
 	}
 
@@ -1579,9 +1579,17 @@ func (c *Client) Do(ctx context.Context, req *http.Request, v interface{}, middl
 		return nil, err
 	}
 
+	var ctxCommonOptions CommonOptions
+
+	if ctxOptions := ctx.Value(GetContextCommonOptionsKey()); ctxOptions != nil {
+		if ctxOptions, ok := ctxOptions.(CommonOptions); ok {
+			ctxCommonOptions = ctxOptions
+		}
+	}
+
 	response := newResponse(resp, duration)
 
-	err = CheckResponse(resp)
+	err = CheckResponse(response, ctxCommonOptions)
 	if err != nil {
 		// even though there was an error, we still return the response
 		// in case the caller wants to inspect it further
@@ -1589,12 +1597,8 @@ func (c *Client) Do(ctx context.Context, req *http.Request, v interface{}, middl
 		return response, err
 	}
 
-	if ctxOptions := ctx.Value(GetContextCommonOptionsKey()); ctxOptions != nil {
-		if ctxOptions, ok := ctxOptions.(CommonOptions); ok {
-			if ctxOptions.OnResponse != nil {
-				ctxOptions.OnResponse(response.Response)
-			}
-		}
+	if ctxCommonOptions.OnResponse != nil {
+		ctxCommonOptions.OnResponse(response.Response)
 	}
 
 	if v != nil {
@@ -1698,19 +1702,25 @@ func (r *ErrorResponse) Error() string {
 // API error responses are expected to have either no response
 // body, or a JSON response body that maps to ErrorResponse. Any other
 // response body will be silently ignored.
-func CheckResponse(r *http.Response) error {
-	if c := r.StatusCode; 200 <= c && c <= 299 {
+func CheckResponse(r *Response, opt CommonOptions) error {
+	if r == nil {
+		return fmt.Errorf("response is nil")
+	}
+	if c := r.StatusCode(); 200 <= c && c <= 299 {
 		return nil
 	}
 
-	errorResponse := &ErrorResponse{Response: newResponse(r, 0)}
-	data, err := io.ReadAll(r.Body)
+	errorResponse := &ErrorResponse{Response: r}
+	data, err := io.ReadAll(r.RawBody())
 
 	// Store copy of response as error messages are short anyway
 	errorResponse.Response.SetBody(data)
 
 	if err == nil && data != nil {
 		DecodeJSONBytes(data, errorResponse)
+	}
+	if opt.WithError {
+		r.SetBody(data)
 	}
 	return errorResponse
 }

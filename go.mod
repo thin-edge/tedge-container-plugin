@@ -14,7 +14,7 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/hashicorp/go-version v1.9.0
 	github.com/pkg/errors v0.9.1
-	github.com/reubenmiller/go-c8y v0.37.9
+	github.com/reubenmiller/go-c8y v0.37.11
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1

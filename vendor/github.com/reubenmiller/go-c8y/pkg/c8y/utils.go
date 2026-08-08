@@ -4,13 +4,44 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 )
+
+var multipartQuoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+
+// createFormFile is like multipart.Writer.CreateFormFile but allows the part's
+// Content-Type to be set instead of always using application/octet-stream
+func createFormFile(w *multipart.Writer, fieldname string, filename string, contentType string) (io.Writer, error) {
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition",
+		fmt.Sprintf(`form-data; name="%s"; filename="%s"`,
+			multipartQuoteEscaper.Replace(fieldname), multipartQuoteEscaper.Replace(filename)))
+	h.Set("Content-Type", contentType)
+	return w.CreatePart(h)
+}
+
+// detectContentType returns the content type of a file by first checking the file
+// extension, and then by sniffing the first 512 bytes of the content.
+// The returned reader yields the full contents including any bytes consumed whilst sniffing
+func detectContentType(filename string, r io.Reader) (string, io.Reader) {
+	if contentType := mime.TypeByExtension(filepath.Ext(filename)); contentType != "" {
+		return strings.Split(contentType, ";")[0], r
+	}
+	buf := make([]byte, 512)
+	n, _ := io.ReadFull(r, buf)
+	contentType := http.DetectContentType(buf[:n])
+	return strings.Split(contentType, ";")[0], io.MultiReader(bytes.NewReader(buf[:n]), r)
+}
 
 // Prepare multipart form-data request which uses io.Pipe to buffer reading the message to ensure files won't be read entirely into memory
 func prepareMultipartRequest(method string, url string, values map[string]io.Reader) (*http.Request, error) {
@@ -30,8 +61,9 @@ func prepareMultipartRequest(method string, url string, values map[string]io.Rea
 		var err error
 		for _, key := range keys {
 			r := values[key]
-			if key == "filename" {
-				// Ignore filename as it is used to name the uploaded file
+			if key == "filename" || key == "contentType" {
+				// Ignore filename and contentType as they are used as metadata
+				// for the uploaded file rather than as standalone form fields
 				continue
 			}
 
@@ -52,7 +84,25 @@ func prepareMultipartRequest(method string, url string, values map[string]io.Rea
 						return
 					}
 				}
-				if fw, err = w.CreateFormFile(key, filename); err != nil {
+				// Check if a manual content type was provided, otherwise detect it
+				// from the filename, falling back to sniffing the content, so files
+				// such as log files are viewable in the Cumulocity UI (which
+				// requires a text/* content type)
+				contentType := ""
+				if manualContentType, ok := values["contentType"]; ok {
+					if b, rErr := io.ReadAll(manualContentType); rErr == nil {
+						contentType = string(b)
+					} else {
+						pw.CloseWithError(rErr)
+						return
+					}
+				}
+				if contentType == "" {
+					var contents io.Reader
+					contentType, contents = detectContentType(filename, r)
+					r = contents
+				}
+				if fw, err = createFormFile(w, key, filename, contentType); err != nil {
 					pw.CloseWithError(err)
 					return
 				}
