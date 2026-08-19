@@ -28,10 +28,10 @@ type SoftwareItem struct {
 }
 
 type UpdateInfo struct {
-	ContainerName string           `json:"containerName"`
-	Image         string           `json:"image"`
+	ContainerName string `json:"containerName"`
+	Image         string `json:"image"`
 	// Url of an image archive to install the image from, instead of a container registry
-	Url        string           `json:"url"`
+	Url        string           `json:"url,omitempty"`
 	UpdateList []SoftwareModule `json:"updateList"`
 }
 
