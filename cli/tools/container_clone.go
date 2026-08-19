@@ -25,6 +25,7 @@ type ContainerCloneCommand struct {
 	ForkName        string
 	ForceUpdate     bool
 	Fork            bool
+	NoPull          bool
 	WaitForExit     bool
 	CheckForUpdate  bool
 	ContainerID     string
@@ -64,6 +65,7 @@ func NewContainerCloneCommand(ctx cli.Cli) *cobra.Command {
 	cmd.Flags().StringSliceVarP(&command.Env, "env", "e", []string{}, "Environment variables to add to the container")
 	cmd.Flags().BoolVar(&command.ForceUpdate, "force", false, "Force an update, disable the image comparison check")
 	cmd.Flags().BoolVar(&command.Fork, "fork", false, "Spawn a new container to do the update")
+	cmd.Flags().BoolVar(&command.NoPull, "no-pull", false, "Require the image to already be available locally, instead of pulling it")
 	cmd.Flags().BoolVar(&command.WaitForExit, "wait-for-exit", false, "Wait for the container to stop/exit before updating")
 	cmd.Flags().BoolVar(&command.CheckForUpdate, "check", false, "Only check if an update is necessary, don't perform the update")
 	cmd.Flags().BoolVar(&command.ForkSkipNetwork, "fork-skip-network", true, "Don't copy network settings in the forked container. Copying settings can cause podman iptables to fail for unknown reasons")
@@ -118,13 +120,22 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 		slog.Info("Using image of current container.", "image", c.Image)
 	}
 
-	// Pull potentially new image
-	if _, err := containerCli.ImagePullWithRetries(ctx, c.Image, c.CommandContext.ImageAlwaysPull(), container.ImagePullOptions{
-		AuthFunc:    c.CommandContext.GetContainerRepositoryCredentialsFunc(c.Image),
-		MaxAttempts: 2,
-		Wait:        5 * time.Second,
-	}); err != nil {
-		return err
+	if c.NoPull {
+		// The image is expected to have been installed beforehand, e.g. from an archive,
+		// so don't reach out to a registry which may not be reachable at all
+		if _, err := containerCli.Client.ImageInspect(ctx, c.Image); err != nil {
+			return fmt.Errorf("image is not available locally and pulling is disabled. image=%s: %w", c.Image, err)
+		}
+		slog.Info("Using the local image.", "image", c.Image)
+	} else {
+		// Pull potentially new image
+		if _, err := containerCli.ImagePullWithRetries(ctx, c.Image, c.CommandContext.ImageAlwaysPull(), container.ImagePullOptions{
+			AuthFunc:    c.CommandContext.GetContainerRepositoryCredentialsFunc(c.Image),
+			MaxAttempts: 2,
+			Wait:        5 * time.Second,
+		}); err != nil {
+			return err
+		}
 	}
 
 	if c.CheckForUpdate {
@@ -172,6 +183,10 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 		// TODO: Pull in new image, and fail early if it does not work (before forking etc.)
 
 		// TODO: Should the container be run as root instead?
+
+		if c.NoPull {
+			forkCmd = append(forkCmd, "--no-pull")
+		}
 
 		if c.WaitForExit {
 			// Wait for exit does not work if the restart policy can't be changed
