@@ -30,7 +30,9 @@ type SoftwareItem struct {
 type UpdateInfo struct {
 	ContainerName string           `json:"containerName"`
 	Image         string           `json:"image"`
-	UpdateList    []SoftwareModule `json:"updateList"`
+	// Url of an image archive to install the image from, instead of a container registry
+	Url        string           `json:"url"`
+	UpdateList []SoftwareModule `json:"updateList"`
 }
 
 var ExitYes = 0
@@ -110,6 +112,7 @@ func (c *CheckCommand) RunE(cmd *cobra.Command, args []string) error {
 				case SoftwareManagementActionInstall:
 					match.ContainerName = item.Name
 					match.Image = item.Version
+					match.Url = item.Url
 					includesSelfUpdate = true
 				case SoftwareManagementActionRemove:
 					return cli.ExitCodeError{
@@ -138,6 +141,7 @@ func (c *CheckCommand) RunE(cmd *cobra.Command, args []string) error {
 						// install
 						match.ContainerName = item.Name
 						match.Image = item.Version
+						match.Url = item.Url
 						includesSelfUpdate = true
 					}
 				} else {
