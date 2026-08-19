@@ -118,19 +118,13 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 			}
 
 			// The user has opted into file based images, so fail hard rather than
-			// falling back to pulling the image from a registry
+			// falling back to pulling the image from a registry, or tagging an unrelated
+			// image with the requested reference (which would then shadow the registry)
 			if !imageRefFound {
-				switch count := len(images); count {
-				case 0:
+				if len(images) == 0 {
 					return fmt.Errorf("no image detected in file. name=%s, version=%s, file=%s", imageName, c.ModuleVersion, c.File)
-				case 1:
-					slog.Info("Tagging loaded image with the requested reference.", "source", images[0], "target", imageRef)
-					if err := cli.Client.ImageTag(ctx, images[0], imageRef); err != nil {
-						return err
-					}
-				default:
-					return fmt.Errorf("more than 1 image detected in file and none match the requested image. image=%s, images=%s, file=%s", imageRef, strings.Join(images, ","), c.File)
 				}
+				return fmt.Errorf("file does not contain the requested image. image=%s, images=%s, file=%s", imageRef, strings.Join(images, ","), c.File)
 			}
 		}
 	}
