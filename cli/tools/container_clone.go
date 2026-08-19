@@ -184,10 +184,6 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 
 		// TODO: Should the container be run as root instead?
 
-		if c.NoPull {
-			forkCmd = append(forkCmd, "--no-pull")
-		}
-
 		if c.WaitForExit {
 			// Wait for exit does not work if the restart policy can't be changed
 			// For example podman <5.1 does not support changing of the restart policy
@@ -234,9 +230,21 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 
 		slog.Info("Forking container.", "command", strings.Join(forkCmd, " "))
 
+		forkEnv := make([]string, 0)
+		if c.NoPull {
+			// Disable pulling in the forked container via a setting rather than the
+			// --no-pull flag, as the fork runs the binary of the image being installed
+			// which may predate the flag. The image is already available locally, so
+			// this is enough to keep the update off the network
+			forkEnv = append(forkEnv, "CONTAINER_CONTAINER_ALWAYSPULL=false")
+		}
+
 		cloneOptions := container.CloneOptions{
 			// Fork container name. If blank then a random name will be used
 			Name: c.ForkName,
+
+			// Settings for the forked container itself
+			Env: forkEnv,
 
 			Cmd: forkCmd,
 
