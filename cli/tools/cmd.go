@@ -14,6 +14,7 @@ func NewToolsCommand(cmdCli cli.Cli) *cobra.Command {
 	}
 	cmd.AddCommand(
 		NewContainerCloneCommand(cmdCli),
+		NewImageInstallCommand(cmdCli),
 		NewContainerLogsCommand(cmdCli),
 		NewContainerRunInContextCommand(cmdCli),
 		NewContainerRemoveCommand(cmdCli),

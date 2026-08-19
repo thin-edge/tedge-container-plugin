@@ -5,15 +5,9 @@ package container_image
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
 	"log/slog"
-	"os"
-	"strings"
 	"time"
 
-	"github.com/docker/docker/client"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/thin-edge/tedge-container-plugin/pkg/cli"
@@ -26,10 +20,6 @@ type InstallCommand struct {
 	CommandContext cli.Cli
 	ModuleVersion  string
 	File           string
-}
-
-type ImageResponse struct {
-	Stream string `json:"stream"`
 }
 
 // installCmd represents the install command
@@ -78,55 +68,11 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	if c.File != "" {
-		slog.Info("Loading image from file.", "file", c.File)
-		file, err := os.Open(c.File)
+		loadedRef, err := cli.LoadImageFromFile(ctx, c.File, imageRef)
 		if err != nil {
 			return err
 		}
-		defer func() { _ = file.Close() }()
-
-		imageResp, err := cli.Client.ImageLoad(ctx, file, client.ImageLoadWithQuiet(true))
-		if err != nil {
-			return err
-		}
-		defer func() { _ = imageResp.Body.Close() }()
-		if imageResp.JSON {
-			b, err := io.ReadAll(imageResp.Body)
-			if err != nil {
-				return nil
-			}
-			imageDetails := &ImageResponse{}
-			if err := json.Unmarshal(b, &imageDetails); err != nil {
-				return err
-			}
-
-			slog.Info("Loaded image.", "stream", imageDetails.Stream)
-			images := make([]string, 0)
-			imageRefFound := false
-			for _, line := range strings.Split(imageDetails.Stream, "\n") {
-				if strings.HasPrefix(line, "Loaded image: ") {
-					loadedRef := strings.TrimPrefix(line, "Loaded image: ")
-					slog.Info("Found image reference in file.", "file", c.File, "image", loadedRef)
-					images = append(images, loadedRef)
-					if !imageRefFound && container.ImageRefsEqual(loadedRef, imageRef) {
-						// Use the reference reported by the engine as it is guaranteed to
-						// resolve regardless of how the engine normalises tag strings
-						imageRef = loadedRef
-						imageRefFound = true
-					}
-				}
-			}
-
-			// The user has opted into file based images, so fail hard rather than
-			// falling back to pulling the image from a registry, or tagging an unrelated
-			// image with the requested reference (which would then shadow the registry)
-			if !imageRefFound {
-				if len(images) == 0 {
-					return fmt.Errorf("no image detected in file. name=%s, version=%s, file=%s", imageName, c.ModuleVersion, c.File)
-				}
-				return fmt.Errorf("file does not contain the requested image. image=%s, images=%s, file=%s", imageRef, strings.Join(images, ","), c.File)
-			}
-		}
+		imageRef = loadedRef
 	}
 
 	//
