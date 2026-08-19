@@ -45,6 +45,10 @@ Example 1: Install a container and pull in the image from any available registri
 
   $ tedge-container container-image install docker.io/nginx --module-version latest
 
+Example 2: Install an image from an archive created via 'docker save'
+
+  $ tedge-container container-image install docker.io/nginx:latest --file ./nginx.tar.gz
+
 		`,
 		Args:    cobra.ExactArgs(1),
 		PreRunE: IsEnabled(cliContext),
@@ -61,7 +65,7 @@ Example 1: Install a container and pull in the image from any available registri
 func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 	slog.Info("Executing", "cmd", cmd.CalledAs(), "args", args)
 	imageName := args[0]
-	imageRef := fmt.Sprintf("%s:%s", imageName, c.ModuleVersion)
+	imageRef := container.BuildImageRef(imageName, c.ModuleVersion)
 
 	// Only enable pulling if the user is providing a file
 	disablePull := c.File != ""
@@ -98,33 +102,29 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 
 			slog.Info("Loaded image.", "stream", imageDetails.Stream)
 			images := make([]string, 0)
-			moduleVersionFound := false
+			imageRefFound := false
 			for _, line := range strings.Split(imageDetails.Stream, "\n") {
 				if strings.HasPrefix(line, "Loaded image: ") {
-					imageName := strings.TrimPrefix(line, "Loaded image: ")
-					slog.Info("Found image reference in file.", "file", c.File, "image", imageName)
-					images = append(images, imageName)
-					if imageName == c.ModuleVersion {
-						moduleVersionFound = true
+					loadedRef := strings.TrimPrefix(line, "Loaded image: ")
+					slog.Info("Found image reference in file.", "file", c.File, "image", loadedRef)
+					images = append(images, loadedRef)
+					if !imageRefFound && container.ImageRefsEqual(loadedRef, imageRef) {
+						// Use the reference reported by the engine as it is guaranteed to
+						// resolve regardless of how the engine normalises tag strings
+						imageRef = loadedRef
+						imageRefFound = true
 					}
 				}
 			}
 
-			// Check if the user has given correct image to use from the
-			if !moduleVersionFound {
-				switch count := len(images); count {
-				case 0:
-					slog.Warn("No images detected in stream output. Aborting to prevent accidentally load image from network.", "file", c.File, "images", images)
-					// Fail hard to prevent potentially trying to pull in the image (as the user has opted into file based images)
+			// The user has opted into file based images, so fail hard rather than
+			// falling back to pulling the image from a registry, or tagging an unrelated
+			// image with the requested reference (which would then shadow the registry)
+			if !imageRefFound {
+				if len(images) == 0 {
 					return fmt.Errorf("no image detected in file. name=%s, version=%s, file=%s", imageName, c.ModuleVersion, c.File)
-				default:
-					if count > 1 {
-						slog.Warn("More than 1 image detected in file. Only using the first image.", "file", c.File, "images", images, "image_count", count)
-					}
-
-					imageRef = images[0]
-					slog.Info("Detected image reference does not match the module-version. Using first imageRef from loaded image.", "imageRef", imageRef, "version", c.ModuleVersion)
 				}
+				return fmt.Errorf("file does not contain the requested image. image=%s, images=%s, file=%s", imageRef, strings.Join(images, ","), c.File)
 			}
 		}
 	}

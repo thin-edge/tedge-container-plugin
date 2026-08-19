@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/containerd/errdefs"
+	"github.com/distribution/reference"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
@@ -765,6 +766,18 @@ type ImagePullOptions struct {
 	Wait        time.Duration
 }
 
+// BuildImageRef combines a software module name and version into an image reference.
+// The version is ignored if the name already includes a tag or digest.
+func BuildImageRef(name string, version string) string {
+	if version == "" {
+		return name
+	}
+	if named, err := reference.ParseNormalizedNamed(name); err == nil && !reference.IsNameOnly(named) {
+		return name
+	}
+	return fmt.Sprintf("%s:%s", name, version)
+}
+
 // Check if the given docker.io image has fully qualified (e.g. docker.io/library/<image>)
 // if not, then expand it to its fully qualified name.
 func ResolveDockerIOImage(imageRef string) (string, bool) {
@@ -1165,6 +1178,8 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 				slog.Warn("compose stop failed (ignoring).", "err", stopRunErr)
 			}
 		}
+
+		// TODO: add option to control whether --volumes are purged or not
 
 		command, args, err := prepareComposeCommand("down", "--remove-orphans", "--volumes")
 		if err != nil {

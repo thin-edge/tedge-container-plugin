@@ -129,3 +129,27 @@ func Test_PruneImages(t *testing.T) {
 	}
 	_ = result
 }
+
+func Test_BuildImageRef(t *testing.T) {
+	testcases := []struct {
+		Name    string
+		Version string
+		Expect  string
+	}{
+		{Name: "nginx", Version: "1.2.3", Expect: "nginx:1.2.3"},
+		{Name: "ghcr.io/owner/image", Version: "1.0", Expect: "ghcr.io/owner/image:1.0"},
+		{Name: "localhost:5000/app", Version: "1.0", Expect: "localhost:5000/app:1.0"},
+		// The version is ignored when the name is already a fully qualified reference
+		{Name: "ghcr.io/owner/image:1.0", Version: "1.0", Expect: "ghcr.io/owner/image:1.0"},
+		{Name: "ghcr.io/owner/image:1.0", Version: "latest", Expect: "ghcr.io/owner/image:1.0"},
+		{Name: "nginx@sha256:0000000000000000000000000000000000000000000000000000000000000000", Version: "latest", Expect: "nginx@sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+		{Name: "nginx", Version: "", Expect: "nginx"},
+	}
+
+	for _, tc := range testcases {
+		got := BuildImageRef(tc.Name, tc.Version)
+		if got != tc.Expect {
+			t.Errorf("BuildImageRef(%q, %q) = %q, want %q", tc.Name, tc.Version, got, tc.Expect)
+		}
+	}
+}
