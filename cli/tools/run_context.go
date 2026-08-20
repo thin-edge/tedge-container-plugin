@@ -66,11 +66,7 @@ func (c *ContainerRunInContextCommand) RunE(cmd *cobra.Command, args []string) e
 
 	ctx := context.Background()
 
-	currentContainer := containerSDK.InspectResponse{
-		Config:            &containerSDK.Config{},
-		ContainerJSONBase: &containerSDK.ContainerJSONBase{},
-		NetworkSettings:   &containerSDK.NetworkSettings{},
-	}
+	var currentContainer containerSDK.InspectResponse
 
 	if c.ContainerID == "" {
 		slog.Info("No container provided, inferring the update is intended for the current container")

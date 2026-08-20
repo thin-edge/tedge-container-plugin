@@ -23,6 +23,26 @@ Check for Update
     # Update is required as local image is not available
     DeviceLibrary.Execute Command    sudo tedge-container tools container-clone --container app1 --image ghcr.io/thin-edge/test-images/httpd:2.4.65 --check    exp_exit_code=0
 
+Check for Update Without Pulling
+    Create Container    app10    ghcr.io/thin-edge/test-images/httpd:2.4.64
+
+    # The image is already available locally, so no registry is needed
+    DeviceLibrary.Execute Command
+    ...    sudo tedge-container tools container-clone --container app10 --image ghcr.io/thin-edge/test-images/httpd:2.4.64 --check --no-pull
+    ...    exp_exit_code=2
+
+    # An image which is not available locally is an error rather than a pull
+    DeviceLibrary.Execute Command
+    ...    sudo tedge-container tools container-clone --container app10 --image example.com/absent:1.0 --check --no-pull
+    ...    exp_exit_code=!0
+    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker image inspect example.com/absent:1.0    exp_exit_code=!0
+
+Check for Update Without Pulling Ignores Always Pull
+    Create Container    app11    ghcr.io/thin-edge/test-images/httpd:2.4.64
+    DeviceLibrary.Execute Command
+    ...    cmd=sudo sh -c 'CONTAINER_CONTAINER_ALWAYSPULL=true tedge-container tools container-clone --container app11 --image ghcr.io/thin-edge/test-images/httpd:2.4.64 --check --no-pull'
+    ...    exp_exit_code=2
+
 Clone Existing Container
     Create Container    app2    ghcr.io/thin-edge/test-images/httpd:2.4
     ${prev_container_id}=    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker container inspect app2 --format "{{.Id}}"

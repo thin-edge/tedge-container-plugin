@@ -16,6 +16,9 @@ import (
 	"github.com/thin-edge/tedge-container-plugin/pkg/utils"
 )
 
+// AlwaysPullEnvVariable is the environment variable form of the container.alwaysPull setting
+const AlwaysPullEnvVariable = "CONTAINER_CONTAINER_ALWAYSPULL"
+
 type ContainerCloneCommand struct {
 	*cobra.Command
 
@@ -25,6 +28,7 @@ type ContainerCloneCommand struct {
 	ForkName        string
 	ForceUpdate     bool
 	Fork            bool
+	NoPull          bool
 	WaitForExit     bool
 	CheckForUpdate  bool
 	ContainerID     string
@@ -64,6 +68,7 @@ func NewContainerCloneCommand(ctx cli.Cli) *cobra.Command {
 	cmd.Flags().StringSliceVarP(&command.Env, "env", "e", []string{}, "Environment variables to add to the container")
 	cmd.Flags().BoolVar(&command.ForceUpdate, "force", false, "Force an update, disable the image comparison check")
 	cmd.Flags().BoolVar(&command.Fork, "fork", false, "Spawn a new container to do the update")
+	cmd.Flags().BoolVar(&command.NoPull, "no-pull", false, "Require the image to already be available locally, instead of pulling it")
 	cmd.Flags().BoolVar(&command.WaitForExit, "wait-for-exit", false, "Wait for the container to stop/exit before updating")
 	cmd.Flags().BoolVar(&command.CheckForUpdate, "check", false, "Only check if an update is necessary, don't perform the update")
 	cmd.Flags().BoolVar(&command.ForkSkipNetwork, "fork-skip-network", true, "Don't copy network settings in the forked container. Copying settings can cause podman iptables to fail for unknown reasons")
@@ -118,13 +123,22 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 		slog.Info("Using image of current container.", "image", c.Image)
 	}
 
-	// Pull potentially new image
-	if _, err := containerCli.ImagePullWithRetries(ctx, c.Image, c.CommandContext.ImageAlwaysPull(), container.ImagePullOptions{
-		AuthFunc:    c.CommandContext.GetContainerRepositoryCredentialsFunc(c.Image),
-		MaxAttempts: 2,
-		Wait:        5 * time.Second,
-	}); err != nil {
-		return err
+	if c.NoPull {
+		// The image is expected to have been installed beforehand, e.g. from an archive,
+		// so don't reach out to a registry which may not be reachable at all
+		if _, err := containerCli.Client.ImageInspect(ctx, c.Image); err != nil {
+			return fmt.Errorf("image is not available locally and pulling is disabled. image=%s: %w", c.Image, err)
+		}
+		slog.Info("Using the local image.", "image", c.Image)
+	} else {
+		// Pull potentially new image
+		if _, err := containerCli.ImagePullWithRetries(ctx, c.Image, c.CommandContext.ImageAlwaysPull(), container.ImagePullOptions{
+			AuthFunc:    c.CommandContext.GetContainerRepositoryCredentialsFunc(c.Image),
+			MaxAttempts: 2,
+			Wait:        5 * time.Second,
+		}); err != nil {
+			return err
+		}
 	}
 
 	if c.CheckForUpdate {
@@ -219,9 +233,28 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 
 		slog.Info("Forking container.", "command", strings.Join(forkCmd, " "))
 
+		// The forked container inherits the environment of the container being cloned,
+		// these are only the additions and removals on top of it
+		forkEnv := make([]string, 0)
+		forkIgnoreEnv := append([]string{}, c.IgnoreEnv...)
+		if c.NoPull {
+			// Disable pulling in the forked container via a setting rather than the
+			// --no-pull flag, as the fork runs the binary of the image being installed
+			// which may predate the flag. The image is already available locally, so
+			// this is enough to keep the update off the network.
+			// Drop any inherited value first, rather than relying on how an engine
+			// resolves a duplicated variable. Only the fork is affected, the updated
+			// container keeps the setting it was configured with
+			forkIgnoreEnv = append(forkIgnoreEnv, AlwaysPullEnvVariable+"=")
+			forkEnv = append(forkEnv, AlwaysPullEnvVariable+"=false")
+		}
+
 		cloneOptions := container.CloneOptions{
 			// Fork container name. If blank then a random name will be used
 			Name: c.ForkName,
+
+			// Settings for the forked container itself
+			Env: forkEnv,
 
 			Cmd: forkCmd,
 
@@ -244,7 +277,7 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 			SkipNetwork: c.ForkSkipNetwork,
 
 			// Ignore the same env variables in the forked container as used in the cloning
-			IgnoreEnvVars: c.IgnoreEnv,
+			IgnoreEnvVars: forkIgnoreEnv,
 		}
 
 		return containerCli.Fork(context.Background(), currentContainer, cloneOptions)
