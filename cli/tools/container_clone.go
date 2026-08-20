@@ -16,6 +16,9 @@ import (
 	"github.com/thin-edge/tedge-container-plugin/pkg/utils"
 )
 
+// AlwaysPullEnvVariable is the environment variable form of the container.alwaysPull setting
+const AlwaysPullEnvVariable = "CONTAINER_CONTAINER_ALWAYSPULL"
+
 type ContainerCloneCommand struct {
 	*cobra.Command
 
@@ -230,13 +233,20 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 
 		slog.Info("Forking container.", "command", strings.Join(forkCmd, " "))
 
+		// The forked container inherits the environment of the container being cloned,
+		// these are only the additions and removals on top of it
 		forkEnv := make([]string, 0)
+		forkIgnoreEnv := append([]string{}, c.IgnoreEnv...)
 		if c.NoPull {
 			// Disable pulling in the forked container via a setting rather than the
 			// --no-pull flag, as the fork runs the binary of the image being installed
 			// which may predate the flag. The image is already available locally, so
-			// this is enough to keep the update off the network
-			forkEnv = append(forkEnv, "CONTAINER_CONTAINER_ALWAYSPULL=false")
+			// this is enough to keep the update off the network.
+			// Drop any inherited value first, rather than relying on how an engine
+			// resolves a duplicated variable. Only the fork is affected, the updated
+			// container keeps the setting it was configured with
+			forkIgnoreEnv = append(forkIgnoreEnv, AlwaysPullEnvVariable+"=")
+			forkEnv = append(forkEnv, AlwaysPullEnvVariable+"=false")
 		}
 
 		cloneOptions := container.CloneOptions{
@@ -267,7 +277,7 @@ func (c *ContainerCloneCommand) RunE(cmd *cobra.Command, args []string) error {
 			SkipNetwork: c.ForkSkipNetwork,
 
 			// Ignore the same env variables in the forked container as used in the cloning
-			IgnoreEnvVars: c.IgnoreEnv,
+			IgnoreEnvVars: forkIgnoreEnv,
 		}
 
 		return containerCli.Fork(context.Background(), currentContainer, cloneOptions)
