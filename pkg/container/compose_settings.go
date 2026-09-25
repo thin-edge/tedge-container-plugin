@@ -5,10 +5,13 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	composeCli "github.com/compose-spec/compose-go/v2/cli"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -22,14 +25,6 @@ import (
 //	  remove_timeout: 30s
 const ComposeSettingsKey = "x-tedge"
 
-// Compose file names in the order that docker compose looks for them
-var composeFileNames = []string{
-	"compose.yaml",
-	"compose.yml",
-	"docker-compose.yml",
-	"docker-compose.yaml",
-}
-
 // ComposeSettings are the per-project settings read from the compose file.
 // A nil value means that the setting was not defined.
 type ComposeSettings struct {
@@ -39,6 +34,34 @@ type ComposeSettings struct {
 	// Time to wait for containers to stop before they are killed
 	// when the project is removed
 	RemoveTimeout *ComposeDuration `yaml:"remove_timeout"`
+
+	// Keys which are not supported (e.g. due to a typo, or a setting
+	// added in a newer version). They are ignored but reported to the user
+	UnknownKeys []string `yaml:"-"`
+}
+
+// Merge returns the settings with any settings defined in other taking precedence
+func (s ComposeSettings) Merge(other ComposeSettings) ComposeSettings {
+	if other.RemoveVolumes != nil {
+		s.RemoveVolumes = other.RemoveVolumes
+	}
+	if other.RemoveTimeout != nil {
+		s.RemoveTimeout = other.RemoveTimeout
+	}
+	s.UnknownKeys = append(slices.Clone(s.UnknownKeys), other.UnknownKeys...)
+	return s
+}
+
+// composeSettingsKeys returns the keys supported under x-tedge
+func composeSettingsKeys() []string {
+	keys := []string{}
+	t := reflect.TypeFor[ComposeSettings]()
+	for i := range t.NumField() {
+		if name, _, _ := strings.Cut(t.Field(i).Tag.Get("yaml"), ","); name != "" && name != "-" {
+			keys = append(keys, name)
+		}
+	}
+	return keys
 }
 
 // ComposeDuration is a duration which accepts either a duration
@@ -49,7 +72,7 @@ func (d *ComposeDuration) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind != yaml.ScalarNode {
 		return fmt.Errorf("invalid duration on line %d. expected a duration string (e.g. 30s) or number of seconds", value.Line)
 	}
-	v, err := parseComposeDuration(value.Value)
+	v, err := ParseDuration(value.Value)
 	if err != nil {
 		return fmt.Errorf("invalid duration on line %d. %w", value.Line, err)
 	}
@@ -57,8 +80,15 @@ func (d *ComposeDuration) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-func parseComposeDuration(v string) (time.Duration, error) {
+// ParseDuration parses either a duration string (e.g. "1m30s") or a
+// number of seconds (e.g. "90"). An empty value is a zero duration.
+// This is used for both the compose settings and the plugin configuration
+// so that a value has the same meaning in both places.
+func ParseDuration(v string) (time.Duration, error) {
 	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0, nil
+	}
 	if seconds, err := strconv.ParseFloat(v, 64); err == nil {
 		v = fmt.Sprintf("%gs", seconds)
 	}
@@ -72,22 +102,46 @@ func parseComposeDuration(v string) (time.Duration, error) {
 	return d, nil
 }
 
-// FindComposeFile returns the path to the compose file in the given
-// directory, or an empty string if no compose file exists
-func FindComposeFile(dir string) string {
-	for _, name := range composeFileNames {
-		p := filepath.Join(dir, name)
-		if info, err := os.Stat(p); err == nil && !info.IsDir() {
-			return p
+// FindComposeFiles returns the compose files which docker compose uses by default
+// in the given directory: the first main compose file, followed by the
+// first override file (if one exists). The same file names and order
+// as docker compose are used.
+func FindComposeFiles(dir string) []string {
+	files := make([]string, 0, 2)
+	for _, names := range [][]string{composeCli.DefaultFileNames, composeCli.DefaultOverrideFileNames} {
+		for _, name := range names {
+			p := filepath.Join(dir, name)
+			if info, err := os.Stat(p); err == nil && !info.IsDir() {
+				files = append(files, p)
+				break
+			}
+		}
+		if len(files) == 0 {
+			// an override file is only used together with a main file
+			break
 		}
 	}
-	return ""
+	return files
 }
 
-// ReadComposeSettings reads the x-tedge settings from a compose file.
+// ReadComposeSettings reads the x-tedge settings from the given compose files,
+// where the settings in later files take precedence.
+func ReadComposeSettings(paths ...string) (ComposeSettings, error) {
+	settings := ComposeSettings{}
+	for _, path := range paths {
+		fileSettings, err := readComposeSettingsFile(path)
+		if err != nil {
+			return settings, fmt.Errorf("%s: %w", filepath.Base(path), err)
+		}
+		settings = settings.Merge(fileSettings)
+	}
+	return settings, nil
+}
+
+// readComposeSettingsFile reads the x-tedge settings from a compose file.
 // The raw yaml is read (rather than loading the compose project) so that
 // the settings can still be read if the project's variables can't be resolved.
-func ReadComposeSettings(path string) (ComposeSettings, error) {
+func readComposeSettingsFile(path string) (ComposeSettings, error) {
 	settings := ComposeSettings{}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -99,11 +153,22 @@ func ReadComposeSettings(path string) (ComposeSettings, error) {
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return settings, err
 	}
-	if doc.Settings.IsZero() || doc.Settings.Tag == "!!null" {
+	node := &doc.Settings
+	if node.Kind == yaml.AliasNode && node.Alias != nil {
+		node = node.Alias
+	}
+	if node.IsZero() || node.Tag == "!!null" {
 		return settings, nil
 	}
-	if err := doc.Settings.Decode(&settings); err != nil {
+	if err := node.Decode(&settings); err != nil {
 		return settings, fmt.Errorf("invalid %s settings. %w", ComposeSettingsKey, err)
+	}
+
+	knownKeys := composeSettingsKeys()
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if key := node.Content[i].Value; !slices.Contains(knownKeys, key) {
+			settings.UnknownKeys = append(settings.UnknownKeys, key)
+		}
 	}
 	return settings, nil
 }

@@ -110,18 +110,84 @@ func TestReadComposeSettings(t *testing.T) {
 	}
 }
 
-func TestFindComposeFile(t *testing.T) {
+func TestFindComposeFiles(t *testing.T) {
 	dir := t.TempDir()
-	assert.Equal(t, "", FindComposeFile(dir))
+	assert.Empty(t, FindComposeFiles(dir))
+
+	// an override file is not used without a main compose file
+	writeComposeFile(t, dir, "docker-compose.override.yml", "")
+	assert.Empty(t, FindComposeFiles(dir))
 
 	writeComposeFile(t, dir, "docker-compose.yaml", "")
-	assert.Equal(t, filepath.Join(dir, "docker-compose.yaml"), FindComposeFile(dir))
+	assert.Equal(t, []string{
+		filepath.Join(dir, "docker-compose.yaml"),
+		filepath.Join(dir, "docker-compose.override.yml"),
+	}, FindComposeFiles(dir))
 
 	writeComposeFile(t, dir, "docker-compose.yml", "")
-	assert.Equal(t, filepath.Join(dir, "docker-compose.yml"), FindComposeFile(dir))
+	writeComposeFile(t, dir, "compose.override.yaml", "")
+	assert.Equal(t, []string{
+		filepath.Join(dir, "docker-compose.yml"),
+		filepath.Join(dir, "compose.override.yaml"),
+	}, FindComposeFiles(dir))
 
 	writeComposeFile(t, dir, "compose.yaml", "")
-	assert.Equal(t, filepath.Join(dir, "compose.yaml"), FindComposeFile(dir))
+	assert.Equal(t, filepath.Join(dir, "compose.yaml"), FindComposeFiles(dir)[0])
+}
+
+func TestReadComposeSettingsWithOverride(t *testing.T) {
+	dir := t.TempDir()
+	main := writeComposeFile(t, dir, "compose.yaml", "x-tedge:\n  remove_volumes: true\n  remove_timeout: 20s\n")
+	override := writeComposeFile(t, dir, "compose.override.yaml", "x-tedge:\n  remove_volumes: false\n")
+
+	settings, err := ReadComposeSettings(main, override)
+	assert.NoError(t, err)
+	assert.Equal(t, new(false), settings.RemoveVolumes)
+	assert.Equal(t, 20*time.Second, time.Duration(*settings.RemoveTimeout))
+
+	// an invalid override file is an error
+	writeComposeFile(t, dir, "compose.override.yaml", "x-tedge:\n  remove_volumes: nope\n")
+	_, err = ReadComposeSettings(main, override)
+	assert.ErrorContains(t, err, "compose.override.yaml")
+}
+
+func TestReadComposeSettingsUnknownKeys(t *testing.T) {
+	dir := t.TempDir()
+	p := writeComposeFile(t, dir, "compose.yaml", "x-tedge:\n  remove_volume: false\n  remove_timeout: 5\n  keep_volumes: true\n")
+	settings, err := ReadComposeSettings(p)
+	assert.NoError(t, err)
+	assert.Nil(t, settings.RemoveVolumes)
+	assert.Equal(t, []string{"remove_volume", "keep_volumes"}, settings.UnknownKeys)
+	assert.ElementsMatch(t, []string{"remove_volumes", "remove_timeout"}, composeSettingsKeys())
+}
+
+func TestReadComposeSettingsAlias(t *testing.T) {
+	p := writeComposeFile(t, t.TempDir(), "compose.yaml", "x-defaults: &defaults\n  remove_volumes: false\nx-tedge: *defaults\n")
+	settings, err := ReadComposeSettings(p)
+	assert.NoError(t, err)
+	assert.Equal(t, new(false), settings.RemoveVolumes)
+	assert.Empty(t, settings.UnknownKeys)
+}
+
+func TestParseDuration(t *testing.T) {
+	cases := map[string]time.Duration{
+		"":      0,
+		"0":     0,
+		"30":    30 * time.Second,
+		" 30 ":  30 * time.Second,
+		"1.5":   1500 * time.Millisecond,
+		"30s":   30 * time.Second,
+		"1m30s": 90 * time.Second,
+	}
+	for in, want := range cases {
+		got, err := ParseDuration(in)
+		assert.NoError(t, err, in)
+		assert.Equal(t, want, got, in)
+	}
+	for _, in := range []string{"abc", "-5", "-5s"} {
+		_, err := ParseDuration(in)
+		assert.Error(t, err, in)
+	}
 }
 
 func TestResolveComposeDownOptions(t *testing.T) {

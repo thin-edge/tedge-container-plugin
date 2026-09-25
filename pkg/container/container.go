@@ -1282,16 +1282,19 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 
 // resolveComposeDownOptions applies the x-tedge settings from the project's compose file
 func resolveComposeDownOptions(projectName string, workingDir string, opts ComposeDownOptions) ComposeDownOptions {
-	composeFile := FindComposeFile(workingDir)
-	if composeFile == "" {
+	composeFiles := FindComposeFiles(workingDir)
+	if len(composeFiles) == 0 {
 		return opts
 	}
-	settings, err := ReadComposeSettings(composeFile)
+	settings, err := ReadComposeSettings(composeFiles...)
 	if err != nil {
 		// Volumes can't be restored once removed, so keep them if the user's intent is unknown
-		slog.Warn("Could not read compose settings. Volumes will be kept.", "project", projectName, "file", composeFile, "err", err)
+		slog.Warn("Could not read compose settings. Volumes will be kept.", "project", projectName, "files", composeFiles, "err", err)
 		opts.RemoveVolumes = false
 		return opts
+	}
+	if len(settings.UnknownKeys) > 0 {
+		slog.Warn("Ignoring unknown compose settings. Check for typos.", "project", projectName, "key", ComposeSettingsKey, "unknown", settings.UnknownKeys, "supported", composeSettingsKeys())
 	}
 	opts = opts.WithSettings(settings)
 	slog.Info("Using compose down options.", "project", projectName, "remove_volumes", opts.RemoveVolumes, "remove_timeout", opts.RemoveTimeout)

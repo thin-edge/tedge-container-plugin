@@ -199,8 +199,11 @@ func (c *Cli) UseModuleNameForService() bool {
 // GetComposeDownOptions returns the default options used when removing a container-group.
 // Each option can be overridden per project using the x-tedge settings in the compose file
 func (c *Cli) GetComposeDownOptions() container.ComposeDownOptions {
-	timeout := viper.GetDuration("container_group.remove_timeout")
-	if timeout < 0 {
+	// Use the same parsing as the compose settings so that a number is always
+	// treated as seconds (viper would treat it as nanoseconds)
+	timeout, err := container.ParseDuration(viper.GetString("container_group.remove_timeout"))
+	if err != nil {
+		slog.Warn("Invalid container_group.remove_timeout value. Using the default.", "err", err)
 		timeout = 0
 	}
 	return container.ComposeDownOptions{
