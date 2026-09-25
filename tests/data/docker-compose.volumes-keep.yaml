@@ -1,0 +1,12 @@
+x-tedge:
+  remove_volumes: false
+  remove_timeout: 5s
+
+services:
+  app:
+    image: ghcr.io/thin-edge/test-images/nginx
+    volumes:
+      - data:/data
+
+volumes:
+  data: {}
