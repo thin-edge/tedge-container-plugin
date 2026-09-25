@@ -50,5 +50,5 @@ func (c *RemoveCommand) RunE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	workingDir := filepath.Join(persistentDir, "compose", projectName)
-	return cli.ComposeDown(ctx, cmd.ErrOrStderr(), projectName, workingDir)
+	return cli.ComposeDown(ctx, cmd.ErrOrStderr(), projectName, workingDir, c.CommandContext.GetComposeDownOptions())
 }

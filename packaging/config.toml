@@ -132,6 +132,25 @@ orphans_interval = "1h"
 # as "myapp@<service>" regardless of the module version installed.
 use_module_name = false
 
+# Remove the project's volumes (named volumes declared in the compose file and
+# anonymous volumes) when a container-group is removed. Volumes declared as
+# "external: true" are never removed.
+# Can be overridden per project in the compose file, e.g.
+#   x-tedge:
+#     remove_volumes: false
+remove_volumes = true
+
+# Time to wait for the containers to stop before they are killed when a
+# container-group is removed. The value can be a duration (e.g. "1m30s") or a
+# number of seconds (e.g. 90). "0s" uses each service's stop_grace_period
+# (which defaults to 10s). A non-zero value takes precedence over each
+# service's stop_grace_period, so avoid setting it lower than the
+# stop_grace_period of your services.
+# Can be overridden per project in the compose file, e.g.
+#   x-tedge:
+#     remove_timeout: 60s
+remove_timeout = "0s"
+
 [registry]
 # Path to the file containing container registry credentials
 credentials_path = "/data/tedge-container-plugin/credentials.toml"

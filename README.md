@@ -120,6 +120,40 @@ The software package properties are also describe below:
 |`softwareType`|`container-group`. This indicates that the package should be managed by the `container-group` software management plugin|
 |`url`|The url to the uploaded `docker-compose.yaml` file. This is a MANDATORY field and cannot be left blank.|
 
+#### Custom compose settings (`x-tedge`)
+
+How a `container-group` is managed can be customized per project by adding a top-level `x-tedge` [extension](https://docs.docker.com/reference/compose-file/extension/) to the compose file. Each setting uses the same name as the equivalent `[container_group]` setting in the [plugin configuration](./packaging/config.toml), and the value in the compose file takes precedence over the plugin configuration.
+
+```yaml
+x-tedge:
+  # Keep the project's volumes when the container-group is removed
+  remove_volumes: false
+  # Wait up to 60 seconds for the containers to stop before killing them
+  remove_timeout: 60s
+
+services:
+  app:
+    image: nginx
+    volumes:
+      - data:/data
+
+volumes:
+  data: {}
+```
+
+|Setting|Default|Description|
+|----|----|-----|
+|`remove_volumes`|`true`|Remove the project's volumes (named volumes declared in the compose file and anonymous volumes) when the container-group is removed. Volumes which are kept are not removed by the plugin, so they need to be removed manually if they are no longer needed|
+|`remove_timeout`|`0s`|Time to wait for the containers to stop before they are killed when the container-group is removed. The value can be a duration (e.g. `1m30s`) or a number of seconds (e.g. `90`), in both the compose file and the plugin configuration. `0s` uses each service's `stop_grace_period` (which defaults to 10 seconds). A non-zero value takes precedence over each service's `stop_grace_period`|
+
+**Notes**
+
+* If the `x-tedge` settings are invalid then the volumes are kept, as removed volumes can't be restored
+* Unknown keys under `x-tedge` (e.g. a typo such as `remove_volume`) are ignored, and a warning is logged when the container-group is removed
+* The settings are read from the same files that docker compose uses by default: the main compose file (`compose.yaml`, `compose.yml`, `docker-compose.yml` or `docker-compose.yaml`) and an optional override file (e.g. `compose.override.yaml`), where the override file takes precedence
+* Volumes declared with `external: true` are never removed, regardless of the `remove_volumes` setting
+* Top-level extensions require compose file format 3.4 or later when using the legacy `docker-compose` (v1) cli
+
 
 ### Monitoring
 

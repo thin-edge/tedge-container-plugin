@@ -61,6 +61,8 @@ func (c *Cli) OnInit() {
 	viper.SetDefault("data_dir", []string{"/data/tedge-container-plugin", "/var/tedge-container-plugin"})
 	viper.SetDefault("registry.credentials_path", "/data/tedge-container-plugin/credentials.toml")
 	viper.SetDefault("container_group.use_module_name", false)
+	viper.SetDefault("container_group.remove_volumes", true)
+	viper.SetDefault("container_group.remove_timeout", "0s")
 
 	// Default to the tedge plugins folder
 	if c.ConfigFile == "" {
@@ -192,6 +194,22 @@ func (c *Cli) GetCrashLoopThreshold() int {
 
 func (c *Cli) UseModuleNameForService() bool {
 	return viper.GetBool("container_group.use_module_name")
+}
+
+// GetComposeDownOptions returns the default options used when removing a container-group.
+// Each option can be overridden per project using the x-tedge settings in the compose file
+func (c *Cli) GetComposeDownOptions() container.ComposeDownOptions {
+	// Use the same parsing as the compose settings so that a number is always
+	// treated as seconds (viper would treat it as nanoseconds)
+	timeout, err := container.ParseDuration(viper.GetString("container_group.remove_timeout"))
+	if err != nil {
+		slog.Warn("Invalid container_group.remove_timeout value. Using the default.", "err", err)
+		timeout = 0
+	}
+	return container.ComposeDownOptions{
+		RemoveVolumes: viper.GetBool("container_group.remove_volumes"),
+		RemoveTimeout: timeout,
+	}
 }
 
 func (c *Cli) GetHTTPHost() string {

@@ -104,7 +104,43 @@ Docker gateway host is added by default
     [Tags]    podman    docker
     Install container-group and access gateway host    app9    service=app9@mqtt-client    file=${CURDIR}/data/docker-compose.app9-docker-host.yaml
 
+Remove container-group volumes by default
+    [Tags]    podman    docker
+    Install/uninstall container-group with volumes    app10    ${CURDIR}/data/docker-compose.volumes.yaml    volume_kept=${False}
+
+Keep container-group volumes when disabled in the compose file
+    [Tags]    podman    docker
+    Install/uninstall container-group with volumes    app11    ${CURDIR}/data/docker-compose.volumes-keep.yaml    volume_kept=${True}
+    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker volume rm app11_data
+
+Keep container-group volumes when disabled in the plugin configuration
+    [Tags]    podman    docker
+    Set container_group setting    remove_volumes    false
+    Install/uninstall container-group with volumes    app12    ${CURDIR}/data/docker-compose.volumes.yaml    volume_kept=${True}
+    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker volume rm app12_data
+
 *** Keywords ***
+
+Set container_group setting
+    [Arguments]    ${key}    ${value}
+    DeviceLibrary.Execute Command    cmd=sed -i '/^\[container_group\]/,/^\[.*\]/ { s/^${key} = .*$/${key} = ${value}/ }' /etc/tedge/plugins/tedge-container-plugin.toml
+
+Install/uninstall container-group with volumes
+    [Arguments]    ${name}    ${file}    ${volume_kept}
+    ${binary_url}=    Cumulocity.Create Inventory Binary    ${name}    container-group    file=${file}
+    ${operation}=    Cumulocity.Install Software    {"name": "${name}", "version": "1.0.0", "softwareType": "container-group", "url": "${binary_url}"}
+    Operation Should Be SUCCESSFUL    ${operation}    timeout=60
+    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker volume inspect ${name}_data
+
+    ${operation}=     Cumulocity.Uninstall Software    {"name": "${name}", "version": "1.0.0", "softwareType": "container-group"}
+    Operation Should Be SUCCESSFUL    ${operation}
+    Device Should Not Have Installed Software    ${name}
+
+    IF    ${volume_kept}
+        DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker volume inspect ${name}_data
+    ELSE
+        DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker volume inspect ${name}_data    exp_exit_code=!0
+    END
 
 Test Setup
     ${DEVICE_SN}=    Setup

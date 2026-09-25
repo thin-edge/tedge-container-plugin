@@ -1,0 +1,8 @@
+services:
+  app:
+    image: ghcr.io/thin-edge/test-images/nginx
+    volumes:
+      - data:/data
+
+volumes:
+  data: {}
