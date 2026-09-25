@@ -138,6 +138,7 @@ type ServiceConfig struct {
 	Volumes         []ServiceVolumeConfig            `yaml:"volumes,omitempty" json:"volumes,omitempty"`
 	VolumesFrom     []string                         `yaml:"volumes_from,omitempty" json:"volumes_from,omitempty"`
 	WorkingDir      string                           `yaml:"working_dir,omitempty" json:"working_dir,omitempty"`
+	PreStart        []ServiceHook                    `yaml:"pre_start,omitempty" json:"pre_start,omitempty"`
 	PostStart       []ServiceHook                    `yaml:"post_start,omitempty" json:"post_start,omitempty"`
 	PreStop         []ServiceHook                    `yaml:"pre_stop,omitempty" json:"pre_stop,omitempty"`
 
@@ -283,7 +284,9 @@ func (s ServiceConfig) GetDependents(p *Project) []string {
 
 func (s ServiceConfig) GetPullPolicy() (string, time.Duration, error) {
 	switch s.PullPolicy {
-	case PullPolicyAlways, PullPolicyNever, PullPolicyIfNotPresent, PullPolicyMissing, PullPolicyBuild:
+	case "":
+		return PullPolicyMissing, 0, nil
+	case PullPolicyAlways, PullPolicyNever, PullPolicyIfNotPresent, PullPolicyMissing, PullPolicyBuild, PullPolicyRefresh:
 		return s.PullPolicy, 0, nil
 	case "daily":
 		return PullPolicyRefresh, 24 * time.Hour, nil
@@ -298,7 +301,7 @@ func (s ServiceConfig) GetPullPolicy() (string, time.Duration, error) {
 			}
 			return PullPolicyRefresh, duration, nil
 		}
-		return PullPolicyMissing, 0, nil
+		return "", 0, fmt.Errorf("invalid pull_policy %q", s.PullPolicy)
 	}
 }
 
@@ -753,6 +756,7 @@ type NetworkConfig struct {
 type IPAMConfig struct {
 	Driver     string      `yaml:"driver,omitempty" json:"driver,omitempty"`
 	Config     []*IPAMPool `yaml:"config,omitempty" json:"config,omitempty"`
+	Options    Options     `yaml:"options,omitempty" json:"options,omitempty"`
 	Extensions Extensions  `yaml:"#extensions,inline,omitempty" json:"-"`
 }
 
