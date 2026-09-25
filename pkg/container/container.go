@@ -1126,7 +1126,9 @@ func (c *ContainerClient) ResolveComposeProjectName(ctx context.Context, name st
 	return name, nil
 }
 
-func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectName string, defaultWorkingDir string) error {
+// ComposeDown stops and removes a compose project. The given options are the defaults,
+// which can be overridden by the x-tedge settings in the project's compose file
+func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectName string, defaultWorkingDir string, opts ComposeDownOptions) error {
 	// TODO: Read setting from configuration
 	manualCleanup := false
 	errs := make([]error, 0)
@@ -1163,11 +1165,13 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 		workingDir = defaultWorkingDir
 	}
 
+	opts = resolveComposeDownOptions(projectName, workingDir, opts)
+
 	// Find
 	if utils.PathExists(workingDir) {
 		// Run compose stop first to handle containers in a restart loop or similar states.
 		// Ignore errors as compose down will handle cleanup regardless.
-		stopCommand, stopArgs, stopErr := prepareComposeCommand("stop")
+		stopCommand, stopArgs, stopErr := prepareComposeCommand(opts.StopArgs()...)
 		if stopErr == nil {
 			slog.Info("Stopping compose project containers.", "name", projectName, "dir", workingDir, "command", stopCommand, "args", strings.Join(stopArgs, " "))
 			stopProg := exec.Command(stopCommand, stopArgs...)
@@ -1179,9 +1183,7 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 			}
 		}
 
-		// TODO: add option to control whether --volumes are purged or not
-
-		command, args, err := prepareComposeCommand("down", "--remove-orphans", "--volumes")
+		command, args, err := prepareComposeCommand(opts.DownArgs()...)
 		if err != nil {
 			return err
 		}
@@ -1192,6 +1194,9 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 		_, _ = fmt.Fprintf(w, "%s", out)
 
 		if err == nil {
+			if !opts.RemoveVolumes {
+				c.logKeptVolumes(ctx, projectName, projectFilter)
+			}
 			slog.Info("Removing project directory.", "dir", workingDir)
 			if removeErr := os.RemoveAll(workingDir); removeErr != nil {
 				// non critical error
@@ -1225,7 +1230,7 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 	for _, item := range projectContainers {
 		slog.Info("Manually removing container.", "id", item.ID, "names", item.Names)
 		if err := c.Client.ContainerRemove(ctx, item.ID, container.RemoveOptions{
-			RemoveVolumes: true,
+			RemoveVolumes: opts.RemoveVolumes,
 			RemoveLinks:   true,
 			Force:         true,
 		}); err != nil {
@@ -1251,6 +1256,11 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 		}
 	}
 
+	if !opts.RemoveVolumes {
+		c.logKeptVolumes(ctx, projectName, projectFilter)
+		return errors.Join(errs...)
+	}
+
 	// Remove volumes
 	projectVolumes, err := c.Client.VolumeList(ctx, volume.ListOptions{
 		Filters: projectFilter,
@@ -1268,6 +1278,43 @@ func (c *ContainerClient) ComposeDown(ctx context.Context, w io.Writer, projectN
 	}
 
 	return errors.Join(errs...)
+}
+
+// resolveComposeDownOptions applies the x-tedge settings from the project's compose file
+func resolveComposeDownOptions(projectName string, workingDir string, opts ComposeDownOptions) ComposeDownOptions {
+	composeFile := FindComposeFile(workingDir)
+	if composeFile == "" {
+		return opts
+	}
+	settings, err := ReadComposeSettings(composeFile)
+	if err != nil {
+		// Volumes can't be restored once removed, so keep them if the user's intent is unknown
+		slog.Warn("Could not read compose settings. Volumes will be kept.", "project", projectName, "file", composeFile, "err", err)
+		opts.RemoveVolumes = false
+		return opts
+	}
+	opts = opts.WithSettings(settings)
+	slog.Info("Using compose down options.", "project", projectName, "remove_volumes", opts.RemoveVolumes, "remove_timeout", opts.RemoveTimeout)
+	return opts
+}
+
+// logKeptVolumes logs the project volumes which were not removed so
+// that users know which volumes need to be removed manually
+func (c *ContainerClient) logKeptVolumes(ctx context.Context, projectName string, projectFilter filters.Args) {
+	projectVolumes, err := c.Client.VolumeList(ctx, volume.ListOptions{
+		Filters: projectFilter,
+	})
+	if err != nil {
+		slog.Warn("Could not list project volumes.", "project", projectName, "err", err)
+		return
+	}
+	names := make([]string, 0, len(projectVolumes.Volumes))
+	for _, item := range projectVolumes.Volumes {
+		names = append(names, item.Name)
+	}
+	if len(names) > 0 {
+		slog.Info("Keeping project volumes.", "project", projectName, "volumes", names)
+	}
 }
 
 var ContainerStatusHealthy = "healthy"
