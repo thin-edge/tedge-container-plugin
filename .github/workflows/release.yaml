@@ -21,7 +21,7 @@ jobs:
       - name: Set up Go 1.x
         uses: actions/setup-go@v7
         with:
-          go-version: "1.23"
+          go-version-file: 'go.mod'
 
       - uses: taiki-e/install-action@just
 

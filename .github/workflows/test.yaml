@@ -41,7 +41,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: stable
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Install GoReleaser
