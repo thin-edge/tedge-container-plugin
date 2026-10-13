@@ -19,6 +19,12 @@ on:
 
 permissions:
   contents: read
+  # Required so slash-command-dispatch can add the 👀/🚀 reactions to the
+  # comment (the reaction uses GITHUB_TOKEN by default; a PR comment is an
+  # issue comment, so this needs issues: write). Without it the reaction POST
+  # is rejected and the commenter gets no feedback that /test was accepted.
+  issues: write
+  pull-requests: write
 
 jobs:
   slash-command-dispatch:
