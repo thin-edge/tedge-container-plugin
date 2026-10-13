@@ -48,7 +48,7 @@ func NewInstallCommand(ctx cli.Cli) *cobra.Command {
 	return cmd
 }
 
-func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
+func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) (retErr error) {
 	slog.Info("Executing", "cmd", cmd.CalledAs(), "args", args)
 	projectName := args[0]
 	stderr := cmd.ErrOrStderr()
@@ -86,6 +86,21 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 	if err := os.MkdirAll(workingDir, 0755); err != nil {
 		return err
 	}
+
+	// Keep the files of the currently installed version, so they can be
+	// restored if the install fails. Otherwise the compose file would reference
+	// images of the new version whilst the version file still has the old one
+	backup, err := BackupProject(workingDir)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if retErr != nil {
+			if err := backup.Restore(); err != nil {
+				slog.Warn("Failed to restore the previous project files.", "err", err)
+			}
+		}
+	}()
 
 	composeFile := filepath.Join(workingDir, "docker-compose.yaml")
 
