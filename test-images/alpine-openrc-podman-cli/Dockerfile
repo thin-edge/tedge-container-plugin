@@ -18,7 +18,13 @@ RUN apk add --no-cache \
     && wget -O - thin-edge.io/install.sh | sh -s \
     && apk add \
         tedge-apk-plugin \
-        tedge-command-plugin
+    # tedge-command-plugin is only needed for thin-edge.io <= 2.0.1. Newer versions
+    # provide the c8y_Command (shell) operation natively and the tedge package
+    # conflicts with the community plugin, so only install it when the built-in
+    # support (shell.* settings) is missing
+    && if ! tedge config get shell.path >/dev/null 2>&1; then \
+        apk add tedge-command-plugin; \
+    fi
 
 ADD https://raw.githubusercontent.com/thin-edge/tedge-demo-container/refs/heads/main/images/common/bootstrap.sh /usr/bin/
 RUN chmod 755 /usr/bin/bootstrap.sh

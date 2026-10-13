@@ -54,8 +54,13 @@ RUN \
 
 # install and configure thin-edge.io
 RUN wget -O - thin-edge.io/install.sh | sh -s -- --channel "${TEDGE_CHANNEL}" \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        tedge-command-plugin \
+    # tedge-command-plugin is only needed for thin-edge.io <= 2.0.1. Newer versions
+    # provide the c8y_Command (shell) operation natively and the tedge package
+    # conflicts with the community plugin, so only install it when the built-in
+    # support (shell.* settings) is missing
+    && if ! tedge config get shell.path >/dev/null 2>&1; then \
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tedge-command-plugin; \
+    fi \
     && tedge config set mqtt.bind.address 0.0.0.0
 
 COPY dist/*.deb /tmp/
