@@ -46,6 +46,34 @@ Install/uninstall container-group package with non-existent image
     ${operation}=    Cumulocity.Install Software    {"name": "nginx", "version": "1.0.0", "softwareType": "container-group", "url": "${binary_url}"}
     Operation Should Be FAILED    ${operation}    timeout=120
 
+Failed container-group update keeps the previous compose file
+    [Tags]    podman    docker
+    # Install the initial version
+    ${binary_url}=    Cumulocity.Create Inventory Binary    app13    container-group    file=${CURDIR}/data/docker-compose.nginx.yaml
+    ${operation}=    Cumulocity.Install Software    {"name": "app13", "version": "1.0.0", "softwareType": "container-group", "url": "${binary_url}"}
+    Operation Should Be SUCCESSFUL    ${operation}    timeout=60
+    Device Should Have Installed Software    {"name": "app13", "version": "1.0.0", "softwareType": "container-group"}
+
+    # Update to a version which fails to start on all engines
+    # Note: a non-existent image is not used here as older podman-compose versions (e.g. 1.0.3) do not fail when
+    # the image of an already existing container is missing, so the update would succeed
+    ${binary_url}=    Cumulocity.Create Inventory Binary    app13    container-group    file=${CURDIR}/data/docker-compose.invalid.yaml
+    ${operation}=    Cumulocity.Install Software    {"name": "app13", "version": "2.0.0", "softwareType": "container-group", "url": "${binary_url}"}
+    Operation Should Be FAILED    ${operation}    timeout=120
+
+    # The files of the previous version should be restored, so the version file and compose file are consistent
+    ${compose_file}=    DeviceLibrary.Execute Command    cat /data/tedge-container-plugin/compose/app13/docker-compose.yaml
+    Should Contain    ${compose_file}    ghcr.io/thin-edge/test-images/nginx
+    Should Not Contain    ${compose_file}    tedge-invalid
+    ${version}=    DeviceLibrary.Execute Command    cat /data/tedge-container-plugin/compose/app13/version
+    Should Contain    ${version}    1.0.0
+    Device Should Have Installed Software    {"name": "app13", "version": "1.0.0", "softwareType": "container-group"}
+
+    # Uninstall
+    ${operation}=     Cumulocity.Uninstall Software    {"name": "app13", "version": "1.0.0", "softwareType": "container-group"}
+    Operation Should Be SUCCESSFUL    ${operation}
+    Device Should Not Have Installed Software    app13
+
 Install invalid container-group
     [Tags]    podman    docker
     ${binary_url}=    Cumulocity.Create Inventory Binary    nginx    container-group    file=${CURDIR}/data/docker-compose.invalid.yaml
