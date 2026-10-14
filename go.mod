@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/codeclysm/extract/v4 v4.0.0
-	github.com/compose-spec/compose-go/v2 v2.15.0
+	github.com/compose-spec/compose-go/v2 v2.16.1
 	github.com/distribution/reference v0.6.0
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/docker/go-connections v0.8.1
