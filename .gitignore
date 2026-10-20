@@ -22,3 +22,6 @@ tests/data/apps/app5.tar.gz
 
 # MacOS
 .DS_Store
+
+# Claude Code worktrees
+.claude/worktrees/
