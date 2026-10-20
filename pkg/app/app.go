@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,6 +18,7 @@ import (
 	"github.com/reubenmiller/go-c8y/pkg/c8y"
 	"github.com/thin-edge/tedge-container-plugin/pkg/container"
 	"github.com/thin-edge/tedge-container-plugin/pkg/random"
+	"github.com/thin-edge/tedge-container-plugin/pkg/serviceplugin"
 	"github.com/thin-edge/tedge-container-plugin/pkg/tedge"
 )
 
@@ -81,7 +83,14 @@ type App struct {
 	// completed successfully, used to enforce OrphansCheckInterval. Only
 	// accessed from the worker goroutine (doUpdate), so it needs no locking.
 	lastOrphansCheck time.Time
-	wg               sync.WaitGroup
+	// serviceActionsDeclared records the services (by topic id) whose service
+	// actions have been declared since the process started. Only accessed from
+	// the worker goroutine (doUpdate), so it needs no locking.
+	serviceActionsDeclared map[string]struct{}
+	// selfContainerID is the id of the container hosting the plugin, empty
+	// when running on the host
+	selfContainerID string
+	wg              sync.WaitGroup
 }
 
 type Config struct {
@@ -140,6 +149,17 @@ type Config struct {
 	// A value of 0 (or less) checks on every update.
 	// Only applies when DeleteFromCloud and DeleteOrphans are enabled.
 	OrphansCheckInterval time.Duration
+
+	// ManageServiceActions controls whether the service actions (the
+	// cmd/<action> capability topics) of the container services are managed.
+	// When false, e.g. thin-edge.io lacks service plugin support, the
+	// capability topics are left untouched.
+	ManageServiceActions bool
+
+	// ServiceActions are the service plugin actions declared on each container
+	// service. Declarable actions which are not listed are cleared, so an empty
+	// list clears all of them.
+	ServiceActions []string
 }
 
 func NewApp(device tedge.Target, config Config) (*App, error) {
@@ -228,11 +248,24 @@ func NewApp(device tedge.Target, config Config) (*App, error) {
 		config:              config,
 		// Buffered so that the debouncer's dispatch and synchronous Update()
 		// calls never block when the worker is briefly busy.
-		updateRequests: make(chan ActionRequest, 8),
-		shutdown:       make(chan struct{}),
-		wg:             sync.WaitGroup{},
+		updateRequests:         make(chan ActionRequest, 8),
+		shutdown:               make(chan struct{}),
+		serviceActionsDeclared: make(map[string]struct{}),
+		wg:                     sync.WaitGroup{},
 	}
 	application.containerClient.Store(containerClient)
+
+	// No service actions are declared on the container hosting the plugin (and
+	// thin-edge.io) as acting on it would cut off the device or kill tedge-agent
+	// in the middle of the operation workflow
+	if config.ManageServiceActions && container.IsInsideContainer() {
+		if con, err := containerClient.Self(ctx); err == nil {
+			application.selfContainerID = con.ID
+			slog.Info("Detected the container hosting the plugin, no service actions will be declared on it.", "id", con.ID, "name", con.Name)
+		} else {
+			slog.Warn("Could not detect the container hosting the plugin.", "err", err)
+		}
+	}
 
 	// The debouncer coalesces rapid-fire event-driven update requests into a
 	// single doUpdate call. It is used by Monitor() and Subscribe() callbacks.
@@ -904,6 +937,43 @@ func (a *App) applyServiceNamePolicy(items []container.TedgeContainer) []contain
 	return items
 }
 
+// declareServiceActions publishes the service actions of a container service,
+// once per process. A retained "{}" on te/<topic-id>/cmd/<action> declares a
+// configured action, and an empty retained message clears any other declarable
+// action, so that narrowing the configured actions takes effect. Actions which
+// are not declarable (e.g. pause, declared manually along with a custom
+// workflow) are left untouched.
+func (a *App) declareServiceActions(item container.TedgeContainer, target *tedge.Target) {
+	if !a.config.ManageServiceActions {
+		return
+	}
+	if _, done := a.serviceActionsDeclared[target.TopicID]; done {
+		return
+	}
+
+	declared := a.config.ServiceActions
+	if a.selfContainerID != "" && item.Container.Id == a.selfContainerID {
+		slog.Info("Not declaring service actions on the container hosting the plugin.", "topic", target.Topic())
+		declared = nil
+	}
+
+	ok := true
+	for _, action := range serviceplugin.DeclarableActions() {
+		payload := ""
+		if slices.Contains(declared, action) {
+			payload = "{}"
+		}
+		topic := tedge.GetTopic(*target, "cmd", action)
+		if err := a.client.Publish(topic, 1, true, payload); err != nil {
+			slog.Warn("Failed to publish service action, will retry on next update.", "topic", topic, "err", err)
+			ok = false
+		}
+	}
+	if ok {
+		a.serviceActionsDeclared[target.TopicID] = struct{}{}
+	}
+}
+
 func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 	tedgeClient := a.client
 	entities, err := tedgeClient.GetEntities()
@@ -937,6 +1007,7 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 
 	// Register devices
 	slog.Info("Registering containers")
+	registered := make(map[string]struct{}, len(items))
 	for _, item := range items {
 		target := a.Device.Service(item.Name)
 		delete(existingServices, target.TopicID)
@@ -953,6 +1024,7 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 
 		if err == nil {
 			slog.Info("Registered container.", "topic", target.Topic(), "url", resp.RawResponse.Request.URL.String(), "status_code", resp.RawResponse.Status)
+			registered[target.TopicID] = struct{}{}
 		} else {
 			slog.Error("Failed to register container.", "topic", target.Topic(), "err", err)
 		}
@@ -977,6 +1049,15 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 		)
 		if err != nil {
 			slog.Error("Could not publish container status", "err", err)
+		}
+	}
+
+	// Declare the service actions only for registered services, as a capability
+	// of an unknown service could auto-register it with the wrong service type
+	for _, item := range items {
+		target := a.Device.Service(item.Name)
+		if _, ok := registered[target.TopicID]; ok {
+			a.declareServiceActions(item, target)
 		}
 	}
 
@@ -1051,6 +1132,9 @@ func (a *App) doUpdate(filterOptions container.FilterOptions) error {
 			}
 			staleServicesRemoved = true
 			delete(entities, staleTopicID)
+			// thin-edge.io clears the capability topics of a deregistered entity,
+			// so a re-created service has to declare its actions again
+			delete(a.serviceActionsDeclared, staleTopicID)
 		}
 	}
 

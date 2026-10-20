@@ -17,6 +17,7 @@ import (
 	"github.com/thin-edge/tedge-container-plugin/pkg/app"
 	"github.com/thin-edge/tedge-container-plugin/pkg/cli"
 	"github.com/thin-edge/tedge-container-plugin/pkg/container"
+	"github.com/thin-edge/tedge-container-plugin/pkg/serviceplugin"
 )
 
 var (
@@ -44,6 +45,7 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 			cliContext.PrintConfig()
 
 			device := cliContext.GetDeviceTarget()
+			manageServiceActions, serviceActions := resolveServiceActions(cmd.Context(), cliContext)
 			application, err := app.NewApp(device, app.Config{
 				ContainerHost:           cliContext.GetContainerHost(),
 				ServiceName:             cliContext.GetServiceName(),
@@ -56,6 +58,8 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 				CrashLoopThreshold:      cliContext.GetCrashLoopThreshold(),
 				UseModuleNameForService: cliContext.UseModuleNameForService(),
 				SyncRetryInterval:       cliContext.GetSyncRetryInterval(),
+				ManageServiceActions:    manageServiceActions,
+				ServiceActions:          serviceActions,
 
 				HTTPHost:       cliContext.GetHTTPHost(),
 				HTTPPort:       cliContext.GetHTTPPort(),
@@ -220,6 +224,38 @@ func NewRunCommand(cliContext cli.Cli) *cobra.Command {
 
 	command.Command = cmd
 	return cmd
+}
+
+// resolveServiceActions resolves whether the service actions of the container
+// services are managed, and which actions are declared, from the
+// service_commands settings
+func resolveServiceActions(ctx context.Context, cliContext cli.Cli) (manage bool, actions []string) {
+	actions, unknown := serviceplugin.FilterActions(cliContext.ServiceCommandsActions())
+	if len(unknown) > 0 {
+		slog.Warn("Ignoring service actions which cannot be declared (only actions with a tedge-agent workflow can be).", "actions", unknown, "declarable", serviceplugin.DeclarableActions())
+	}
+
+	switch cliContext.ServiceCommandsMode() {
+	case cli.ServiceCommandsDisabled:
+		slog.Info("Service actions are disabled, clearing any declared actions.")
+		return true, nil
+	case cli.ServiceCommandsEnabled:
+		slog.Info("Service actions are enabled.", "actions", actions)
+		return true, actions
+	default:
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		supported, reason := serviceplugin.DetectSupport(ctx, container.ContainerType)
+		if !supported {
+			slog.Info("Service actions are inactive.", "reason", reason)
+			return false, nil
+		}
+		slog.Info("Service actions are enabled.", "actions", actions, "reason", reason)
+		return true, actions
+	}
 }
 
 // backgroundReconcile periodically triggers a full state update so that any
