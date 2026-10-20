@@ -17,6 +17,7 @@ The instructions assume that you are using thin-edge.io &gt;= 1.0.0
     * `container` - Deploy a single container (`docker run xxx` equivalent)
     * `container-group` - Deploy one or more container as defined by a `docker-compose.yaml` file (`docker compose up` equivalent), or an archive (gzip or zip)
     * `container-image` - (optional) Install/remove container images. This software management plugin is disabled by default but can be enabled by setting `container_image.enabled` to `true` in the configuration file
+* The `container` and `container-group` [service plugins](https://thin-edge.github.io/thin-edge.io/next/references/service-plugin-api/), which are called when starting, stopping or restarting a container service, e.g. via the Cumulocity service commands
 
 
 **Technical summary**
@@ -46,6 +47,7 @@ The following features are supported by the plugin:
 * Install/remove containers via the Cumulocity software interface
 * Install multiple containers as one group using a `docker-compose.yaml` file or an archive container a `docker-compose.yaml` file
 * Monitor container states (e.g. up/down) via Cumulocity Services (only supported from tedge >= 1.0.0)
+* Start, stop and restart containers via the Cumulocity service commands (requires a thin-edge.io version with service plugin support)
 * Download container images via Cumulocity binaries if a URL is provided
 * Support for multiple container engines (docker, podman)
 
@@ -192,6 +194,46 @@ Below are some examples showing the mapping between the configuration values and
 |`filter.exclude.name = ["type1", "type2"]`| `CONTAINER_FILTER_EXCLUDE_NAME=type1,type2` |
 |`container.alwayspull= true`| `CONTAINER_CONTAINER_ALWAYSPULL=true` |
 |`container.network= true`| `CONTAINER_CONTAINER_NETWORK=tedge` |
+
+### Service commands
+
+The container and container-group services can be started, stopped and restarted from the **Commands** tab of the service in Cumulocity, using the thin-edge.io [service commands](https://thin-edge.github.io/thin-edge.io/next/operate/c8y/service-commands/). This requires a thin-edge.io version with [service plugin](https://thin-edge.github.io/thin-edge.io/next/references/service-plugin-api/) support. With older versions, no service commands are offered and everything else works as before.
+
+The package installs the following service plugins, which `tedge service` runs as root:
+
+|Service type|Service plugin|Service name|
+|--|--|--|
+|`container`|`/usr/share/tedge/service-plugins/container`|The container name, e.g. `nodered`|
+|`container-group`|`/usr/share/tedge/service-plugins/container-group`|`<project>@<service>`, e.g. `nginx@web`|
+
+The service plugins can also be used directly on the device:
+
+```sh
+sudo tedge service restart nodered --type container
+sudo tedge service stop nginx@web --type container-group
+```
+
+The tedge-container-plugin service declares the actions on each container service, as a retained `{"actions": [...]}` message on `te/<service-topic-id>/cmd/control` (see the thin-edge.io [service control](https://thin-edge.github.io/thin-edge.io/next/references/agent/service-control/) reference). The Cumulocity mapper copies the actions, with their case and order, to the `c8y_SupportedServiceCommands` fragment of the service. This is controlled by the `service_commands` settings:
+
+```toml
+[service_commands]
+# "auto" (default): only when thin-edge.io supports service plugins
+# true: always, false: never (and clear the actions declared before)
+enabled = "auto"
+
+# Actions declared on each service: start, stop, restart, pause, unpause
+actions = ["start", "stop", "restart"]
+```
+
+**Notes**
+
+* An action on a container-group service applies to the single container of that compose service, not the whole project. A compose service scaled to more than one container is rejected
+* No actions are declared on the container hosting thin-edge.io (e.g. when using [tedge-container-bundle](https://github.com/thin-edge/tedge-container-bundle)), and the service plugins refuse to act on it, as stopping it would disconnect the device and restarting it would interrupt the running operation
+* `stop` and `restart` use the stop timeout of the container. The operation is cancelled after 180 seconds, so keep the stop timeout well below that
+* With a rootless container engine, set `container.host` in the configuration file, as the service plugins run as root and don't see the environment of the rootless user
+* tedge-agent runs every action through its shipped `control` workflow, so `pause` and `unpause` only have to be added to `service_commands.actions` to be offered in Cumulocity
+* The plugin owns the `cmd/control` topic of the container services, so actions declared on it manually are overwritten when the plugin starts
+* The service commands require a thin-edge.io version with the `control` command (where `tedge config get c8y.enable.service_control` succeeds). In "auto" mode, no actions are declared with earlier versions
 
 ### Cumulocity UI Plugin
 

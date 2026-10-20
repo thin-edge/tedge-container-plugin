@@ -185,3 +185,12 @@ func TestProjectImages(t *testing.T) {
 		assert.Contains(t, used, "example.com/db:2.0", name)
 	}
 }
+
+func Test_LookupGroupServiceRejectsInvalidNames(t *testing.T) {
+	// Invalid names are rejected before the container engine is contacted
+	cli := &ContainerClient{}
+	for _, name := range []string{"nginx", "@web", "nginx@", ""} {
+		_, err := cli.LookupGroupService(context.Background(), name)
+		assert.ErrorContains(t, err, "<project>@<service>", "name=%q", name)
+	}
+}
