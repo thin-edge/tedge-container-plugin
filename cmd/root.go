@@ -21,6 +21,7 @@ import (
 	"github.com/thin-edge/tedge-container-plugin/cli/log_plugins"
 	"github.com/thin-edge/tedge-container-plugin/cli/run"
 	"github.com/thin-edge/tedge-container-plugin/cli/self"
+	"github.com/thin-edge/tedge-container-plugin/cli/service_plugins"
 	"github.com/thin-edge/tedge-container-plugin/cli/tools"
 	"github.com/thin-edge/tedge-container-plugin/pkg/cli"
 )
@@ -97,6 +98,7 @@ func init() {
 		tools.NewToolsCommand(cliConfig),
 		container_logs.NewContainerLogsCommand(cliConfig),
 		log_plugins.NewCommand(cliConfig),
+		service_plugins.NewCommand(cliConfig),
 		container_image.NewCommand(cliConfig),
 	)
 

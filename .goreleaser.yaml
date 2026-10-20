@@ -134,6 +134,21 @@ nfpms:
         file_info:
           mode: 0755
 
+      # service plugins (run as root by 'tedge service', so they must be owned by root)
+      - src: packaging/service-plugins/container
+        dst: /usr/share/tedge/service-plugins/container
+        file_info:
+          mode: 0755
+          owner: root
+          group: root
+
+      - src: packaging/service-plugins/container-group
+        dst: /usr/share/tedge/service-plugins/container-group
+        file_info:
+          mode: 0755
+          owner: root
+          group: root
+
       # Config
       - src: ./packaging/config.toml
         dst: /etc/tedge/plugins/tedge-container-plugin.toml

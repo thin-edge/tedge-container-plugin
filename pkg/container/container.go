@@ -653,6 +653,18 @@ func (c *ContainerClient) RestartContainer(ctx context.Context, containerID stri
 	return c.Client.ContainerRestart(ctx, containerID, container.StopOptions{})
 }
 
+// PauseContainer pauses all processes of a container
+func (c *ContainerClient) PauseContainer(ctx context.Context, containerID string) error {
+	slog.Info("Pausing container.", "id", containerID)
+	return c.Client.ContainerPause(ctx, containerID)
+}
+
+// UnpauseContainer resumes the processes of a paused container
+func (c *ContainerClient) UnpauseContainer(ctx context.Context, containerID string) error {
+	slog.Info("Unpausing container.", "id", containerID)
+	return c.Client.ContainerUnpause(ctx, containerID)
+}
+
 func (c *ContainerClient) List(ctx context.Context, options FilterOptions) ([]TedgeContainer, error) {
 	// Filter for docker compose projects
 	listOptions := container.ListOptions{
@@ -1076,17 +1088,31 @@ func CheckPodmanComposeError(b string) error {
 	return lastErr
 }
 
-func (c *ContainerClient) LookupProject(ctx context.Context, projectName string, serviceName string) ([]container.Summary, error) {
-	projectFilter := filters.NewArgs(
-		filters.Arg("label", "com.docker.compose.project="+projectName),
-	)
-	if serviceName != "" {
-		projectFilter.Add("name", serviceName)
+// LookupGroupService returns the containers (including stopped ones) of a
+// container-group service given as "<project>@<service>". The project part can
+// be either the compose project name or the stored module name.
+func (c *ContainerClient) LookupGroupService(ctx context.Context, name string) ([]container.Summary, error) {
+	projectName, serviceName, found := ParseContainerGroup(name)
+	if !found || projectName == "" || serviceName == "" {
+		return nil, fmt.Errorf("invalid service name '%s'. expected name in format of '<project>@<service>'", name)
 	}
-	projectContainers, err := c.Client.ContainerList(ctx, container.ListOptions{
-		Filters: projectFilter,
+
+	// The stored service name may use the module name rather than the Docker
+	// compose project name. Resolve it to the actual Docker project label so
+	// the container lookup works regardless.
+	resolvedProjectName, err := c.ResolveComposeProjectName(ctx, projectName)
+	if err != nil {
+		slog.Warn("Could not resolve compose project name, using as-is.", "name", projectName, "err", err)
+		resolvedProjectName = projectName
+	}
+
+	return c.Client.ContainerList(ctx, container.ListOptions{
+		All: true,
+		Filters: filters.NewArgs(
+			filters.Arg("label", "com.docker.compose.project="+resolvedProjectName),
+			filters.Arg("label", "com.docker.compose.service="+serviceName),
+		),
 	})
-	return projectContainers, err
 }
 
 // ResolveComposeProjectName resolves a name that may be either a Docker

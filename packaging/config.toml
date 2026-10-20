@@ -154,3 +154,20 @@ remove_timeout = "0s"
 [registry]
 # Path to the file containing container registry credentials
 credentials_path = "/data/tedge-container-plugin/credentials.toml"
+
+[service_commands]
+# Declare the actions which can be run on each container and container-group
+# service, e.g. from the Cumulocity service commands (requires a thin-edge.io
+# version with service plugin support). Values:
+#   "auto" = only when thin-edge.io supports service plugins and the
+#            service plugins of tedge-container-plugin are installed
+#   true   = always declare the actions
+#   false  = never declare the actions (and clear the ones declared before)
+# The container hosting thin-edge.io (if any) never gets any actions.
+enabled = "auto"
+
+# Actions declared on each service.
+# Supported values: start, stop, restart
+# The service plugins also support pause and unpause, but these need a custom
+# tedge-agent operation workflow and have to be declared manually (see the README), pause, unpause
+actions = ["start", "stop", "restart"]

@@ -42,6 +42,10 @@ func (e ExitCodeError) Error() string {
 	return ""
 }
 
+func (e ExitCodeError) Unwrap() error {
+	return e.Err
+}
+
 func (e ExitCodeError) ExitCode() int {
 	if e.Code == 0 {
 		return 1
@@ -63,6 +67,8 @@ func (c *Cli) OnInit() {
 	viper.SetDefault("container_group.use_module_name", false)
 	viper.SetDefault("container_group.remove_volumes", true)
 	viper.SetDefault("container_group.remove_timeout", "0s")
+	viper.SetDefault("service_commands.enabled", ServiceCommandsAuto)
+	viper.SetDefault("service_commands.actions", []string{"start", "stop", "restart"})
 
 	// Default to the tedge plugins folder
 	if c.ConfigFile == "" {
@@ -190,6 +196,33 @@ func (c *Cli) GetOrphansCheckInterval() time.Duration {
 
 func (c *Cli) GetCrashLoopThreshold() int {
 	return viper.GetInt("container.crash_loop_threshold")
+}
+
+// Values of the service_commands.enabled setting
+const (
+	ServiceCommandsAuto     = "auto"
+	ServiceCommandsEnabled  = "true"
+	ServiceCommandsDisabled = "false"
+)
+
+// ServiceCommandsMode returns whether the service actions are declared:
+// "auto" (only when thin-edge.io supports service plugins), "true" or "false".
+// Unknown values fall back to "auto".
+func (c *Cli) ServiceCommandsMode() string {
+	value := strings.ToLower(strings.TrimSpace(viper.GetString("service_commands.enabled")))
+	switch value {
+	case ServiceCommandsEnabled, ServiceCommandsDisabled:
+		return value
+	case ServiceCommandsAuto:
+	default:
+		slog.Warn("Invalid service_commands.enabled value, using auto.", "value", value)
+	}
+	return ServiceCommandsAuto
+}
+
+// ServiceCommandsActions returns the service actions declared on each container service
+func (c *Cli) ServiceCommandsActions() []string {
+	return viper.GetStringSlice("service_commands.actions")
 }
 
 func (c *Cli) UseModuleNameForService() bool {
