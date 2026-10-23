@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/docker/docker/api/types/container"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -165,5 +166,22 @@ func TestNormalizeImageRef(t *testing.T) {
 		if got := normalizeImageRef(in); got != want {
 			t.Errorf("normalizeImageRef(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestProjectImages(t *testing.T) {
+	containers := []container.Summary{
+		{Image: "example.com/app:1.0", Labels: map[string]string{"com.docker.compose.project": "picscontainergroup"}},
+		{Image: "example.com/db:2.0", Labels: map[string]string{"com.docker.compose.project": "picscontainergroup"}},
+		{Image: "example.com/other:1.0", Labels: map[string]string{"com.docker.compose.project": "othergroup"}},
+		{Image: "example.com/unrelated:1.0", Labels: map[string]string{}},
+	}
+
+	// compose lowercases the project name, but the plugin is called with the name as given
+	for _, name := range []string{"PicsContainerGroup", "picscontainergroup"} {
+		used := projectImages(containers, name)
+		assert.Len(t, used, 2, name)
+		assert.Contains(t, used, "example.com/app:1.0", name)
+		assert.Contains(t, used, "example.com/db:2.0", name)
 	}
 }
