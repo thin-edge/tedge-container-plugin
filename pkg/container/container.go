@@ -1055,6 +1055,44 @@ func (c *ContainerClient) ComposeUp(ctx context.Context, w io.Writer, projectNam
 	return nil
 }
 
+// VerifyProjectImages checks that every expected image is used by a container of the
+// compose project. Some older podman-compose versions (e.g. 1.0.3) exit successfully
+// even if the new image could not be pulled, and just keep the existing container
+// (still using the previous image) running.
+func (c *ContainerClient) VerifyProjectImages(ctx context.Context, projectName string, expectedImages []string) error {
+	projectContainers, err := c.Client.ContainerList(ctx, container.ListOptions{
+		All:     true,
+		Filters: filters.NewArgs(filters.Arg("label", "com.docker.compose.project="+projectName)),
+	})
+	if err != nil {
+		return err
+	}
+
+	used := make(map[string]struct{}, len(projectContainers))
+	for _, item := range projectContainers {
+		used[normalizeImageRef(item.Image)] = struct{}{}
+	}
+
+	missing := make([]string, 0)
+	for _, imageRef := range expectedImages {
+		if _, ok := used[normalizeImageRef(imageRef)]; !ok {
+			missing = append(missing, imageRef)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("compose project is not using the expected images. missing=%s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+func normalizeImageRef(imageRef string) string {
+	named, err := reference.ParseNormalizedNamed(imageRef)
+	if err != nil {
+		return imageRef
+	}
+	return reference.TagNameOnly(named).String()
+}
+
 func CheckPodmanComposeError(b string) error {
 	// Due to a podman bug, the exit code is not propagated back to the user
 	// which means it is hard to determine if the command was successful or not

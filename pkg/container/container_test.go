@@ -153,3 +153,17 @@ func Test_BuildImageRef(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeImageRef(t *testing.T) {
+	cases := map[string]string{
+		"nginx":                               "docker.io/library/nginx:latest",
+		"docker.io/library/nginx:latest":      "docker.io/library/nginx:latest",
+		"ghcr.io/thin-edge/test-images/nginx": "ghcr.io/thin-edge/test-images/nginx:latest",
+		"example.com/app:1.0":                 "example.com/app:1.0",
+	}
+	for in, want := range cases {
+		if got := normalizeImageRef(in); got != want {
+			t.Errorf("normalizeImageRef(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

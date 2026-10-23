@@ -125,6 +125,7 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) (retErr error) 
 	if err != nil {
 		return err
 	}
+	composeImages := images
 	for _, imageRef := range images {
 		if _, err := cli.ImagePullWithRetries(ctx, imageRef, c.CommandContext.ImageAlwaysPull(), container.ImagePullOptions{
 			AuthFunc:    c.CommandContext.GetContainerRepositoryCredentialsFunc(imageRef),
@@ -178,6 +179,13 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) (retErr error) 
 
 	if err := cli.ComposeUp(ctx, stderr, projectName, workingDir, composeUpExtraArgs...); err != nil {
 		slog.Error("Failed to start compose project.", "err", err)
+		return err
+	}
+
+	// Some compose versions exit successfully even though the new images could not be used
+	// so check that the project is really running the expected images
+	if err := cli.VerifyProjectImages(ctx, projectName, composeImages); err != nil {
+		slog.Error("Compose project is not in the expected state.", "err", err)
 		return err
 	}
 
