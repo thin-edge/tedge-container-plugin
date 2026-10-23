@@ -48,7 +48,7 @@ func NewInstallCommand(ctx cli.Cli) *cobra.Command {
 	return cmd
 }
 
-func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
+func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) (retErr error) {
 	slog.Info("Executing", "cmd", cmd.CalledAs(), "args", args)
 	projectName := args[0]
 	stderr := cmd.ErrOrStderr()
@@ -87,6 +87,21 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Keep the files of the currently installed version, so they can be
+	// restored if the install fails. Otherwise the compose file would reference
+	// images of the new version whilst the version file still has the old one
+	backup, err := BackupProject(workingDir)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if retErr != nil {
+			if err := backup.Restore(); err != nil {
+				slog.Warn("Failed to restore the previous project files.", "err", err)
+			}
+		}
+	}()
+
 	composeFile := filepath.Join(workingDir, "docker-compose.yaml")
 
 	composeUpExtraArgs := []string{"--build"}
@@ -110,6 +125,7 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	composeImages := images
 	for _, imageRef := range images {
 		if _, err := cli.ImagePullWithRetries(ctx, imageRef, c.CommandContext.ImageAlwaysPull(), container.ImagePullOptions{
 			AuthFunc:    c.CommandContext.GetContainerRepositoryCredentialsFunc(imageRef),
@@ -163,6 +179,13 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) error {
 
 	if err := cli.ComposeUp(ctx, stderr, projectName, workingDir, composeUpExtraArgs...); err != nil {
 		slog.Error("Failed to start compose project.", "err", err)
+		return err
+	}
+
+	// Some compose versions exit successfully even though the new images could not be used
+	// so check that the project is really running the expected images
+	if err := cli.VerifyProjectImages(ctx, projectName, composeImages); err != nil {
+		slog.Error("Compose project is not in the expected state.", "err", err)
 		return err
 	}
 
