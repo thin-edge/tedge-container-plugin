@@ -111,6 +111,14 @@ func prepareComposeCommand(args ...string) (string, []string, error) {
 }
 
 func ReadImages(ctx context.Context, paths []string, workingDir string) ([]string, error) {
+	_, images, err := ReadProject(ctx, paths, workingDir)
+	return images, err
+}
+
+// ReadProject loads the compose files and returns the project name that compose resolves
+// (e.g. the top-level "name" field, or the working directory name if it is not set)
+// and the images used by the services.
+func ReadProject(ctx context.Context, paths []string, workingDir string) (string, []string, error) {
 	images := make([]string, 0)
 
 	project, err := composeCli.NewProjectOptions(
@@ -118,12 +126,12 @@ func ReadImages(ctx context.Context, paths []string, workingDir string) ([]strin
 		composeCli.WithDotEnv,
 	)
 	if err != nil {
-		return images, err
+		return "", images, err
 	}
 
 	projectT, err := project.LoadProject(ctx)
 	if err != nil {
-		return images, err
+		return "", images, err
 	}
 	for name, service := range projectT.Services {
 		if service.Image != "" {
@@ -132,7 +140,7 @@ func ReadImages(ctx context.Context, paths []string, workingDir string) ([]strin
 		}
 	}
 
-	return images, nil
+	return projectT.Name, images, nil
 }
 
 // EnsureExtraHost ensures every service in composePaths[0] that does not

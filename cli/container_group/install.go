@@ -121,7 +121,7 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) (retErr error) 
 			composeFile = p
 		}
 	}
-	images, err := container.ReadImages(ctx, []string{composeFile}, workingDir)
+	composeProjectName, images, err := container.ReadProject(ctx, []string{composeFile}, workingDir)
 	if err != nil {
 		return err
 	}
@@ -183,8 +183,9 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) (retErr error) 
 	}
 
 	// Some compose versions exit successfully even though the new images could not be used
-	// so check that the project is really running the expected images
-	if err := cli.VerifyProjectImages(ctx, projectName, composeImages); err != nil {
+	// so check that the project is really running the expected images. The project name
+	// is the one resolved by compose, which can differ from the module name (e.g. `name:` in the compose file)
+	if err := cli.VerifyProjectImages(ctx, composeProjectName, composeImages); err != nil {
 		slog.Error("Compose project is not in the expected state.", "err", err)
 		return err
 	}
