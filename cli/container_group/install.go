@@ -98,6 +98,16 @@ func (c *InstallCommand) RunE(cmd *cobra.Command, args []string) (retErr error) 
 		if retErr != nil {
 			if err := backup.Restore(); err != nil {
 				slog.Warn("Failed to restore the previous project files.", "err", err)
+				return
+			}
+			// Some compose versions remove the existing containers before creating
+			// the new ones, so a failed update leaves nothing running.
+			// Start the previous version again (best effort)
+			if backup.HasPreviousInstall() {
+				slog.Info("Starting the previous version of the compose project.", "project", projectName)
+				if err := cli.ComposeUp(ctx, stderr, projectName, workingDir); err != nil {
+					slog.Warn("Failed to start the previous version of the compose project.", "err", err)
+				}
 			}
 		}
 	}()

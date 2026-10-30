@@ -54,6 +54,21 @@ func BackupProject(dir string) (*ProjectBackup, error) {
 	return backup, nil
 }
 
+// HasPreviousInstall returns true if the backup contains a compose file,
+// meaning a previous version of the project was installed
+func (b *ProjectBackup) HasPreviousInstall() bool {
+	for _, f := range b.files {
+		if isComposeFile(filepath.Base(f.path)) {
+			return true
+		}
+	}
+	return false
+}
+
+func isComposeFile(name string) bool {
+	return name == "docker-compose.yaml" || name == "docker-compose.yml"
+}
+
 // Restore writes the backed up files back to the project directory.
 // Nothing is done if there was no previous installation.
 func (b *ProjectBackup) Restore() error {

@@ -68,3 +68,23 @@ func TestProjectBackupFirstInstall(t *testing.T) {
 		t.Errorf("unexpected change. got=%q", got)
 	}
 }
+
+func TestProjectBackupHasPreviousInstall(t *testing.T) {
+	dir := t.TempDir()
+	backup, err := BackupProject(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backup.HasPreviousInstall() {
+		t.Error("first time install should not have a previous install")
+	}
+
+	writeFile(t, dir, "docker-compose.yml", "image: app:1.0.3")
+	backup, err = BackupProject(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !backup.HasPreviousInstall() {
+		t.Error("expected a previous install when a compose file exists")
+	}
+}
