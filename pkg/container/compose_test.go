@@ -457,3 +457,33 @@ func TestPrepareComposeCommand(t *testing.T) {
 		assert.Equal(t, []string{"up", "--detach"}, args)
 	})
 }
+
+func TestReadProject(t *testing.T) {
+	workingDir := filepath.Join(t.TempDir(), "MyModule")
+	if err := os.Mkdir(workingDir, 0o755); err != nil {
+		t.Fatalf("Failed to create dir: %v", err)
+	}
+
+	write := func(name, contents string) string {
+		p := filepath.Join(workingDir, name)
+		if err := os.WriteFile(p, []byte(contents), 0o644); err != nil {
+			t.Fatalf("Failed to write compose file: %v", err)
+		}
+		return p
+	}
+
+	t.Run("name field takes precedence over the directory", func(t *testing.T) {
+		f := write("named.yml", "name: app7\nservices:\n  web:\n    image: nginx\n")
+		name, images, err := ReadProject(context.Background(), []string{f}, workingDir)
+		assert.NoError(t, err)
+		assert.Equal(t, "app7", name)
+		assert.Equal(t, []string{"nginx"}, images)
+	})
+
+	t.Run("falls back to the normalized directory name", func(t *testing.T) {
+		f := write("unnamed.yml", "services:\n  web:\n    image: nginx\n")
+		name, _, err := ReadProject(context.Background(), []string{f}, workingDir)
+		assert.NoError(t, err)
+		assert.Equal(t, "mymodule", name)
+	})
+}
