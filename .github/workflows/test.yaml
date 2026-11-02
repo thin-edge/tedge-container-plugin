@@ -2,8 +2,8 @@ name: Test
 
 on:
   # Runs automatically for PRs from branches within this repo (maintainers).
-  # Fork PRs do not have access to secrets; maintainers must trigger those
-  # via a /test comment (see test-slash-command.yaml).
+  # Fork and Dependabot PRs do not have access to secrets; maintainers must
+  # trigger those via a /test comment (see test-slash-command.yaml).
   pull_request:
     branches: [ main ]
   # Triggered by test-slash-command.yaml via peter-evans/slash-command-dispatch
@@ -48,11 +48,13 @@ jobs:
 
   build:
     name: Build
-    # Skip fork PRs on the pull_request event — they have no secret access.
+    # Skip fork and Dependabot PRs on the pull_request event — they have no
+    # access to the Actions secrets (Dependabot runs only get Dependabot secrets).
     # Those PRs are tested via repository_dispatch triggered by test-slash-command.yaml.
     if: >-
       github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.user.login != 'dependabot[bot]')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -183,15 +185,18 @@ jobs:
   tests-pass:
     name: Tests Pass
     needs: [build, test]
-    # Run for every trigger EXCEPT fork PRs on the pull_request event: those skip
-    # build/test (no secret access), so this gate would otherwise report a red
-    # "Tests Pass" and permanently block the PR. Leaving it unreported keeps the
-    # required check pending until a maintainer comments /test, at which point the
-    # repository_dispatch run below reports the result onto the PR head commit.
+    # Run for every trigger EXCEPT fork and Dependabot PRs on the pull_request
+    # event: those skip build/test (no secret access), so this gate would
+    # otherwise report a red "Tests Pass" check run which permanently blocks the
+    # PR (a later green "Tests Pass" commit status from /test does not override
+    # it). Leaving it unreported keeps the required check pending until a
+    # maintainer comments /test, at which point the repository_dispatch run below
+    # reports the result onto the PR head commit.
     if: >-
       always() &&
       (github.event_name != 'pull_request' ||
-       github.event.pull_request.head.repo.full_name == github.repository)
+       (github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.user.login != 'dependabot[bot]'))
     runs-on: ubuntu-latest
     permissions:
       # Required to report the gate result back to the fork PR's head commit
