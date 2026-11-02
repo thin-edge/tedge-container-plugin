@@ -3,7 +3,7 @@ module github.com/thin-edge/tedge-container-plugin
 go 1.26.0
 
 require (
-	github.com/codeclysm/extract/v4 v4.0.0
+	github.com/codeclysm/extract/v4 v4.0.2
 	github.com/compose-spec/compose-go/v2 v2.15.0
 	github.com/distribution/reference v0.6.0
 	github.com/docker/docker v28.5.2+incompatible
@@ -43,7 +43,7 @@ require (
 	github.com/h2non/filetype v1.1.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/juju/errors v1.0.0 // indirect
-	github.com/klauspost/compress v1.20.1 // indirect
+	github.com/klauspost/compress v1.20.3 // indirect
 	github.com/mattn/go-shellwords v1.0.15 // indirect
 	github.com/mdp/qrterminal/v3 v3.2.1 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
@@ -78,7 +78,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/term v0.46.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.7.0 // indirect
