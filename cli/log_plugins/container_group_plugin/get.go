@@ -5,7 +5,6 @@ package container_group_plugin
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	"github.com/spf13/cobra"
@@ -51,22 +50,7 @@ func (c *ContainerLogsCommand) RunE(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	// lookup
-	projectName, serviceName, found := container.ParseContainerGroup(args[0])
-	if !found {
-		return fmt.Errorf("invalid service name. expected name in format of '<project>@<service>'")
-	}
-
-	// The stored service name may use the module name rather than the Docker
-	// compose project name. Resolve it to the actual Docker project label so
-	// the container lookup works regardless.
-	resolvedProjectName, err := containerCli.ResolveComposeProjectName(ctx, projectName)
-	if err != nil {
-		slog.Warn("Could not resolve compose project name, using as-is.", "name", projectName, "err", err)
-		resolvedProjectName = projectName
-	}
-
-	services, err := containerCli.LookupProject(context.Background(), resolvedProjectName, serviceName)
+	services, err := containerCli.LookupGroupService(ctx, args[0])
 	if err != nil {
 		return err
 	}
