@@ -144,6 +144,10 @@ jobs:
           echo 'REGISTRY1_REPO="ghcr.io"' >> .env
           echo 'REGISTRY1_USERNAME="${{ github.actor }}"' >> .env
           echo 'REGISTRY1_PASSWORD="${{ github.token }}"' >> .env
+          # Suites that share one device run many nested containers (and fuse-overlayfs
+          # processes) in it, which exceeds DeviceLibrary's default 256m limit and gets
+          # dockerd inside the device OOM-killed
+          echo 'DOCKER_OPTIONS_MEM_LIMIT="1g"' >> .env
 
       - uses: actions/setup-python@v7
         with:
