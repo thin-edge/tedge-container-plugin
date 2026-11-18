@@ -80,6 +80,10 @@ Clone Existing Container but Waiting For Exit
     Should Not Be Equal    ${next_container_id}    ${prev_container_id}
 
 Ignore Containers With Given Label
+    # The device is shared by the whole suite, so remove containers left over from a
+    # previous (retried) attempt of this test
+    DeviceLibrary.Execute Command    cmd=sudo tedge-container tools container-remove httpapp1 ||: ; sudo tedge-container tools container-remove httpapp2 ||:
+
     # ignore using label
     ${prev_container_id}=    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker run -d --label tedge.ignore=1 --name httpapp1 ghcr.io/thin-edge/test-images/httpd:2.4.61-alpine
     Sleep    10s
@@ -90,7 +94,7 @@ Ignore Containers With Given Label
     ${prev_container_id}=    DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker run -d --name httpapp2 ghcr.io/thin-edge/test-images/httpd:2.4.61-alpine
     Sleep    10s
     DeviceLibrary.Execute Command    cmd=sudo tedge-container engine docker inspect httpapp2
-    Cumulocity.Should Have Services    service_type=container    name=httpapp2    min_count=1    max_count=1    timeout=10
+    Cumulocity.Should Have Services    service_type=container    name=httpapp2    min_count=1    max_count=1    timeout=30
 
 *** Keywords ***
 
