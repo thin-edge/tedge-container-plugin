@@ -157,6 +157,18 @@ jobs:
       #
       # Test
       #
+      # Ubuntu 26.04 runners enforce a host AppArmor profile for mosquitto. Containers
+      # share the host's AppArmor, so it also confines mosquitto inside the privileged
+      # test container and blocks it from reading /etc/tedge/mosquitto-conf/.
+      - name: Unload host AppArmor profile for mosquitto
+        run: |
+          if [ -f /etc/apparmor.d/mosquitto ]; then
+            sudo apparmor_parser -R /etc/apparmor.d/mosquitto
+            echo "Unloaded AppArmor profile: mosquitto"
+          else
+            echo "No mosquitto AppArmor profile on this runner; nothing to do"
+          fi
+
       - name: Install dependencies
         run: |
           just venv
