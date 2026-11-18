@@ -191,6 +191,9 @@ jobs:
           just build-test
 
       - name: Run tests
+        # The tests normally take ~10 minutes. Fail a hung run early so that the test
+        # reports are still uploaded, instead of waiting for the 6 hour job limit
+        timeout-minutes: 40
         run: just test ${{ matrix.job.test_options }}
 
       - name: Upload test results
