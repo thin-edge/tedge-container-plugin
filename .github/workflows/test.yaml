@@ -157,17 +157,24 @@ jobs:
       #
       # Test
       #
-      # Ubuntu 26.04 runners enforce a host AppArmor profile for mosquitto. Containers
-      # share the host's AppArmor, so it also confines mosquitto inside the privileged
-      # test container and blocks it from reading /etc/tedge/mosquitto-conf/.
-      - name: Unload host AppArmor profile for mosquitto
+      # Ubuntu 26.04 runners enforce host AppArmor profiles for mosquitto and for
+      # passt/pasta (the rootless podman network helper). Containers share the host's
+      # AppArmor, so the profiles also confine these programs inside the privileged
+      # test container: mosquitto can't read /etc/tedge/mosquitto-conf/, and podman
+      # can't stop pasta ("rootless netns: kill network process: permission denied").
+      - name: Unload host AppArmor profiles
         run: |
-          if [ -f /etc/apparmor.d/mosquitto ]; then
-            sudo apparmor_parser -R /etc/apparmor.d/mosquitto
-            echo "Unloaded AppArmor profile: mosquitto"
-          else
-            echo "No mosquitto AppArmor profile on this runner; nothing to do"
+          for profile in mosquitto usr.bin.passt usr.bin.pasta; do
+            if [ -f "/etc/apparmor.d/$profile" ]; then
+              # A profile can already be gone if another file in the list defined it too
+              sudo apparmor_parser -R "/etc/apparmor.d/$profile" || true
+            fi
+          done
+          if sudo grep -E '^(mosquitto|passt|pasta) ' /sys/kernel/security/apparmor/profiles; then
+            echo "::error::AppArmor profiles above are still loaded"
+            exit 1
           fi
+          echo "AppArmor profiles for mosquitto, passt and pasta are not loaded"
 
       # Ubuntu 26.04 runners use the kernel default of 128 inotify instances per user.
       # All the privileged test containers run as root and share that limit, so once
