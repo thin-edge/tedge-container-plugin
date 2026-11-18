@@ -169,6 +169,15 @@ jobs:
             echo "No mosquitto AppArmor profile on this runner; nothing to do"
           fi
 
+      # Ubuntu 26.04 runners use the kernel default of 128 inotify instances per user.
+      # All the privileged test containers run as root and share that limit, so once
+      # enough of them are running, systemd in a new container fails to start
+      # ("Failed to allocate manager object: Too many open files").
+      - name: Raise inotify limits
+        run: |
+          sudo sysctl -w fs.inotify.max_user_instances=8192
+          sudo sysctl -w fs.inotify.max_user_watches=524288
+
       - name: Install dependencies
         run: |
           just venv
